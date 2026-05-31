@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display), sans-serif;
+  }
+
+  .font-body {
+    font-family: var(--font-body), sans-serif;
+  }
+
+  .bg-admin-pattern {
+    background-image:
+      radial-gradient(circle at 15% 10%, rgba(174, 255, 61, 0.3), transparent 30%),
+      radial-gradient(circle at 85% 0%, rgba(255, 204, 87, 0.25), transparent 25%),
+      linear-gradient(160deg, #f4ffe8 0%, #fff9e8 50%, #f8fdf7 100%);
+  }
+}
