@@ -11,6 +11,8 @@ export type AccountType = 'LOCAL' | 'KAKAO' | 'NAVER' | 'MASTER';
 
 @Entity({ name: 'accounts' })
 @Index(['type', 'providerUserId'], { unique: true })
+@Index(['userId'], { unique: true })
+@Index(['phone'], { unique: true })
 export class AccountEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -35,6 +37,15 @@ export class AccountEntity {
 
   @Column({ type: 'varchar', nullable: true })
   displayName!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  phone!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  address!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  phoneVerifiedAt!: Date | null;
 
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;

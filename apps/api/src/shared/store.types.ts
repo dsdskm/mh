@@ -126,3 +126,30 @@ export type StoreConfig = {
   videoUrl: string;
   recipes: StoreRecipe[];
 };
+
+export type RequestPhoneVerificationInput = {
+  phone: string;
+};
+
+export type VerifyPhoneCodeInput = {
+  phone: string;
+  code: string;
+};
+
+export type CreateLocalAccountInput = {
+  userId: string;
+  password: string;
+  name: string;
+  phone: string;
+  address: string;
+  verificationToken: string;
+};
+
+export type LocalAccountProfile = {
+  id: number;
+  userId: string;
+  name: string;
+  phone: string;
+  address: string;
+  createdAt: string;
+};

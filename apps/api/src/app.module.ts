@@ -8,6 +8,8 @@ import { ConfigController } from './features/config/config.controller';
 import { ConfigService } from './features/config/config.service';
 import { HealthController } from './features/health/health.controller';
 import { HealthService } from './features/health/health.service';
+import { AuthController } from './features/auth/auth.controller';
+import { AuthService } from './features/auth/auth.service';
 import { InquiriesController } from './features/inquiries/inquiries.controller';
 import { InquiriesService } from './features/inquiries/inquiries.service';
 import { OrdersController } from './features/orders/orders.controller';
@@ -63,6 +65,7 @@ const databaseUrl =
   ],
   controllers: [
     HealthController,
+    AuthController,
     ConfigController,
     ProductsController,
     OrdersController,
@@ -72,6 +75,7 @@ const databaseUrl =
   ],
   providers: [
     HealthService,
+    AuthService,
     ConfigService,
     ProductsService,
     OrdersService,

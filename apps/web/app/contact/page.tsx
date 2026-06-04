@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { signIn, signOut, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
 import { FormEvent, useEffect, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3002";
@@ -19,6 +20,7 @@ type LastInquiry = {
 export default function ContactPage() {
   const { data: session, status } = useSession();
   const isLoggedIn = status === "authenticated";
+  const router = useRouter();
 
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
@@ -46,7 +48,7 @@ export default function ContactPage() {
 
     if (!isLoggedIn) {
       setError("문의 작성은 로그인 후 이용할 수 있어요.");
-      await signIn("kakao", { callbackUrl: "/contact" });
+      router.push("/signup?callback=/contact");
       return;
     }
 
@@ -109,22 +111,22 @@ export default function ContactPage() {
 
       <section className="rounded-3xl border border-amber-200 bg-white p-5 shadow">
         <h1 className="font-display text-3xl text-amber-800">문의하기</h1>
-        <p className="mt-1 text-sm text-stone-600">주문/배송/상품 문의를 남겨주세요. 작성은 카카오 로그인 후 가능합니다.</p>
+        <p className="mt-1 text-sm text-stone-600">주문/배송/상품 문의를 남겨주세요. 작성은 로그인/회원가입 후 가능합니다.</p>
 
         {!isLoggedIn ? (
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <p className="text-sm font-semibold text-amber-900">문의 작성 전 카카오 로그인이 필요해요.</p>
+            <p className="text-sm font-semibold text-amber-900">문의 작성 전 로그인/회원가입이 필요해요.</p>
             <button
               type="button"
-              onClick={() => void signIn("kakao", { callbackUrl: "/contact" })}
+              onClick={() => router.push("/signup?callback=/contact")}
               className="mt-3 w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white"
             >
-              카카오 로그인
+              로그인/회원가입
             </button>
           </div>
         ) : (
           <div className="mt-4 flex items-center justify-between gap-2 rounded-2xl border border-lime-200 bg-lime-50 p-3">
-            <p className="text-sm text-lime-900">{session?.user?.name ?? "회원"}님 카카오 로그인됨</p>
+            <p className="text-sm text-lime-900">{session?.user?.name ?? "회원"}님 로그인됨</p>
             <button
               type="button"
               onClick={() => void signOut({ callbackUrl: "/contact" })}

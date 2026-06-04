@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { FormEvent, useEffect, useState } from "react";
 import { formatCurrency, formatPhone } from "../_lib/format";
 
@@ -140,10 +140,10 @@ export default function OrdersPage() {
 
             <button
               type="button"
-              onClick={() => void signIn("kakao", { callbackUrl: "/orders" })}
+              onClick={() => router.push("/signup?callback=/orders")}
               className="mt-3 w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold text-amber-800"
             >
-              카카오 로그인하고 내 주문 보기
+              로그인/회원가입하고 내 주문 보기
             </button>
           </>
         )}

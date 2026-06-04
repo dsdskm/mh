@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signIn, signOut, useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { formatCurrency, formatPhone, toEmbedVideoUrl } from "./_lib/format";
 
@@ -291,7 +291,7 @@ export default function Home() {
     event.preventDefault();
     if (!isLoggedIn) {
       setError("후기 작성은 로그인 후 이용할 수 있어요.");
-      await signIn("kakao", { callbackUrl: "/" });
+      router.push("/signup?callback=/");
       return;
     }
 
@@ -348,13 +348,12 @@ export default function Home() {
               로그아웃
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => void signIn("kakao", { callbackUrl: "/" })}
+            <Link
+              href="/signup?callback=/"
               className="rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800"
             >
-              카카오 로그인
-            </button>
+              로그인/회원가입
+            </Link>
           )}
         </div>
         <div className="mx-auto flex w-full max-w-3xl gap-2 px-4 pb-4">
@@ -371,7 +370,7 @@ export default function Home() {
                 router.push("/contact");
                 return;
               }
-              void signIn("kakao", { callbackUrl: "/contact" });
+              router.push("/signup?callback=/contact");
             }}
             className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-800"
           >
@@ -596,7 +595,7 @@ export default function Home() {
             {!isLoggedIn && (
               <button
                 type="button"
-                onClick={() => void signIn("kakao", { callbackUrl: "/" })}
+                onClick={() => router.push("/signup?callback=/")}
                 className="w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold text-amber-800"
               >
                 로그인하고 후기 쓰기
@@ -676,7 +675,7 @@ export default function Home() {
                       type="button"
                       onClick={async () => {
                         if (!isLoggedIn) {
-                          await signIn("kakao", { callbackUrl: "/" });
+                          router.push("/signup?callback=/");
                           return;
                         }
                         setPurchaseType("member");
@@ -700,7 +699,7 @@ export default function Home() {
                     </button>
                     {!isLoggedIn && (
                       <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
-                        회원 구매는 카카오 로그인 후 이용할 수 있습니다.
+                        회원 구매는 로그인/회원가입 후 이용할 수 있습니다.
                       </p>
                     )}
                     <button
