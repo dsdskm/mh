@@ -20,6 +20,9 @@ importers:
 
   apps/admin:
     dependencies:
+      '@repo/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       '@repo/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -78,6 +81,9 @@ importers:
       '@nestjs/typeorm':
         specifier: ^11.0.1
         version: 11.0.1(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24)(reflect-metadata@0.2.2)(rxjs@7.8.2)(typeorm@1.0.0(pg@8.21.0)(ts-node@10.9.2(@types/node@24.12.4)(typescript@5.9.2)))
+      '@repo/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -169,6 +175,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@repo/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       '@repo/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -251,6 +260,15 @@ importers:
       typescript-eslint:
         specifier: ^8.50.0
         version: 8.60.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.2)
+
+  packages/shared-types:
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
 
   packages/typescript-config: {}
 

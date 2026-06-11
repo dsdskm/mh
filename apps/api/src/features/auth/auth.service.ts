@@ -4,6 +4,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AccountEntity } from '../../database/entities/account.entity';
+import { AccountShippingAddressEntity } from '../../database/entities/account-shipping-address.entity';
 import {
   CreateLocalAccountInput,
   LocalAccountProfile,
@@ -36,6 +37,8 @@ export class AuthService {
   constructor(
     @InjectRepository(AccountEntity)
     private readonly accountRepository: Repository<AccountEntity>,
+    @InjectRepository(AccountShippingAddressEntity)
+    private readonly shippingAddressRepository: Repository<AccountShippingAddressEntity>,
   ) {}
 
   async checkUserIdAvailability(rawUserId: string) {
@@ -57,13 +60,37 @@ export class AuthService {
     };
   }
 
+  async checkPhoneAvailability(rawPhone: string) {
+    const phone = this.normalizePhone(rawPhone);
+    this.assertPhoneFormat(phone);
+
+    const existing = await this.accountRepository.findOne({ where: { phone } });
+
+    if (existing) {
+      return {
+        available: false,
+        message: '이미 사용 중인 번호입니다.',
+      };
+    }
+
+    return {
+      available: true,
+      message: '사용 가능한 번호입니다.',
+    };
+  }
+
   async requestPhoneVerification(input: RequestPhoneVerificationInput) {
     const phone = this.normalizePhone(input.phone);
     this.assertPhoneFormat(phone);
+    const purpose = input.purpose ?? 'signup';
 
     const existingPhone = await this.accountRepository.findOne({ where: { phone } });
-    if (existingPhone) {
+    if (purpose === 'signup' && existingPhone) {
       throw new BadRequestException('이미 가입되어 있는 번호입니다. 로그인해주세요.');
+    }
+
+    if (purpose === 'recover' && !existingPhone) {
+      throw new BadRequestException('가입된 회원 정보를 찾을 수 없습니다.');
     }
 
     const code = this.createPhoneCode();
@@ -135,7 +162,9 @@ export class AuthService {
     const password = input.password;
     const name = input.name.trim();
     const phone = this.normalizePhone(input.phone);
-    const address = input.address.trim();
+    const address1 = input.address1.trim();
+    const address2 = input.address2.trim();
+    const termsAgreed = input.termsAgreed;
     const verificationToken = input.verificationToken.trim();
 
     this.assertUserIdFormat(userId);
@@ -146,8 +175,12 @@ export class AuthService {
       throw new BadRequestException('닉네임을 입력해주세요.');
     }
 
-    if (!address) {
+    if (!address1) {
       throw new BadRequestException('주소를 입력해주세요.');
+    }
+
+    if (termsAgreed !== true) {
+      throw new BadRequestException('약관 동의가 필요합니다.');
     }
 
     const verified = this.verifiedPhoneStore.get(verificationToken);
@@ -178,16 +211,31 @@ export class AuthService {
     const created = await this.accountRepository.save(
       this.accountRepository.create({
         userId,
-        type: 'LOCAL',
+        type: 'NORMAL',
         username: userId,
         password: passwordHash,
         providerUserId: null,
         email: null,
         displayName: name,
         phone,
-        address,
+        address1,
+        address2,
+        status: 'active',
+        statusReason: null,
+        termsAgreed: true,
+        termsAgreedAt: new Date(),
         phoneVerifiedAt: new Date(),
         isActive: true,
+      }),
+    );
+
+    await this.shippingAddressRepository.save(
+      this.shippingAddressRepository.create({
+        accountId: created.id,
+        name: '기본 배송지',
+        address1: created.address1 ?? address1,
+        address2: created.address2 ?? address2,
+        isDefault: true,
       }),
     );
 
@@ -199,7 +247,8 @@ export class AuthService {
         userId: created.userId ?? '',
         name: created.displayName ?? '',
         phone: created.phone ?? '',
-        address: created.address ?? '',
+        address1: created.address1 ?? '',
+        address2: created.address2 ?? '',
         createdAt: created.createdAt.toISOString(),
       },
     };
@@ -271,9 +320,422 @@ export class AuthService {
     }
   }
 
+  async login(userId: string, password: string): Promise<{ account: LocalAccountProfile }> {
+    const normalizedUserId = userId.trim().toLowerCase();
+
+    const account = await this.accountRepository.findOne({
+      where: { userId: normalizedUserId },
+    });
+
+    if (!account || account.type !== 'NORMAL') {
+      throw new BadRequestException('아이디 또는 비밀번호가 일치하지 않습니다.');
+    }
+
+    if (account.status !== 'active' || !account.isActive) {
+      throw new BadRequestException('비활성화된 계정입니다. 고객센터로 문의해주세요.');
+    }
+
+    if (!account.password) {
+      throw new BadRequestException('아이디 또는 비밀번호가 일치하지 않습니다.');
+    }
+
+    const isPasswordValid = await this.verifyPassword(password, account.password);
+    if (!isPasswordValid) {
+      throw new BadRequestException('아이디 또는 비밀번호가 일치하지 않습니다.');
+    }
+
+    return {
+      account: {
+        id: account.id,
+        userId: account.userId ?? '',
+        name: account.displayName ?? '',
+        phone: account.phone ?? '',
+        address1: account.address1 ?? '',
+        address2: account.address2 ?? '',
+        createdAt: account.createdAt.toISOString(),
+      },
+    };
+  }
+
+  async getProfile(userId: string) {
+    const normalizedUserId = userId.trim().toLowerCase();
+    const account = await this.accountRepository.findOne({
+      where: { userId: normalizedUserId, type: 'NORMAL' },
+    });
+
+    if (!account) {
+      throw new BadRequestException('회원 정보를 찾을 수 없습니다.');
+    }
+
+    let address1 = account.address1 ?? '';
+    const address2 = account.address2 ?? '';
+
+    // Backward compatibility: old rows may still have only legacy `address` populated.
+    if (!address1) {
+      const legacyRows = (await this.accountRepository.query(
+        'SELECT address FROM accounts WHERE id = $1 LIMIT 1',
+        [account.id],
+      )) as Array<{ address?: string | null }>;
+      const legacyAddress = legacyRows[0]?.address?.trim();
+      if (legacyAddress) {
+        address1 = legacyAddress;
+      }
+    }
+
+    return {
+      profile: {
+        userId: account.userId ?? '',
+        name: account.displayName ?? '',
+        phone: account.phone ?? '',
+        address1,
+        address2,
+        status: account.status,
+        statusReason: account.statusReason,
+      },
+    };
+  }
+
+  async updateProfile(input: {
+    userId: string;
+    name: string;
+    address1: string;
+    address2: string;
+    currentPassword: string;
+    newPassword?: string;
+  }) {
+    const userId = input.userId.trim().toLowerCase();
+    const name = input.name.trim();
+    const address1 = input.address1.trim();
+    const address2 = input.address2.trim();
+    const currentPassword = input.currentPassword;
+    const newPassword = input.newPassword?.trim();
+
+    if (!name) {
+      throw new BadRequestException('닉네임을 입력해주세요.');
+    }
+
+    if (!address1) {
+      throw new BadRequestException('주소를 입력해주세요.');
+    }
+
+    const account = await this.accountRepository.findOne({
+      where: { userId, type: 'NORMAL' },
+    });
+
+    if (!account || !account.password) {
+      throw new BadRequestException('회원 정보를 찾을 수 없습니다.');
+    }
+
+    const passwordMatched = await this.verifyPassword(currentPassword, account.password);
+    if (!passwordMatched) {
+      throw new BadRequestException('현재 비밀번호가 일치하지 않습니다.');
+    }
+
+    let nextPasswordHash = account.password;
+    if (newPassword) {
+      this.assertPasswordFormat(newPassword);
+      nextPasswordHash = await this.hashPassword(newPassword);
+    }
+
+    account.displayName = name;
+    account.address1 = address1;
+    account.address2 = address2;
+    account.password = nextPasswordHash;
+
+    const updated = await this.accountRepository.save(account);
+
+    return {
+      profile: {
+        userId: updated.userId ?? '',
+        name: updated.displayName ?? '',
+        phone: updated.phone ?? '',
+        address1: updated.address1 ?? '',
+        address2: updated.address2 ?? '',
+      },
+    };
+  }
+
+  async withdraw(input: { userId: string; password: string; reason?: string }) {
+    const userId = input.userId.trim().toLowerCase();
+    const reason = input.reason?.trim();
+    const account = await this.accountRepository.findOne({
+      where: { userId, type: 'NORMAL' },
+    });
+
+    if (!account || !account.password) {
+      throw new BadRequestException('회원 정보를 찾을 수 없습니다.');
+    }
+
+    const passwordMatched = await this.verifyPassword(input.password, account.password);
+    if (!passwordMatched) {
+      throw new BadRequestException('비밀번호가 일치하지 않습니다.');
+    }
+
+    account.status = 'withdraw';
+    account.statusReason = reason || '사용자 탈퇴 요청';
+    account.isActive = false;
+
+    await this.accountRepository.save(account);
+
+    return {
+      ok: true,
+      message: '탈퇴 처리되었습니다.',
+    };
+  }
+
+  async findUserId(input: { name: string; phone: string; verificationToken: string }) {
+    const name = input.name.trim();
+    const phone = this.normalizePhone(input.phone);
+    const verificationToken = input.verificationToken.trim();
+    this.assertPhoneFormat(phone);
+    this.assertVerifiedPhoneToken(phone, verificationToken);
+
+    const account = await this.accountRepository.findOne({
+      where: {
+        type: 'NORMAL',
+        displayName: name,
+        phone,
+      },
+    });
+
+    if (!account || !account.userId) {
+      throw new BadRequestException('일치하는 회원 정보를 찾을 수 없습니다.');
+    }
+
+    return {
+      userId: account.userId,
+    };
+  }
+
+  async resetPassword(input: {
+    userId: string;
+    phone: string;
+    newPassword: string;
+    verificationToken: string;
+  }) {
+    const userId = input.userId.trim().toLowerCase();
+    const phone = this.normalizePhone(input.phone);
+    const newPassword = input.newPassword;
+    const verificationToken = input.verificationToken.trim();
+
+    this.assertUserIdFormat(userId);
+    this.assertPhoneFormat(phone);
+    this.assertPasswordFormat(newPassword);
+    this.assertVerifiedPhoneToken(phone, verificationToken);
+
+    const account = await this.accountRepository.findOne({
+      where: {
+        type: 'NORMAL',
+        userId,
+        phone,
+      },
+    });
+
+    if (!account) {
+      throw new BadRequestException('일치하는 회원 정보를 찾을 수 없습니다.');
+    }
+
+    account.password = await this.hashPassword(newPassword);
+    await this.accountRepository.save(account);
+
+    return {
+      ok: true,
+      message: '비밀번호가 재설정되었습니다.',
+    };
+  }
+
+  async getShippingAddresses(userIdRaw: string) {
+    const userId = userIdRaw.trim().toLowerCase();
+    const account = await this.accountRepository.findOne({
+      where: { userId, type: 'NORMAL' },
+    });
+
+    if (!account) {
+      throw new BadRequestException('회원 정보를 찾을 수 없습니다.');
+    }
+
+    const addresses = await this.shippingAddressRepository.find({
+      where: { accountId: account.id },
+      order: { updatedAt: 'DESC', id: 'DESC' },
+    });
+
+    return {
+      shippingAddresses: addresses.map((item) => ({
+        id: item.id,
+        name: item.name,
+        address1: item.address1 ?? '',
+        address2: item.address2 ?? '',
+        isDefault: item.isDefault,
+      })),
+    };
+  }
+
+  async upsertShippingAddress(input: {
+    userId: string;
+    id?: number;
+    name: string;
+    address1: string;
+    address2?: string;
+    isDefault?: boolean;
+  }) {
+    const userId = input.userId.trim().toLowerCase();
+    const name = input.name.trim();
+    const address1 = input.address1.trim();
+    const address2 = input.address2?.trim() ?? '';
+
+    if (!name) {
+      throw new BadRequestException('배송지 이름을 입력해주세요.');
+    }
+
+    if (!address1) {
+      throw new BadRequestException('배송지 주소를 입력해주세요.');
+    }
+
+    const account = await this.accountRepository.findOne({
+      where: { userId, type: 'NORMAL' },
+    });
+
+    if (!account) {
+      throw new BadRequestException('회원 정보를 찾을 수 없습니다.');
+    }
+
+    let preferAnotherDefaultAddressId: number | undefined;
+
+    if (input.id) {
+      const existing = await this.shippingAddressRepository.findOne({
+        where: { id: input.id, accountId: account.id },
+      });
+
+      if (!existing) {
+        throw new BadRequestException('수정할 배송지를 찾을 수 없습니다.');
+      }
+
+      const wasDefault = existing.isDefault;
+      existing.name = name;
+      existing.address1 = address1;
+      existing.address2 = address2;
+      if (typeof input.isDefault === 'boolean') {
+        existing.isDefault = input.isDefault;
+      }
+
+      // If the current default is unchecked, promote another address as default after save.
+      if (wasDefault && input.isDefault === false) {
+        preferAnotherDefaultAddressId = existing.id;
+      }
+
+      if (existing.isDefault) {
+        await this.shippingAddressRepository.update(
+          { accountId: account.id, isDefault: true },
+          { isDefault: false },
+        );
+      }
+
+      await this.shippingAddressRepository.save(existing);
+    } else {
+      const hasAnyAddress = await this.shippingAddressRepository.count({
+        where: { accountId: account.id },
+      });
+      const nextIsDefault = input.isDefault === true || hasAnyAddress === 0;
+
+      if (nextIsDefault) {
+        await this.shippingAddressRepository.update(
+          { accountId: account.id, isDefault: true },
+          { isDefault: false },
+        );
+      }
+
+      await this.shippingAddressRepository.save(
+        this.shippingAddressRepository.create({
+          accountId: account.id,
+          name,
+          address1,
+          address2,
+          isDefault: nextIsDefault,
+        }),
+      );
+    }
+
+    await this.ensureSingleDefaultShippingAddress(
+      account.id,
+      preferAnotherDefaultAddressId,
+    );
+
+    return this.getShippingAddresses(userId);
+  }
+
+  private async ensureSingleDefaultShippingAddress(
+    accountId: number,
+    preferAnotherThanId?: number,
+  ): Promise<void> {
+    const addresses = await this.shippingAddressRepository.find({
+      where: { accountId },
+      order: { updatedAt: 'DESC', id: 'DESC' },
+    });
+
+    if (addresses.length === 0) {
+      return;
+    }
+
+    const defaults = addresses.filter((item) => item.isDefault);
+
+    if (defaults.length === 1) {
+      return;
+    }
+
+    if (defaults.length > 1) {
+      const keepDefaultId = defaults[0].id;
+
+      for (const item of defaults) {
+        if (item.id === keepDefaultId) {
+          continue;
+        }
+
+        await this.shippingAddressRepository.update(
+          { id: item.id, accountId },
+          { isDefault: false },
+        );
+      }
+      return;
+    }
+
+    const replacement =
+      addresses.find((item) => item.id !== preferAnotherThanId) ?? addresses[0];
+
+    await this.shippingAddressRepository.update(
+      { id: replacement.id, accountId },
+      { isDefault: true },
+    );
+  }
+
   private async hashPassword(password: string): Promise<string> {
     const salt = randomBytes(16).toString('hex');
     const key = (await scrypt(password, salt, 64)) as Buffer;
     return `${salt}:${key.toString('hex')}`;
+  }
+
+  private assertVerifiedPhoneToken(phone: string, verificationToken: string): void {
+    if (!verificationToken) {
+      throw new BadRequestException('문자 인증이 필요합니다.');
+    }
+
+    const verified = this.verifiedPhoneStore.get(verificationToken);
+    if (!verified || verified.phone !== phone) {
+      throw new BadRequestException('문자 인증 정보가 올바르지 않습니다. 다시 인증해주세요.');
+    }
+
+    if (Date.now() > verified.expiresAt) {
+      this.verifiedPhoneStore.delete(verificationToken);
+      throw new BadRequestException('문자 인증이 만료되었습니다. 다시 인증해주세요.');
+    }
+  }
+
+  private async verifyPassword(password: string, hash: string): Promise<boolean> {
+    try {
+      const [salt, key] = hash.split(':');
+      const keyBuffer = (await scrypt(password, salt, 64)) as Buffer;
+      return keyBuffer.toString('hex') === key;
+    } catch {
+      return false;
+    }
   }
 }

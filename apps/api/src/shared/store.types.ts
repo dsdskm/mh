@@ -1,23 +1,21 @@
-export type OrderStatus =
-  | '접수'
-  | '준비중'
-  | '배송중'
-  | '배송완료'
-  | '취소';
+import type { OrderStatus } from '@repo/shared-types/order';
+
+export type { OrderStatus };
 
 export type Product = {
-  id: string;
+  id: number;
   name: string;
   description: string;
   price: number;
   stock: number;
+  totalQuantity: number;
   imageUrl: string;
   badge: string;
   active: boolean;
 };
 
 export type OrderItem = {
-  productId: string;
+  productId: number;
   name: string;
   unitPrice: number;
   quantity: number;
@@ -27,8 +25,11 @@ export type OrderItem = {
 export type Order = {
   id: string;
   customerName: string;
+  purchaseType: 'member' | 'guest';
   phone: string;
   shippingAddress: string;
+  requestNote?: string | null;
+  cancelReason?: string | null;
   depositorName: string;
   status: OrderStatus;
   totalAmount: number;
@@ -40,9 +41,12 @@ export type CreateOrderInput = {
   customerName: string;
   phone: string;
   shippingAddress: string;
+  requestNote?: string;
   depositorName: string;
+  purchaseType?: 'member' | 'guest';
+  lookupToken?: string;
   items: Array<{
-    productId: string;
+    productId: number;
     quantity: number;
   }>;
 };
@@ -52,6 +56,7 @@ export type CreateProductInput = {
   description: string;
   price: number;
   stock: number;
+  totalQuantity: number;
   imageUrl: string;
   badge: string;
   active?: boolean;
@@ -129,6 +134,7 @@ export type StoreConfig = {
 
 export type RequestPhoneVerificationInput = {
   phone: string;
+  purpose?: 'signup' | 'recover';
 };
 
 export type VerifyPhoneCodeInput = {
@@ -141,7 +147,9 @@ export type CreateLocalAccountInput = {
   password: string;
   name: string;
   phone: string;
-  address: string;
+  address1: string;
+  address2: string;
+  termsAgreed: boolean;
   verificationToken: string;
 };
 
@@ -150,6 +158,7 @@ export type LocalAccountProfile = {
   userId: string;
   name: string;
   phone: string;
-  address: string;
+  address1: string;
+  address2: string;
   createdAt: string;
 };

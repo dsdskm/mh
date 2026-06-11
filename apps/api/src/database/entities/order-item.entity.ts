@@ -17,8 +17,8 @@ export class OrderItemEntity {
   order!: OrderEntity;
 
   @Index()
-  @Column({ type: 'varchar' })
-  productId!: string;
+  @Column({ type: 'int' })
+  productId!: number;
 
   @ManyToOne(() => ProductEntity, (product) => product.orderItems)
   @JoinColumn({ name: 'productId' })

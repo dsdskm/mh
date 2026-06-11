@@ -11,6 +11,11 @@ export type CheckUserIdResponse = {
   message: string;
 };
 
+export type CheckPhoneResponse = {
+  available: boolean;
+  message: string;
+};
+
 export type RequestPhoneVerificationResponse = {
   ok: boolean;
   expiresAt: string;
@@ -33,7 +38,9 @@ export type SignupPayload = {
   password: string;
   name: string;
   phone: string;
-  address: string;
+  address1: string;
+  address2: string;
+  termsAgreed: boolean;
   verificationToken: string;
 };
 
@@ -43,7 +50,56 @@ export type SignupResponse = {
     userId: string;
     name: string;
     phone: string;
-    address: string;
+    address1: string;
+    address2: string;
     createdAt: string;
   };
+};
+
+export type UserProfileResponse = {
+  profile: {
+    userId: string;
+    name: string;
+    phone: string;
+    address1: string;
+    address2: string;
+    status?: "active" | "deactive" | "withdraw";
+    statusReason?: string | null;
+  };
+};
+
+export type UpdateProfilePayload = {
+  userId: string;
+  name: string;
+  address1: string;
+  address2: string;
+  currentPassword: string;
+  newPassword?: string;
+};
+
+export type WithdrawPayload = {
+  userId: string;
+  password: string;
+  reason?: string;
+};
+
+export type ShippingAddress = {
+  id: number;
+  name: string;
+  address1: string;
+  address2: string;
+  isDefault: boolean;
+};
+
+export type ShippingAddressesResponse = {
+  shippingAddresses: ShippingAddress[];
+};
+
+export type SaveShippingAddressPayload = {
+  userId: string;
+  id?: number;
+  name: string;
+  address1: string;
+  address2: string;
+  isDefault?: boolean;
 };

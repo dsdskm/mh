@@ -7,7 +7,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type AccountType = 'LOCAL' | 'KAKAO' | 'NAVER' | 'MASTER';
+export type AccountType = 'NORMAL' | 'KAKAO' | 'NAVER' | 'MASTER';
+export type AccountStatus = 'active' | 'deactive' | 'withdraw';
 
 @Entity({ name: 'accounts' })
 @Index(['type', 'providerUserId'], { unique: true })
@@ -42,7 +43,22 @@ export class AccountEntity {
   phone!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  address!: string | null;
+  address1!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  address2!: string | null;
+
+  @Column({ type: 'varchar', default: 'active' })
+  status!: AccountStatus;
+
+  @Column({ type: 'varchar', nullable: true })
+  statusReason!: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  termsAgreed!: boolean;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  termsAgreedAt!: Date | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   phoneVerifiedAt!: Date | null;

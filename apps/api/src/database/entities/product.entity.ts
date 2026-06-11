@@ -1,10 +1,10 @@
-import { Column, Entity, OneToMany, PrimaryColumn, UpdateDateColumn, CreateDateColumn } from 'typeorm';
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn, CreateDateColumn } from 'typeorm';
 import { OrderItemEntity } from './order-item.entity';
 
 @Entity({ name: 'products' })
 export class ProductEntity {
-  @PrimaryColumn({ type: 'varchar' })
-  id!: string;
+  @PrimaryGeneratedColumn()
+  id!: number;
 
   @Column({ type: 'varchar' })
   name!: string;
@@ -17,6 +17,9 @@ export class ProductEntity {
 
   @Column({ type: 'int' })
   stock!: number;
+
+  @Column({ type: 'int', default: 0 })
+  totalQuantity!: number;
 
   @Column({ type: 'varchar' })
   imageUrl!: string;

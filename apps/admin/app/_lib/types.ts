@@ -1,10 +1,28 @@
-export type OrderStatus = "접수" | "준비중" | "배송중" | "배송완료" | "취소";
+import type {
+  AdminUserCreateInput,
+  AdminUserUpdateInput,
+  SharedUser,
+  UserStatus,
+  UserType,
+} from "@repo/shared-types/user";
+import type { OrderStatus } from "@repo/shared-types/order";
+
+export type { OrderStatus };
+
+export type AdminUser = SharedUser;
+export type AdminUserCreatePayload = AdminUserCreateInput;
+export type AdminUserUpdatePayload = AdminUserUpdateInput;
+export type AdminUserType = UserType;
+export type AdminUserStatus = UserStatus;
 
 export type Product = {
-  id: string;
+  id: number;
   name: string;
+  description: string;
   price: number;
   stock: number;
+  totalQuantity: number;
+  imageUrl: string;
   badge: string;
   active: boolean;
 };
@@ -12,19 +30,31 @@ export type Product = {
 export type Order = {
   id: string;
   customerName: string;
+  purchaseType: "member" | "guest";
   phone: string;
+  shippingAddress: string;
+  requestNote?: string | null;
+  cancelReason?: string | null;
   depositorName: string;
   status: OrderStatus;
   totalAmount: number;
   createdAt: string;
+  items: Array<{
+    productId: number;
+    name: string;
+    unitPrice: number;
+    quantity: number;
+    subtotal: number;
+  }>;
 };
 
 export type Dashboard = {
   totalProducts: number;
   totalOrders: number;
   totalSales: number;
-  pendingTransfers: number;
-  preparing: number;
+  receivedOrders: number;
+  paidOrders: number;
+  preparingOrders: number;
 };
 
 export type Inquiry = {
@@ -67,10 +97,11 @@ export type StoreConfig = {
 };
 
 export type AdminTab =
-  | "대시보드"
+  | "주문내역"
+  | "공지사항"
+  | "매출 상세"
   | "기본정보"
   | "상품관리"
-  | "주문내역"
   | "문의내역"
   | "후기 목록"
   | "계정관리";

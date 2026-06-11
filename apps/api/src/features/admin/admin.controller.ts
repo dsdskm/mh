@@ -11,21 +11,27 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
-import { AccountType } from '../../database/entities/account.entity';
-import { StoreConfig } from '../../shared/store.types';
+import { OrderStatus, StoreConfig } from '../../shared/store.types';
+import type {
+  AdminUserCreateInput,
+  AdminUserUpdateInput,
+  UserStatus,
+  UserType,
+} from '@repo/shared-types/user';
 
 type CreateProductBody = {
   name?: string;
   description?: string;
   price?: number;
   stock?: number;
+  totalQuantity?: number;
   imageUrl?: string;
   badge?: string;
   active?: boolean;
 };
 
 type UpdateOrderStatusBody = {
-  status?: '접수' | '준비중' | '배송중' | '배송완료' | '취소';
+  status?: OrderStatus;
 };
 
 type LoginBody = {
@@ -34,16 +40,7 @@ type LoginBody = {
   password?: string;
 };
 
-type AccountBody = {
-  type?: string;
-  userId?: string;
-  username?: string;
-  password?: string;
-  providerUserId?: string;
-  email?: string;
-  displayName?: string;
-  isActive?: boolean;
-};
+type AccountBody = AdminUserCreateInput & AdminUserUpdateInput;
 
 @Controller('api/admin')
 export class AdminController {
@@ -74,10 +71,11 @@ export class AdminController {
   @Post('accounts')
   createAccount(@Body() body: AccountBody) {
     const type = this.parseAccountType(body.type);
+    const status = this.parseAccountStatus(body.status);
 
-    if (type === 'LOCAL' && (!body.username || !body.password)) {
+    if (type === 'NORMAL' && (!body.userId?.trim() || !body.password?.trim())) {
       throw new BadRequestException(
-        'LOCAL 계정은 username, password가 필요합니다.',
+        'NORMAL 계정은 userId, password가 필요합니다.',
       );
     }
 
@@ -96,8 +94,12 @@ export class AdminController {
       username: body.username?.trim(),
       password: body.password?.trim(),
       providerUserId: body.providerUserId?.trim(),
-      email: body.email?.trim(),
       displayName: body.displayName?.trim(),
+      phone: body.phone?.trim(),
+      address1: body.address1?.trim(),
+      address2: body.address2?.trim(),
+      status,
+      statusReason: body.statusReason?.trim(),
       isActive: body.isActive,
     });
   }
@@ -113,6 +115,7 @@ export class AdminController {
     }
 
     const type = body.type ? this.parseAccountType(body.type) : undefined;
+    const status = body.status ? this.parseAccountStatus(body.status) : undefined;
 
     const updated = await this.adminService.updateAccount(parsedId, {
       type,
@@ -120,8 +123,12 @@ export class AdminController {
       username: body.username?.trim(),
       password: body.password?.trim(),
       providerUserId: body.providerUserId?.trim(),
-      email: body.email?.trim(),
       displayName: body.displayName?.trim(),
+      phone: body.phone?.trim(),
+      address1: body.address1?.trim(),
+      address2: body.address2?.trim(),
+      status,
+      statusReason: body.statusReason?.trim(),
       isActive: body.isActive,
     });
 
@@ -130,6 +137,15 @@ export class AdminController {
     }
 
     return updated;
+  }
+
+  @Get('accounts/:id/shipping-addresses')
+  async getAccountShippingAddresses(@Param('id') id: string) {
+    const parsedId = Number(id);
+    if (Number.isNaN(parsedId)) {
+      throw new BadRequestException('계정 id가 올바르지 않습니다.');
+    }
+    return this.adminService.getAccountShippingAddresses(parsedId);
   }
 
   @Delete('accounts/:id')
@@ -184,9 +200,14 @@ export class AdminController {
       !body.imageUrl ||
       !body.badge ||
       typeof body.price !== 'number' ||
-      typeof body.stock !== 'number'
+      typeof body.stock !== 'number' ||
+      typeof body.totalQuantity !== 'number'
     ) {
       throw new BadRequestException('상품 필수값을 확인해주세요.');
+    }
+
+    if (body.stock > body.totalQuantity) {
+      throw new BadRequestException('재고는 총 수량을 초과할 수 없습니다.');
     }
 
     return this.adminService.createProduct({
@@ -194,6 +215,7 @@ export class AdminController {
       description: body.description,
       price: body.price,
       stock: body.stock,
+      totalQuantity: body.totalQuantity,
       imageUrl: body.imageUrl,
       badge: body.badge,
       active: body.active,
@@ -205,7 +227,35 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: CreateProductBody,
   ) {
-    return this.adminService.updateProduct(id, body);
+    const parsedId = Number(id);
+    if (Number.isNaN(parsedId)) {
+      throw new BadRequestException('상품 id가 올바르지 않습니다.');
+    }
+
+    if (
+      typeof body.stock === 'number' &&
+      typeof body.totalQuantity === 'number' &&
+      body.stock > body.totalQuantity
+    ) {
+      throw new BadRequestException('재고는 총 수량을 초과할 수 없습니다.');
+    }
+
+    return this.adminService.updateProduct(parsedId, body);
+  }
+
+  @Delete('products/:id')
+  async deleteProduct(@Param('id') id: string) {
+    const parsedId = Number(id);
+    if (Number.isNaN(parsedId)) {
+      throw new BadRequestException('상품 id가 올바르지 않습니다.');
+    }
+
+    const deleted = await this.adminService.deleteProduct(parsedId);
+    if (!deleted) {
+      throw new NotFoundException('상품을 찾을 수 없습니다.');
+    }
+
+    return { ok: true };
   }
 
   @Get('inquiries')
@@ -230,15 +280,32 @@ export class AdminController {
     return this.adminService.updateStoreConfig(body);
   }
 
-  private parseAccountType(type?: string): AccountType {
+  private parseAccountType(type?: string): UserType {
     const normalized = type?.trim().toUpperCase();
     if (
-      normalized !== 'LOCAL' &&
+      normalized !== 'NORMAL' &&
       normalized !== 'KAKAO' &&
       normalized !== 'NAVER' &&
       normalized !== 'MASTER'
     ) {
-      throw new BadRequestException('type은 LOCAL, KAKAO, NAVER, MASTER 중 하나여야 합니다.');
+      throw new BadRequestException('type은 NORMAL, KAKAO, NAVER, MASTER 중 하나여야 합니다.');
+    }
+
+    return normalized;
+  }
+
+  private parseAccountStatus(status?: string): UserStatus | undefined {
+    if (!status) {
+      return undefined;
+    }
+
+    const normalized = status.trim().toLowerCase();
+    if (
+      normalized !== 'active' &&
+      normalized !== 'deactive' &&
+      normalized !== 'withdraw'
+    ) {
+      throw new BadRequestException('status는 active, deactive, withdraw 중 하나여야 합니다.');
     }
 
     return normalized;

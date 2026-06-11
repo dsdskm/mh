@@ -1,7 +1,9 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AccountEntity, AccountType } from '../../database/entities/account.entity';
+import { AccountEntity } from '../../database/entities/account.entity';
+import { AccountShippingAddressEntity } from '../../database/entities/account-shipping-address.entity';
+import { NotFoundException } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import { InquiriesService } from '../inquiries/inquiries.service';
 import { OrdersService } from '../orders/orders.service';
@@ -13,12 +15,20 @@ import {
   StoreConfig,
   UpdateProductInput,
 } from '../../shared/store.types';
+import { ORDER_STATUS } from '@repo/shared-types/order';
+import type {
+  AdminUserCreateInput,
+  AdminUserUpdateInput,
+  SharedUser,
+} from '@repo/shared-types/user';
 
 @Injectable()
 export class AdminService implements OnModuleInit {
   constructor(
     @InjectRepository(AccountEntity)
     private readonly accountRepository: Repository<AccountEntity>,
+    @InjectRepository(AccountShippingAddressEntity)
+    private readonly shippingAddressRepository: Repository<AccountShippingAddressEntity>,
     private readonly ordersService: OrdersService,
     private readonly productsService: ProductsService,
     private readonly inquiriesService: InquiriesService,
@@ -37,16 +47,6 @@ export class AdminService implements OnModuleInit {
     if (existingMaster) {
       return;
     }
-
-    await this.accountRepository.save(
-      this.accountRepository.create({
-        type: 'MASTER',
-        userId: 'dsdskm',
-        password: 'q1w2e3r4',
-        displayName: 'Master Admin',
-        isActive: true,
-      }),
-    );
   }
 
   async login(userId: string, password: string): Promise<boolean> {
@@ -61,49 +61,54 @@ export class AdminService implements OnModuleInit {
     return matched.some((account) => account.type.toLowerCase() === 'master');
   }
 
-  getAccounts() {
-    return this.accountRepository.find({
+  async getAccounts(): Promise<SharedUser[]> {
+    const accounts = await this.accountRepository.find({
       order: { createdAt: 'DESC' },
     });
+
+    return accounts.map((item) => this.toSharedUser(item));
   }
 
-  async createAccount(input: {
-    type: AccountType;
-    userId?: string;
-    username?: string;
-    password?: string;
-    providerUserId?: string;
-    email?: string;
-    displayName?: string;
-    isActive?: boolean;
-  }) {
+  async createAccount(input: AdminUserCreateInput): Promise<SharedUser> {
     const account = this.accountRepository.create({
       type: input.type,
       userId: input.userId ?? null,
-      username: input.username ?? null,
+      username: input.username ?? input.userId ?? null,
       password: input.password ?? null,
       providerUserId: input.providerUserId ?? null,
-      email: input.email ?? null,
+      email: null,
       displayName: input.displayName ?? null,
+      phone: input.phone ?? null,
+      address1: input.address1 ?? null,
+      address2: input.address2 ?? null,
+      status: input.status ?? 'active',
+      statusReason: input.statusReason ?? null,
       isActive: input.isActive ?? true,
+      termsAgreed: true,
+      termsAgreedAt: new Date(),
     });
 
-    return this.accountRepository.save(account);
+    const saved = await this.accountRepository.save(account);
+
+    if (saved.address1) {
+      await this.shippingAddressRepository.save(
+        this.shippingAddressRepository.create({
+          accountId: saved.id,
+          name: '기본 배송지',
+          address1: saved.address1,
+          address2: saved.address2 ?? '',
+          isDefault: true,
+        }),
+      );
+    }
+
+    return this.toSharedUser(saved);
   }
 
   async updateAccount(
     id: number,
-    input: {
-      type?: AccountType;
-      userId?: string;
-      username?: string;
-      password?: string;
-      providerUserId?: string;
-      email?: string;
-      displayName?: string;
-      isActive?: boolean;
-    },
-  ) {
+    input: AdminUserUpdateInput,
+  ): Promise<SharedUser | null> {
     const account = await this.accountRepository.findOne({ where: { id } });
     if (!account) {
       return null;
@@ -120,15 +125,25 @@ export class AdminService implements OnModuleInit {
         input.providerUserId !== undefined
           ? input.providerUserId || null
           : account.providerUserId,
-      email: input.email !== undefined ? input.email || null : account.email,
       displayName:
         input.displayName !== undefined
           ? input.displayName || null
           : account.displayName,
+      phone: input.phone !== undefined ? input.phone || null : account.phone,
+      address1:
+        input.address1 !== undefined ? input.address1 || null : account.address1,
+      address2:
+        input.address2 !== undefined ? input.address2 || null : account.address2,
+      status: input.status ?? account.status,
+      statusReason:
+        input.statusReason !== undefined
+          ? input.statusReason || null
+          : account.statusReason,
       isActive: input.isActive ?? account.isActive,
     });
 
-    return this.accountRepository.save(account);
+    const saved = await this.accountRepository.save(account);
+    return this.toSharedUser(saved);
   }
 
   async deleteAccount(id: number) {
@@ -136,28 +151,75 @@ export class AdminService implements OnModuleInit {
     return result.affected && result.affected > 0;
   }
 
+  async getAccountShippingAddresses(accountId: number) {
+    const account = await this.accountRepository.findOne({ where: { id: accountId } });
+    if (!account) {
+      throw new NotFoundException('계정을 찾을 수 없습니다.');
+    }
+
+    const addresses = await this.shippingAddressRepository.find({
+      where: { accountId },
+      order: { isDefault: 'DESC', updatedAt: 'DESC' },
+    });
+
+    return {
+      shippingAddresses: addresses.map((item) => ({
+        id: item.id,
+        name: item.name,
+        address1: item.address1 ?? '',
+        address2: item.address2 ?? '',
+        isDefault: item.isDefault,
+      })),
+    };
+  }
+
+  private toSharedUser(account: AccountEntity): SharedUser {
+    return {
+      id: account.id,
+      userId: account.userId,
+      type: account.type,
+      username: account.username,
+      providerUserId: account.providerUserId,
+      displayName: account.displayName,
+      phone: account.phone,
+      address1: account.address1,
+      address2: account.address2,
+      status: account.status,
+      statusReason: account.statusReason,
+      isActive: account.isActive,
+      termsAgreed: account.termsAgreed,
+      createdAt: account.createdAt.toISOString(),
+      updatedAt: account.updatedAt.toISOString(),
+    };
+  }
+
   async getDashboard() {
     const orders = await this.ordersService.getOrders();
     const products = await this.productsService.getAdminProducts();
 
     const totalSales = orders
-      .filter((order) => order.status !== '취소')
+      .filter((order) => order.status !== ORDER_STATUS.CANCELLED)
       .reduce((sum, order) => sum + order.totalAmount, 0);
 
-    const pendingTransfers = orders.filter(
-      (order) => order.status === '접수',
+    const receivedOrders = orders.filter(
+      (order) => order.status === ORDER_STATUS.RECEIVED,
     ).length;
 
-    const preparing = orders.filter(
-      (order) => order.status === '준비중',
+    const paidOrders = orders.filter(
+      (order) => order.status === ORDER_STATUS.PAID,
+    ).length;
+
+    const preparingOrders = orders.filter(
+      (order) => order.status === ORDER_STATUS.PREPARING,
     ).length;
 
     return {
       totalProducts: products.filter((product) => product.active).length,
       totalOrders: orders.length,
       totalSales,
-      pendingTransfers,
-      preparing,
+      receivedOrders,
+      paidOrders,
+      preparingOrders,
     };
   }
 
@@ -177,8 +239,12 @@ export class AdminService implements OnModuleInit {
     return this.productsService.createProduct(input);
   }
 
-  async updateProduct(id: string, input: UpdateProductInput) {
+  async updateProduct(id: number, input: UpdateProductInput) {
     return this.productsService.updateProduct(id, input);
+  }
+
+  async deleteProduct(id: number) {
+    return this.productsService.deleteProduct(id);
   }
 
   getAdminInquiries() {

@@ -26,6 +26,7 @@ import { OrderEntity } from './database/entities/order.entity';
 import { ProductEntity } from './database/entities/product.entity';
 import { ReviewCommentEntity } from './database/entities/review-comment.entity';
 import { ReviewEntity } from './database/entities/review.entity';
+import { AccountShippingAddressEntity } from './database/entities/account-shipping-address.entity';
 
 dotenv.config({
   path: path.resolve(__dirname, '../../../.env'),
@@ -43,6 +44,7 @@ const databaseUrl =
       autoLoadEntities: true,
       entities: [
         AccountEntity,
+        AccountShippingAddressEntity,
         AppSettingEntity,
         ProductEntity,
         OrderEntity,
@@ -54,6 +56,7 @@ const databaseUrl =
     }),
     TypeOrmModule.forFeature([
       AccountEntity,
+      AccountShippingAddressEntity,
       AppSettingEntity,
       ProductEntity,
       OrderEntity,

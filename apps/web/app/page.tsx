@@ -3,12 +3,38 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signOut, useSession } from "next-auth/react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { formatCurrency, formatPhone, toEmbedVideoUrl } from "./_lib/format";
+import { getProfileApi, getShippingAddressesApi } from "./account/api/account.api";
+import type { ShippingAddress } from "../types/auth";
+import { getOrderStatusLabelKo } from "@repo/shared-types/order";
+import type { OrderStatus } from "@repo/shared-types/order";
+
+const DAUM_POSTCODE_SCRIPT_URL =
+  "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
+
+type DaumPostcodeData = {
+  roadAddress: string;
+  jibunAddress: string;
+  buildingName: string;
+  apartment: "Y" | "N";
+};
+
+declare global {
+  interface Window {
+    daum?: {
+      Postcode: new (options: {
+        oncomplete: (data: DaumPostcodeData) => void;
+      }) => {
+        open: () => void;
+      };
+    };
+  }
+}
 
 type Product = {
-  id: string;
+  id: number;
   name: string;
   description: string;
   price: number;
@@ -43,7 +69,7 @@ type OrderResponse = {
   order: {
     id: string;
     totalAmount: number;
-    status: "접수" | "준비중" | "배송중" | "배송완료" | "취소";
+    status: OrderStatus;
   };
   transfer: StoreConfig;
 };
@@ -86,13 +112,18 @@ export default function Home() {
     videoUrl: "",
     recipes: [],
   });
-  const [cart, setCart] = useState<Record<string, number>>({});
+  const [cart, setCart] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [orderDone, setOrderDone] = useState<OrderResponse | null>(null);
   const [phone, setPhone] = useState("");
   const [depositorName, setDepositorName] = useState("");
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [memberShippingAddresses, setMemberShippingAddresses] = useState<ShippingAddress[]>([]);
+  const [selectedShippingAddressId, setSelectedShippingAddressId] = useState<number | null>(null);
+  const [orderRequestNote, setOrderRequestNote] = useState("");
+  const [loadingDefaultShipping, setLoadingDefaultShipping] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [visibleReviewCount, setVisibleReviewCount] = useState(5);
@@ -102,12 +133,54 @@ export default function Home() {
   const [purchaseType, setPurchaseType] = useState<"member" | "guest" | null>(null);
   const [savedMemberPhone, setSavedMemberPhone] = useState("");
   const [copyDone, setCopyDone] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginUserId, setLoginUserId] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginSubmitting, setLoginSubmitting] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
+  const [logoutSubmitting, setLogoutSubmitting] = useState(false);
+  const [showMenuDrawer, setShowMenuDrawer] = useState(false);
+  const [showOrderConfirmModal, setShowOrderConfirmModal] = useState(false);
+  const [postcodeReady, setPostcodeReady] = useState(false);
+  const [guestAddressBase, setGuestAddressBase] = useState("");
+  const [guestAddressDetail, setGuestAddressDetail] = useState("");
+  const [guestOrderCode, setGuestOrderCode] = useState("");
+  const [guestOrderCodeSent, setGuestOrderCodeSent] = useState(false);
+  const [guestOrderDevCodeHint, setGuestOrderDevCodeHint] = useState<string | null>(null);
+  const [guestOrderLookupToken, setGuestOrderLookupToken] = useState<string | null>(null);
+  const [guestOrderPhoneVerified, setGuestOrderPhoneVerified] = useState(false);
+  const [guestOrderSendingCode, setGuestOrderSendingCode] = useState(false);
+  const [guestOrderVerifyingCode, setGuestOrderVerifyingCode] = useState(false);
+  const [guestHasRegisteredAccount, setGuestHasRegisteredAccount] = useState(false);
 
   useEffect(() => {
     const savedPhone = localStorage.getItem(MEMBER_PHONE_KEY);
     if (savedPhone) {
       setSavedMemberPhone(savedPhone);
     }
+  }, []);
+
+  useEffect(() => {
+    if (window.daum?.Postcode) {
+      setPostcodeReady(true);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = DAUM_POSTCODE_SCRIPT_URL;
+    script.async = true;
+    script.onload = () => setPostcodeReady(true);
+    script.onerror = () => {
+      setError("주소 검색 스크립트를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+    };
+
+    document.head.appendChild(script);
+
+    return () => {
+      script.onload = null;
+      script.onerror = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -204,7 +277,7 @@ export default function Home() {
     return toEmbedVideoUrl(storeConfig.videoUrl);
   }, [storeConfig.videoUrl]);
 
-  function changeQuantity(productId: string, delta: number): void {
+  function changeQuantity(productId: number, delta: number): void {
     const product = products.find((item) => item.id === productId);
     if (!product) {
       return;
@@ -220,20 +293,56 @@ export default function Home() {
     });
   }
 
-  async function submitOrder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function validateOrderBeforeSubmit(): boolean {
     setError(null);
 
     if (!cartItems.length) {
       setError("장바구니에 상품을 추가해주세요.");
-      return;
+      return false;
     }
 
     const firstOverLimitItem = cartItems.find((item) => item.quantity > item.stock);
     if (firstOverLimitItem) {
       setError(`${firstOverLimitItem.name}의 재고를 초과했습니다. 수량을 조정해주세요.`);
+      return false;
+    }
+
+    if (purchaseType === "guest" && !guestOrderPhoneVerified) {
+      setError("비회원 주문은 휴대폰 문자 인증이 필요합니다.");
+      return false;
+    }
+
+    const resolvedShippingAddress =
+      purchaseType === "guest"
+        ? [guestAddressBase, guestAddressDetail].filter(Boolean).join(" ").trim()
+        : shippingAddress.trim();
+
+    if (!resolvedShippingAddress) {
+      setError("배송지를 입력해주세요.");
+      return false;
+    }
+
+    return true;
+  }
+
+  function requestOrderSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!validateOrderBeforeSubmit()) {
       return;
     }
+
+    setShowOrderConfirmModal(true);
+  }
+
+  async function submitOrder() {
+    if (!validateOrderBeforeSubmit()) {
+      return;
+    }
+
+    const resolvedShippingAddress =
+      purchaseType === "guest"
+        ? [guestAddressBase, guestAddressDetail].filter(Boolean).join(" ").trim()
+        : shippingAddress.trim();
 
     setSubmitting(true);
     try {
@@ -244,7 +353,11 @@ export default function Home() {
         },
         body: JSON.stringify({
           phone,
+          shippingAddress: resolvedShippingAddress,
+          requestNote: orderRequestNote.trim() || undefined,
           depositorName,
+          purchaseType,
+          lookupToken: purchaseType === "guest" ? guestOrderLookupToken : undefined,
           items: cartItems.map((item) => ({
             productId: item.id,
             quantity: item.quantity,
@@ -268,6 +381,15 @@ export default function Home() {
       setCart({});
       setPhone("");
       setDepositorName("");
+      setShippingAddress("");
+      setGuestAddressBase("");
+      setGuestAddressDetail("");
+      setGuestOrderCode("");
+      setGuestOrderCodeSent(false);
+      setGuestOrderDevCodeHint(null);
+      setGuestOrderLookupToken(null);
+      setGuestOrderPhoneVerified(false);
+      setOrderRequestNote("");
     } catch (submitError) {
       const message =
         submitError instanceof Error
@@ -277,6 +399,119 @@ export default function Home() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function requestGuestOrderCode() {
+    const normalizedPhone = phone.replace(/\D/g, "");
+    if (!normalizedPhone) {
+      setError("전화번호를 입력해주세요.");
+      return;
+    }
+
+    setGuestOrderSendingCode(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/orders/lookup/request`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone: normalizedPhone }),
+      });
+
+      if (!response.ok) {
+        const body = (await response.json()) as { message?: string };
+        throw new Error(body.message ?? "인증번호 요청에 실패했습니다.");
+      }
+
+      const data = (await response.json()) as {
+        devCode?: string;
+        alreadyRegistered?: boolean;
+        message?: string;
+      };
+
+      if (data.alreadyRegistered) {
+        setGuestOrderCodeSent(false);
+        setGuestOrderDevCodeHint(null);
+        setGuestOrderLookupToken(null);
+        setGuestOrderPhoneVerified(false);
+        setGuestHasRegisteredAccount(true);
+        setError(null);
+        return;
+      }
+
+      setGuestOrderCodeSent(true);
+      setGuestOrderDevCodeHint(data.devCode ?? null);
+      setGuestOrderLookupToken(null);
+      setGuestOrderPhoneVerified(false);
+      setGuestHasRegisteredAccount(false);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "인증번호 요청 실패");
+    } finally {
+      setGuestOrderSendingCode(false);
+    }
+  }
+
+  async function verifyGuestOrderCode() {
+    const normalizedPhone = phone.replace(/\D/g, "");
+    if (!normalizedPhone || !guestOrderCode.trim()) {
+      setError("전화번호와 인증번호를 입력해주세요.");
+      return;
+    }
+
+    setGuestOrderVerifyingCode(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/orders/lookup/verify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          phone: normalizedPhone,
+          code: guestOrderCode.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        const body = (await response.json()) as { message?: string };
+        throw new Error(body.message ?? "인증번호 확인에 실패했습니다.");
+      }
+
+      const result = (await response.json()) as { lookupToken: string };
+      setGuestOrderLookupToken(result.lookupToken);
+      setGuestOrderPhoneVerified(true);
+    } catch (verifyError) {
+      setGuestOrderLookupToken(null);
+      setGuestOrderPhoneVerified(false);
+      setError(verifyError instanceof Error ? verifyError.message : "인증번호 확인 실패");
+    } finally {
+      setGuestOrderVerifyingCode(false);
+    }
+  }
+
+  function searchGuestAddress() {
+    if (!window.daum?.Postcode) {
+      setError("주소 검색 준비 중입니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    new window.daum.Postcode({
+      oncomplete: (data) => {
+        const baseAddress = data.roadAddress || data.jibunAddress;
+        const buildingSuffix =
+          data.apartment === "Y" && data.buildingName
+            ? ` (${data.buildingName})`
+            : "";
+        setGuestAddressBase(`${baseAddress}${buildingSuffix}`.trim());
+        setError(null);
+      },
+    }).open();
+  }
+
+  async function confirmOrderSubmit() {
+    setShowOrderConfirmModal(false);
+    await submitOrder();
   }
 
   async function refreshReviews() {
@@ -329,59 +564,134 @@ export default function Home() {
     }
   }
 
+  async function submitLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoginSubmitting(true);
+    setLoginError(null);
+
+    try {
+      const result = await signIn("credentials", {
+        userId: loginUserId.trim(),
+        password: loginPassword,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setLoginError(result.error);
+        return;
+      }
+
+      setShowLoginModal(false);
+      setLoginPassword("");
+      setLoginError(null);
+    } catch {
+      setLoginError("로그인에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setLoginSubmitting(false);
+    }
+  }
+
+  async function confirmLogout() {
+    setLogoutSubmitting(true);
+
+    try {
+      await signOut({ callbackUrl: "/" });
+    } finally {
+      setLogoutSubmitting(false);
+      setShowLogoutConfirmModal(false);
+    }
+  }
+
+  async function fillDefaultShippingAddress() {
+    const userId = session?.user?.email?.trim();
+    if (!userId) {
+      setMemberShippingAddresses([]);
+      setSelectedShippingAddressId(null);
+      setShippingAddress("");
+      return;
+    }
+
+    setLoadingDefaultShipping(true);
+    try {
+      const [profileData, shippingData] = await Promise.all([
+        getProfileApi(userId),
+        getShippingAddressesApi(userId),
+      ]);
+
+      setDepositorName(profileData.profile.name || session?.user?.name || "");
+      setPhone(profileData.profile.phone || savedMemberPhone);
+
+      setMemberShippingAddresses(shippingData.shippingAddresses);
+
+      const selected =
+        shippingData.shippingAddresses.find((item) => item.isDefault) ??
+        shippingData.shippingAddresses[0];
+      setSelectedShippingAddressId(selected?.id ?? null);
+
+      const defaultAddress = [selected?.address1, selected?.address2]
+        .filter(Boolean)
+        .join(" ");
+      setShippingAddress(defaultAddress);
+    } catch {
+      setMemberShippingAddresses([]);
+      setSelectedShippingAddressId(null);
+      setShippingAddress("");
+    } finally {
+      setLoadingDefaultShipping(false);
+    }
+  }
+
+  function onSelectShippingAddress(nextId: number) {
+    setSelectedShippingAddressId(nextId);
+    const selected = memberShippingAddresses.find((item) => item.id === nextId);
+    setShippingAddress([selected?.address1, selected?.address2].filter(Boolean).join(" "));
+  }
+
   return (
-    <div className="min-h-screen bg-corn-pattern pb-32 text-stone-900">
+    <div className="min-h-screen bg-corn-pattern pb-24 text-stone-900">
       <header className="border-b border-amber-200/80 bg-amber-100/80 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-4 py-4">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-4">
           <div>
-            <p className="font-display text-2xl text-amber-700">{storeConfig.shopName || "옥수수 가게"}</p>
-            <p className="mt-1 text-xs text-amber-900/90">판매자 {storeConfig.sellerName || "-"}</p>
-            <p className="text-xs text-amber-900/90">연락처 {storeConfig.sellerPhone ? formatPhone(storeConfig.sellerPhone) : "-"}</p>
-            <p className="text-xs text-amber-900/90">원산지 {storeConfig.origin || "-"}</p>
+            <p className="font-display text-2xl text-amber-700 sm:text-3xl">{storeConfig.shopName || "옥수수 가게"}</p>
+            <p className="mt-1 text-sm text-amber-900/90 sm:text-base">강원도 산지직송 스토어입니다.</p>
           </div>
-          {isLoggedIn ? (
+          <div className="flex items-center gap-2">
+            {!isLoggedIn && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLoginModal(true);
+                  setLoginError(null);
+                }}
+                className="rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800"
+              >
+                로그인/회원가입
+              </button>
+            )}
+            {isLoggedIn && (
+              <>
+                <p className="text-xs font-semibold text-amber-900">{session?.user?.name ?? "회원"}님</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMenuDrawer(false);
+                    setShowLogoutConfirmModal(true);
+                  }}
+                  className="rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800"
+                >
+                  로그아웃
+                </button>
+              </>
+            )}
             <button
               type="button"
-              onClick={() => void signOut({ callbackUrl: "/" })}
-              className="rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800"
+              onClick={() => setShowMenuDrawer(true)}
+              aria-label="메뉴 열기"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-amber-300 bg-white text-lg font-bold text-amber-800"
             >
-              로그아웃
+              ☰
             </button>
-          ) : (
-            <Link
-              href="/signup?callback=/"
-              className="rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800"
-            >
-              로그인/회원가입
-            </Link>
-          )}
-        </div>
-        <div className="mx-auto flex w-full max-w-3xl gap-2 px-4 pb-4">
-          <Link
-            href="/orders"
-            className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-800"
-          >
-            주문내역
-          </Link>
-          <button
-            type="button"
-            onClick={() => {
-              if (isLoggedIn) {
-                router.push("/contact");
-                return;
-              }
-              router.push("/signup?callback=/contact");
-            }}
-            className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-800"
-          >
-            문의하기
-          </button>
-          <Link
-            href="/policy"
-            className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-800"
-          >
-            배송/환불
-          </Link>
+          </div>
         </div>
       </header>
 
@@ -395,7 +705,7 @@ export default function Home() {
           {loading && <p className="text-sm text-stone-600">상품을 불러오는 중입니다...</p>}
 
           {!loading && !error && (
-            <div className="grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               {products.map((product) => (
                 <article
                   key={product.id}
@@ -415,12 +725,12 @@ export default function Home() {
                     <div className="flex flex-1 flex-col p-4">
                       <h3 className="font-display text-2xl text-amber-700">{product.name}</h3>
                       <p className="mt-1 text-sm text-stone-600">{product.description}</p>
-                      <div className="mt-3 flex items-center justify-between">
+                      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-lg font-extrabold text-stone-900">{formatCurrency(product.price)}</p>
                           <p className="text-xs text-stone-500">재고 {product.stock}개</p>
                         </div>
-                        <div className="flex items-center gap-2 rounded-full border border-stone-300 px-2 py-1">
+                        <div className="flex items-center justify-between gap-2 rounded-full border border-stone-300 px-2 py-1 sm:justify-normal">
                           {(() => {
                             const quantity = cart[product.id] ?? 0;
                             const canDecrease = quantity > 0;
@@ -640,7 +950,7 @@ export default function Home() {
         </section>
       </main>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-amber-200 bg-white/95 p-4 backdrop-blur">
+      <div className="border-t border-amber-200 bg-white p-4 sm:fixed sm:inset-x-0 sm:bottom-0 sm:z-40 sm:bg-white/95 sm:backdrop-blur">
         <div className="mx-auto flex w-full max-w-3xl items-center gap-3">
           <div className="flex-1 rounded-xl bg-amber-50 px-3 py-2">
             <p className="text-xs text-stone-600">선택 수량 {totalQuantity}개</p>
@@ -650,7 +960,21 @@ export default function Home() {
             type="button"
             onClick={() => {
               setShowPurchaseModal(true);
-              setPurchaseType(null);
+              setShowOrderConfirmModal(false);
+              if (isLoggedIn) {
+                setPurchaseType("member");
+                setMemberShippingAddresses([]);
+                setSelectedShippingAddressId(null);
+                void fillDefaultShippingAddress();
+              } else {
+                setPurchaseType(null);
+                setDepositorName("");
+                setPhone("");
+                setShippingAddress("");
+                setMemberShippingAddresses([]);
+                setSelectedShippingAddressId(null);
+              }
+              setOrderRequestNote("");
               setOrderDone(null);
               setError(null);
             }}
@@ -661,6 +985,28 @@ export default function Home() {
           </button>
         </div>
       </div>
+
+      <footer className="border-t border-stone-200 bg-stone-50/95 px-3 py-4 text-stone-700 sm:px-4">
+        <div className="mx-auto w-full max-w-3xl space-y-3">
+          <div className="grid grid-cols-1 gap-1 text-[11px] leading-5 sm:grid-cols-3 sm:gap-2 sm:text-xs">
+            <p>
+              <span className="font-semibold text-stone-900">판매자</span> {storeConfig.sellerName || "-"}
+            </p>
+            <p>
+              <span className="font-semibold text-stone-900">연락처</span>{" "}
+              {storeConfig.sellerPhone ? formatPhone(storeConfig.sellerPhone) : "-"}
+            </p>
+            <p>
+              <span className="font-semibold text-stone-900">원산지</span> {storeConfig.origin || "-"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Link href="/privacy" className="rounded-full border border-stone-300 bg-white px-3 py-1.5">
+              개인정보처리방침
+            </Link>
+          </div>
+        </div>
+      </footer>
 
       {showPurchaseModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
@@ -679,8 +1025,9 @@ export default function Home() {
                           return;
                         }
                         setPurchaseType("member");
-                        setDepositorName(session?.user?.name ?? "");
-                        setPhone(savedMemberPhone);
+                        setMemberShippingAddresses([]);
+                        setSelectedShippingAddressId(null);
+                        void fillDefaultShippingAddress();
                       }}
                       className="w-full rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white"
                     >
@@ -692,6 +1039,17 @@ export default function Home() {
                         setPurchaseType("guest");
                         setDepositorName("");
                         setPhone("");
+                        setShippingAddress("");
+                        setGuestAddressBase("");
+                        setGuestAddressDetail("");
+                        setGuestOrderCode("");
+                        setGuestOrderCodeSent(false);
+                        setGuestOrderDevCodeHint(null);
+                        setGuestOrderLookupToken(null);
+                        setGuestOrderPhoneVerified(false);
+                        setGuestHasRegisteredAccount(false);
+                        setMemberShippingAddresses([]);
+                        setSelectedShippingAddressId(null);
                       }}
                       className="w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-bold text-stone-800"
                     >
@@ -704,7 +1062,10 @@ export default function Home() {
                     )}
                     <button
                       type="button"
-                      onClick={() => setShowPurchaseModal(false)}
+                      onClick={() => {
+                        setShowPurchaseModal(false);
+                        setShowOrderConfirmModal(false);
+                      }}
                       className="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold"
                     >
                       닫기
@@ -714,11 +1075,11 @@ export default function Home() {
                   <>
                     <p className="mt-1 text-sm text-stone-600">
                       {purchaseType === "member"
-                        ? "회원 정보가 자동 입력되었습니다. 필요하면 수정해주세요."
+                        ? "로그인 계정 정보와 기본 배송지를 불러왔습니다. 배송지를 선택할 수 있습니다."
                         : "입금자명과 연락처를 입력해주세요."}
                     </p>
 
-                    <form className="mt-4 space-y-3" onSubmit={submitOrder}>
+                    <form className="mt-4 space-y-3" onSubmit={requestOrderSubmit}>
                       <input
                         value={depositorName}
                         onChange={(event) => setDepositorName(event.target.value)}
@@ -728,11 +1089,127 @@ export default function Home() {
                       />
                       <input
                         value={phone}
-                        onChange={(event) => setPhone(event.target.value)}
+                        onChange={(event) => {
+                          setPhone(event.target.value);
+                          if (purchaseType === "guest") {
+                            setGuestOrderPhoneVerified(false);
+                            setGuestOrderLookupToken(null);
+                            setGuestHasRegisteredAccount(false);
+                          }
+                        }}
                         placeholder="연락처"
                         className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
                         required
                       />
+                      {purchaseType === "guest" && (
+                        <div className="space-y-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
+                          <p className="text-xs font-semibold text-stone-600">휴대폰 문자 인증</p>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void requestGuestOrderCode()}
+                              disabled={guestOrderSendingCode}
+                              className="flex-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-bold text-stone-700 disabled:opacity-60"
+                            >
+                              {guestOrderSendingCode ? "요청 중..." : "인증번호 받기"}
+                            </button>
+                            <input
+                              value={guestOrderCode}
+                              onChange={(event) => setGuestOrderCode(event.target.value)}
+                              placeholder="인증번호"
+                              className="w-32 rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void verifyGuestOrderCode()}
+                              disabled={guestOrderVerifyingCode}
+                              className="rounded-xl bg-lime-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                            >
+                              {guestOrderVerifyingCode ? "확인 중..." : "확인"}
+                            </button>
+                          </div>
+                          {guestOrderDevCodeHint && (
+                            <p className="text-xs text-stone-500">개발용 인증번호: {guestOrderDevCodeHint}</p>
+                          )}
+                          <p className={`text-xs font-semibold ${guestOrderPhoneVerified ? "text-lime-700" : "text-stone-500"}`}>
+                            {guestOrderPhoneVerified ? "문자 인증 완료" : "문자 인증 필요"}
+                          </p>
+                          {guestHasRegisteredAccount && (
+                            <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                              <p className="text-xs font-semibold text-amber-800">
+                                해당 번호로 가입된 아이디가 있습니다.
+                              </p>
+                              <Link
+                                href="/recover"
+                                className="inline-flex rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800"
+                              >
+                                아이디 찾기
+                              </Link>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {purchaseType === "member" ? (
+                        <input
+                          value={shippingAddress}
+                          onChange={(event) => setShippingAddress(event.target.value)}
+                          placeholder="배송지 주소"
+                          className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                          required
+                        />
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <input
+                              value={guestAddressBase}
+                              readOnly
+                              placeholder="주소 검색 버튼으로 기본주소를 선택해주세요"
+                              className="flex-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm"
+                              required
+                            />
+                            <button
+                              type="button"
+                              onClick={searchGuestAddress}
+                              disabled={!postcodeReady}
+                              className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-bold text-stone-700 disabled:opacity-60"
+                            >
+                              {postcodeReady ? "주소 검색" : "로딩 중..."}
+                            </button>
+                          </div>
+                          <input
+                            value={guestAddressDetail}
+                            onChange={(event) => setGuestAddressDetail(event.target.value)}
+                            placeholder="상세주소"
+                            className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                          />
+                        </div>
+                      )}
+                      {purchaseType === "member" && memberShippingAddresses.length > 0 && (
+                        <select
+                          value={selectedShippingAddressId ?? ""}
+                          onChange={(event) => onSelectShippingAddress(Number(event.target.value))}
+                          className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                        >
+                          {memberShippingAddresses.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                              {item.isDefault ? " (기본)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <textarea
+                        value={orderRequestNote}
+                        onChange={(event) => setOrderRequestNote(event.target.value)}
+                        placeholder="주문시 요청 사항 (예: 문 앞에 놓아주세요)"
+                        className="h-20 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                      />
+                      {purchaseType === "member" && loadingDefaultShipping && (
+                        <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+                          계정 정보와 기본 배송지를 불러오는 중입니다...
+                        </p>
+                      )}
 
                       <div className="rounded-2xl bg-amber-50 p-3">
                         <p className="text-xs text-stone-600">최종 결제 예정 금액</p>
@@ -744,7 +1221,10 @@ export default function Home() {
                       <div className="flex gap-2">
                         <button
                           type="button"
-                          onClick={() => setPurchaseType(null)}
+                          onClick={() => {
+                            setPurchaseType(null);
+                            setShowOrderConfirmModal(false);
+                          }}
                           className="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold"
                         >
                           이전
@@ -754,7 +1234,7 @@ export default function Home() {
                           disabled={submitting}
                           className="flex-1 rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
                         >
-                          {submitting ? "확인 중..." : "최종 확인"}
+                          {submitting ? "접수 중..." : "주문 접수"}
                         </button>
                       </div>
                     </form>
@@ -778,7 +1258,7 @@ export default function Home() {
                     {copyDone ? "복사됨" : "주문번호 복사"}
                   </button>
                 </div>
-                <p className="text-sm text-stone-700">현재상태: {orderDone.order.status}</p>
+                <p className="text-sm text-stone-700">현재상태: {getOrderStatusLabelKo(orderDone.order.status)}</p>
                 <p className="text-sm text-stone-700">주문금액: {formatCurrency(orderDone.order.totalAmount)}</p>
 
                 <div className="mt-3 rounded-2xl border border-dashed border-lime-300 bg-lime-50 p-3 text-sm text-lime-900">
@@ -790,7 +1270,7 @@ export default function Home() {
                 </div>
 
                 <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
-                  문자 연동 시 주문번호를 문자로도 발송할 수 있습니다. 현재는 화면의 주문번호를 저장해주세요.
+                  문자로 발송되었습니다.
                 </p>
 
                 <div className="mt-4 flex gap-2">
@@ -799,6 +1279,7 @@ export default function Home() {
                     onClick={() => {
                       setShowPurchaseModal(false);
                       setOrderDone(null);
+                      setShowOrderConfirmModal(false);
                     }}
                     className="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold"
                   >
@@ -814,6 +1295,237 @@ export default function Home() {
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {showPurchaseModal && showOrderConfirmModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => {
+            if (!submitting) {
+              setShowOrderConfirmModal(false);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-lime-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="font-display text-3xl text-lime-800">주문 접수 확인</h2>
+            <p className="mt-1 text-sm text-stone-600">입력하신 정보로 주문을 접수할까요?</p>
+            <p className="mt-2 text-sm font-semibold text-stone-800">총 결제 예정 금액 {formatCurrency(totalPrice)}</p>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowOrderConfirmModal(false)}
+                disabled={submitting}
+                className="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-700"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmOrderSubmit()}
+                disabled={submitting}
+                className="flex-1 rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {submitting ? "접수 중..." : "주문 접수"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLoginModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div className="w-full max-w-sm rounded-3xl border border-amber-200 bg-white p-5 shadow-2xl">
+            <h2 className="font-display text-3xl text-amber-800">로그인</h2>
+            <p className="mt-1 text-sm text-stone-600">아이디와 비밀번호를 입력해주세요.</p>
+
+            <form className="mt-4 space-y-3" onSubmit={submitLogin}>
+              <input
+                value={loginUserId}
+                onChange={(event) => setLoginUserId(event.target.value)}
+                placeholder="아이디"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                autoComplete="username"
+                required
+              />
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(event) => setLoginPassword(event.target.value)}
+                placeholder="비밀번호"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                autoComplete="current-password"
+                required
+              />
+
+              {loginError && (
+                <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{loginError}</p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loginSubmitting}
+                className="w-full rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {loginSubmitting ? "로그인 중..." : "로그인"}
+              </button>
+            </form>
+
+            <div className="mt-3 space-y-2">
+              <Link
+                href="/recover"
+                onClick={() => setShowLoginModal(false)}
+                className="block w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-center text-sm font-bold text-stone-700"
+              >
+                아이디/비밀번호 찾기
+              </Link>
+              <Link
+                href="/signup?callback=/"
+                onClick={() => setShowLoginModal(false)}
+                className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+              >
+                회원가입
+              </Link>
+              <button
+                type="button"
+                onClick={() => setShowLoginModal(false)}
+                className="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-700"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLogoutConfirmModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => {
+            if (!logoutSubmitting) {
+              setShowLogoutConfirmModal(false);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-amber-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="font-display text-3xl text-amber-800">로그아웃</h2>
+            <p className="mt-1 text-sm text-stone-600">정말 로그아웃 하시겠어요?</p>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirmModal(false)}
+                disabled={logoutSubmitting}
+                className="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-700"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmLogout()}
+                disabled={logoutSubmitting}
+                className="flex-1 rounded-xl bg-amber-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {logoutSubmitting ? "로그아웃 중..." : "로그아웃"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMenuDrawer && (
+        <div className="fixed inset-0 z-50 bg-black/40">
+          <button
+            type="button"
+            aria-label="메뉴 닫기"
+            onClick={() => setShowMenuDrawer(false)}
+            className="absolute inset-0 h-full w-full"
+          />
+          <aside className="absolute right-0 top-0 h-full w-80 max-w-[86vw] border-l border-amber-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-3xl text-amber-800">메뉴</h2>
+              <button
+                type="button"
+                onClick={() => setShowMenuDrawer(false)}
+                className="rounded-lg border border-stone-300 px-3 py-1 text-xs font-semibold text-stone-700"
+              >
+                닫기
+              </button>
+            </div>
+
+            {isLoggedIn ? (
+              <p className="mt-3 text-sm font-semibold text-amber-900">{session?.user?.name ?? "회원"}님</p>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenuDrawer(false);
+                  setShowLoginModal(true);
+                  setLoginError(null);
+                }}
+                className="mt-3 w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold text-amber-800"
+              >
+                로그인/회원가입
+              </button>
+            )}
+
+            <div className="mt-4 space-y-2">
+              <Link
+                href="/orders"
+                onClick={() => setShowMenuDrawer(false)}
+                className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+              >
+                주문내역
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMenuDrawer(false);
+                  if (isLoggedIn) {
+                    router.push("/contact");
+                    return;
+                  }
+                  router.push("/signup?callback=/contact");
+                }}
+                className="w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold text-amber-800"
+              >
+                문의하기
+              </button>
+              <Link
+                href="/policy"
+                onClick={() => setShowMenuDrawer(false)}
+                className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+              >
+                배송/환불
+              </Link>
+
+              {isLoggedIn && (
+                <>
+                  <Link
+                    href="/account/shipping"
+                    onClick={() => setShowMenuDrawer(false)}
+                    className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+                  >
+                    배송지 관리
+                  </Link>
+                  <Link
+                    href="/account"
+                    onClick={() => setShowMenuDrawer(false)}
+                    className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+                  >
+                    정보수정/탈퇴
+                  </Link>
+                </>
+              )}
+            </div>
+          </aside>
         </div>
       )}
     </div>

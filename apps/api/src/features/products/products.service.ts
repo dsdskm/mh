@@ -20,7 +20,7 @@ export class ProductsService {
     return products.map((product) => this.toProduct(product));
   }
 
-  async getProductById(id: string): Promise<Product> {
+  async getProductById(id: number): Promise<Product> {
     const product = await this.productRepository.findOne({
       where: { id, active: true },
     });
@@ -43,11 +43,11 @@ export class ProductsService {
   async createProduct(input: CreateProductInput): Promise<Product> {
     const product = await this.productRepository.save(
       this.productRepository.create({
-        id: this.createProductId(),
         name: input.name,
         description: input.description,
         price: input.price,
         stock: input.stock,
+        totalQuantity: input.totalQuantity,
         imageUrl: input.imageUrl,
         badge: input.badge,
         active: input.active ?? true,
@@ -57,7 +57,7 @@ export class ProductsService {
     return this.toProduct(product);
   }
 
-  async updateProduct(id: string, input: UpdateProductInput): Promise<Product> {
+  async updateProduct(id: number, input: UpdateProductInput): Promise<Product> {
     const product = await this.productRepository.findOne({ where: { id } });
     if (!product) {
       throw new NotFoundException('수정할 상품을 찾을 수 없습니다.');
@@ -69,6 +69,7 @@ export class ProductsService {
       description: input.description ?? product.description,
       price: input.price ?? product.price,
       stock: input.stock ?? product.stock,
+      totalQuantity: input.totalQuantity ?? product.totalQuantity,
       imageUrl: input.imageUrl ?? product.imageUrl,
       badge: input.badge ?? product.badge,
       active: input.active ?? product.active,
@@ -77,8 +78,9 @@ export class ProductsService {
     return this.toProduct(updated);
   }
 
-  private createProductId(): string {
-    return `corn-${Math.floor(Date.now() / 1000).toString(36).toUpperCase()}`;
+  async deleteProduct(id: number): Promise<boolean> {
+    const result = await this.productRepository.delete({ id });
+    return (result.affected ?? 0) > 0;
   }
 
   private toProduct(product: ProductEntity): Product {
@@ -88,6 +90,7 @@ export class ProductsService {
       description: product.description,
       price: product.price,
       stock: product.stock,
+      totalQuantity: product.totalQuantity,
       imageUrl: product.imageUrl,
       badge: product.badge,
       active: product.active,

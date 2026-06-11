@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type {
-  CheckUserIdResponse,
-  RequestPhoneVerificationResponse,
-  SignupResponse,
-  VerifyPhoneCodeResponse,
-} from "../../types/auth";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3002";
+import { signIn } from "next-auth/react";
+import {
+  checkPhoneApi,
+  checkUserIdApi,
+  requestPhoneVerificationApi,
+  signupApi,
+  verifyPhoneCodeApi,
+} from "./api/singup.api";
 const DAUM_POSTCODE_SCRIPT_URL =
   "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
 
@@ -33,6 +34,7 @@ declare global {
 }
 
 export default function SignupPage() {
+  const router = useRouter();
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -41,12 +43,15 @@ export default function SignupPage() {
   const [isUserIdAvailable, setIsUserIdAvailable] = useState<boolean | null>(null);
   const [userIdMessage, setUserIdMessage] = useState<string | null>(null);
   const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [addressDetail, setAddressDetail] = useState("");
+  const [isPhoneAvailable, setIsPhoneAvailable] = useState<boolean | null>(null);
+  const [phoneMessage, setPhoneMessage] = useState<string | null>(null);
+  const [address1, setAddress1] = useState("");
+  const [address2, setAddress2] = useState("");
   const [smsCode, setSmsCode] = useState("");
   const [verificationToken, setVerificationToken] = useState<string | null>(null);
   const [codeSent, setCodeSent] = useState(false);
   const [devCodeHint, setDevCodeHint] = useState<string | null>(null);
+  const [termsAgreed, setTermsAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [verifyingCode, setVerifyingCode] = useState(false);
@@ -71,20 +76,13 @@ export default function SignupPage() {
     passwordChecks.hasDigit &&
     passwordChecks.hasSpecial;
 
-  const combinedAddress = useMemo(() => {
-    const base = address.trim();
-    const detail = addressDetail.trim();
-
-    if (!base) {
-      return detail;
+  const isLocalhost = useMemo(() => {
+    if (typeof window === "undefined") {
+      return false;
     }
 
-    if (!detail) {
-      return base;
-    }
-
-    return `${base} ${detail}`;
-  }, [address, addressDetail]);
+    return window.location.hostname === "localhost";
+  }, []);
 
   useEffect(() => {
     if (window.daum?.Postcode) {
@@ -122,7 +120,7 @@ export default function SignupPage() {
             ? ` (${data.buildingName})`
             : "";
 
-        setAddress(`${baseAddress}${buildingSuffix}`.trim());
+        setAddress1(`${baseAddress}${buildingSuffix}`.trim());
         setError(null);
         setSuccess("주소를 불러왔습니다. 필요하면 상세주소를 추가 입력해주세요.");
       },
@@ -141,22 +139,7 @@ export default function SignupPage() {
     setSuccess(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/auth/check-user-id`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: normalizedUserId,
-        }),
-      });
-
-      if (!response.ok) {
-        const body = (await response.json()) as { message?: string };
-        throw new Error(body.message ?? "아이디 중복확인에 실패했습니다.");
-      }
-
-      const data = (await response.json()) as CheckUserIdResponse;
+      const data = await checkUserIdApi(normalizedUserId);
       setIsUserIdAvailable(data.available);
       setUserIdMessage(data.message);
     } catch (checkError) {
@@ -169,28 +152,26 @@ export default function SignupPage() {
   }
 
   async function requestSmsCode() {
+    if (!normalizedPhone) {
+      setError("전화번호를 입력해주세요.");
+      return;
+    }
+
     setSendingCode(true);
     setError(null);
     setSuccess(null);
     setVerificationToken(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/auth/phone/request`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          phone: normalizedPhone,
-        }),
-      });
+      const checkData = await checkPhoneApi(normalizedPhone);
+      setIsPhoneAvailable(checkData.available);
+      setPhoneMessage(checkData.message);
 
-      if (!response.ok) {
-        const body = (await response.json()) as { message?: string };
-        throw new Error(body.message ?? "인증번호 발송에 실패했습니다.");
+      if (!checkData.available) {
+        return;
       }
 
-      const data = (await response.json()) as RequestPhoneVerificationResponse;
+      const data = await requestPhoneVerificationApi(normalizedPhone);
       setCodeSent(true);
       setDevCodeHint(data.devCode ?? null);
       setSuccess("인증번호를 전송했습니다. 휴대폰 문자를 확인해주세요.");
@@ -207,23 +188,10 @@ export default function SignupPage() {
     setSuccess(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/auth/phone/verify`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          phone: normalizedPhone,
-          code: smsCode.trim(),
-        }),
+      const data = await verifyPhoneCodeApi({
+        phone: normalizedPhone,
+        code: smsCode.trim(),
       });
-
-      if (!response.ok) {
-        const body = (await response.json()) as { message?: string };
-        throw new Error(body.message ?? "휴대폰 인증에 실패했습니다.");
-      }
-
-      const data = (await response.json()) as VerifyPhoneCodeResponse;
       setVerificationToken(data.verificationToken);
       setSuccess("전화번호 인증이 완료되었습니다.");
     } catch (verifyError) {
@@ -256,39 +224,55 @@ export default function SignupPage() {
       return;
     }
 
+    if (isPhoneAvailable !== true) {
+      setError("전화번호 중복확인을 완료해주세요.");
+      return;
+    }
+
+    if (!termsAgreed) {
+      setError("회원가입을 위해 약관 및 개인정보처리방침에 동의해주세요.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     setSuccess(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/auth/signup`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: userId.trim(),
-          password,
-          name: name.trim(),
-          phone: normalizedPhone,
-          address: combinedAddress,
-          verificationToken,
-        }),
+      const result = await signupApi({
+        userId: userId.trim(),
+        password,
+        name: name.trim(),
+        phone: normalizedPhone,
+        address1: address1.trim(),
+        address2: address2.trim(),
+        termsAgreed,
+        verificationToken,
+      });
+      setSuccess(`${result.account.name}님, 회원가입이 완료되었습니다. 자동으로 로그인됩니다.`);
+
+      // Keep submitting state until auto-login and redirect complete.
+      const loginResult = await signIn("credentials", {
+        userId: userId.trim(),
+        password,
+        redirect: false,
       });
 
-      if (!response.ok) {
-        const body = (await response.json()) as { message?: string };
-        throw new Error(body.message ?? "회원가입에 실패했습니다.");
+      if (loginResult?.error) {
+        throw new Error(loginResult.error);
       }
 
-      const result = (await response.json()) as SignupResponse;
-      setSuccess(`${result.account.name}님, 회원가입이 완료되었습니다. 이제 일반 로그인 기능을 연결하면 바로 사용할 수 있어요.`);
+      router.push("/");
+
       setPassword("");
       setPasswordConfirm("");
       setSmsCode("");
       setVerificationToken(null);
       setCodeSent(false);
       setDevCodeHint(null);
+      setTermsAgreed(false);
+      setIsPhoneAvailable(null);
+      setPhoneMessage(null);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "회원가입 실패");
     } finally {
@@ -297,14 +281,16 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-3xl space-y-4 px-4 py-6">
+    <main className="mx-auto min-h-screen w-full max-w-3xl space-y-3 px-3 py-4 sm:px-4 sm:py-6">
       <Link href="/" className="text-sm font-semibold text-amber-700">
         ← 홈으로
       </Link>
 
-      <section className="rounded-3xl border border-amber-200 bg-white p-5 shadow">
+      <section className="rounded-3xl border border-amber-200 bg-white p-4 shadow sm:p-5">
         <h1 className="font-display text-3xl text-amber-800">회원가입</h1>
-        <p className="mt-1 text-sm text-stone-600">아이디/비밀번호 기반 일반 회원가입입니다. 전화번호는 문자 인증 후 가입됩니다.</p>
+        <p className="mt-1 text-sm leading-6 text-stone-600">
+          아이디/비밀번호 기반 일반 회원가입입니다. 전화번호는 문자 인증 후 가입됩니다.
+        </p>
 
         <form className="mt-4 space-y-3" onSubmit={submit}>
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -397,12 +383,18 @@ export default function SignupPage() {
             <input
               value={phone}
               onChange={(event) => {
-                setPhone(event.target.value);
+                const digitsOnly = event.target.value.replace(/\D/g, "");
+                setPhone(digitsOnly);
+                setIsPhoneAvailable(null);
+                setPhoneMessage(null);
                 setVerificationToken(null);
+                setCodeSent(false);
+                setSmsCode("");
               }}
               placeholder="전화번호 (숫자만)"
               className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               autoComplete="tel"
+              inputMode="numeric"
               required
             />
             <button
@@ -414,6 +406,16 @@ export default function SignupPage() {
               {sendingCode ? "발송 중..." : "인증번호 받기"}
             </button>
           </div>
+
+          {phoneMessage && (
+            <p
+              className={`rounded-xl p-3 text-xs ${
+                isPhoneAvailable ? "bg-lime-50 text-lime-800" : "bg-amber-50 text-amber-900"
+              }`}
+            >
+              {phoneMessage}
+            </p>
+          )}
 
           {codeSent && (
             <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -435,7 +437,7 @@ export default function SignupPage() {
             </div>
           )}
 
-          {devCodeHint && (
+          {devCodeHint && isLocalhost && (
             <p className="rounded-xl bg-stone-100 p-3 text-xs text-stone-700">
               개발환경 테스트용 인증번호: {devCodeHint}
             </p>
@@ -447,11 +449,11 @@ export default function SignupPage() {
 
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <input
-              value={address}
-              onChange={(event) => setAddress(event.target.value)}
-              placeholder="주소 검색 또는 직접 입력"
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              value={address1}
+              placeholder="주소검색 클릭"
+              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm bg-stone-50 text-stone-500"
               autoComplete="street-address"
+              readOnly
               required
             />
             <button
@@ -465,12 +467,37 @@ export default function SignupPage() {
           </div>
 
           <input
-            value={addressDetail}
-            onChange={(event) => setAddressDetail(event.target.value)}
+            value={address2}
+            onChange={(event) => setAddress2(event.target.value)}
             placeholder="상세 주소 (동/호수 등)"
             className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
             autoComplete="address-line2"
+            required
           />
+
+          <div className="rounded-xl border border-stone-200 bg-white p-2 sm:p-3">
+            <p className="px-2 pb-2 text-xs font-semibold text-stone-700">
+              이용약관/개인정보처리방침 (필수)
+            </p>
+            <iframe
+              src="/privacy-policy.html"
+              title="개인정보처리방침"
+              className="h-[26rem] w-full rounded-lg border border-stone-200 sm:h-72"
+            />
+          </div>
+
+          <label className="flex items-start gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3 text-sm leading-6 text-stone-700">
+            <input
+              type="checkbox"
+              checked={termsAgreed}
+              onChange={(event) => setTermsAgreed(event.target.checked)}
+              className="mt-0.5 h-6 w-6 rounded"
+              required
+            />
+            <span>
+              위 내용을 확인했으며 <strong>(필수) 이용약관 및 개인정보처리방침</strong>에 동의합니다.
+            </span>
+          </label>
 
           <button
             type="submit"

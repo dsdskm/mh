@@ -1,11 +1,20 @@
 import { FormEvent, useEffect, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  API_BASE,
-  parseTabFromQueryKey,
-  TAB_QUERY_KEY_BY_LABEL,
-} from "../_lib/constants";
+  createAdminAccountApi,
+  createProductApi,
+  deleteAdminAccountApi,
+  deleteProductApi,
+  loadAdminInitialDataApi,
+  loginAdminApi,
+  saveConfigApi,
+  updateAdminAccountApi,
+  updateOrderStatusApi,
+  updateProductApi,
+} from "../_lib/api";
 import {
+  AdminUser,
+  AdminUserCreatePayload,
+  AdminUserUpdatePayload,
   AdminTab,
   Dashboard,
   Inquiry,
@@ -25,6 +34,7 @@ export type AdminPageState = {
   dashboard: Dashboard | null;
   config: StoreConfig | null;
   products: Product[];
+  accounts: AdminUser[];
   orders: Order[];
   inquiries: Inquiry[];
   reviews: Review[];
@@ -35,8 +45,10 @@ export type AdminPageState = {
   newDescription: string;
   newPrice: string;
   newStock: string;
+  newTotalQuantity: string;
   newImageUrl: string;
   newBadge: string;
+  newProductPublic: boolean;
   shopName: string;
   sellerName: string;
   sellerPhone: string;
@@ -54,8 +66,10 @@ export type AdminPageState = {
   setNewDescription: (value: string) => void;
   setNewPrice: (value: string) => void;
   setNewStock: (value: string) => void;
+  setNewTotalQuantity: (value: string) => void;
   setNewImageUrl: (value: string) => void;
   setNewBadge: (value: string) => void;
+  setNewProductPublic: (value: boolean) => void;
   setShopName: (value: string) => void;
   setSellerName: (value: string) => void;
   setSellerPhone: (value: string) => void;
@@ -70,23 +84,45 @@ export type AdminPageState = {
   logout: () => void;
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   submitProduct: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  createProduct: (payload: {
+    name: string;
+    description: string;
+    price: number;
+    stock: number;
+    totalQuantity: number;
+    imageUrl: string;
+    badge: string;
+    active: boolean;
+  }) => Promise<void>;
+  updateProduct: (id: number, payload: {
+    name: string;
+    description: string;
+    price: number;
+    stock: number;
+    totalQuantity: number;
+    imageUrl: string;
+    badge: string;
+    active: boolean;
+  }) => Promise<void>;
+  deleteProduct: (id: number) => Promise<void>;
   saveConfig: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  createAccount: (payload: AdminUserCreatePayload) => Promise<void>;
+  updateAccount: (id: number, payload: AdminUserUpdatePayload) => Promise<void>;
+  deleteAccount: (id: number) => Promise<void>;
 };
 
-export function useAdminPage(): AdminPageState {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+export function useAdminPage(initialTab: AdminTab): AdminPageState {
 
   const [isAuthed, setIsAuthed] = useState(false);
   const [loginUserId, setLoginUserId] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<AdminTab>("대시보드");
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
 
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [config, setConfig] = useState<StoreConfig | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [accounts, setAccounts] = useState<AdminUser[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -98,10 +134,10 @@ export function useAdminPage(): AdminPageState {
   const [newDescription, setNewDescription] = useState("");
   const [newPrice, setNewPrice] = useState("9900");
   const [newStock, setNewStock] = useState("20");
-  const [newImageUrl, setNewImageUrl] = useState(
-    "https://images.unsplash.com/photo-1551754655-cd27e38d2076?auto=format&fit=crop&w=1200&q=80",
-  );
+  const [newTotalQuantity, setNewTotalQuantity] = useState("20");
+  const [newImageUrl, setNewImageUrl] = useState("");
   const [newBadge, setNewBadge] = useState("NEW");
+  const [newProductPublic, setNewProductPublic] = useState(true);
 
   const [shopName, setShopName] = useState("");
   const [sellerName, setSellerName] = useState("");
@@ -115,14 +151,8 @@ export function useAdminPage(): AdminPageState {
   const [videoUrl, setVideoUrl] = useState("");
 
   useEffect(() => {
-    const parsedTab = parseTabFromQueryKey(searchParams.get("tab"));
-    if (parsedTab) {
-      setActiveTab(parsedTab);
-      return;
-    }
-
-    setActiveTab("대시보드");
-  }, [searchParams]);
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("admin-authed");
@@ -130,14 +160,6 @@ export function useAdminPage(): AdminPageState {
       setIsAuthed(true);
     }
   }, []);
-
-  function setActiveTabWithRoute(tab: AdminTab) {
-    setActiveTab(tab);
-
-    const next = new URLSearchParams(searchParams.toString());
-    next.set("tab", TAB_QUERY_KEY_BY_LABEL[tab]);
-    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
-  }
 
   useEffect(() => {
     if (!isAuthed) {
@@ -148,44 +170,25 @@ export function useAdminPage(): AdminPageState {
       setLoading(true);
       setError(null);
       try {
-        const [dashRes, configRes, productsRes, ordersRes, inquiriesRes, reviewsRes] = await Promise.all([
-          fetch(`${API_BASE}/api/admin/dashboard`, { cache: "no-store" }),
-          fetch(`${API_BASE}/api/admin/config`, { cache: "no-store" }),
-          fetch(`${API_BASE}/api/admin/products`, { cache: "no-store" }),
-          fetch(`${API_BASE}/api/admin/orders`, { cache: "no-store" }),
-          fetch(`${API_BASE}/api/admin/inquiries`, { cache: "no-store" }),
-          fetch(`${API_BASE}/api/admin/reviews`, { cache: "no-store" }),
-        ]);
+        const data = await loadAdminInitialDataApi();
+        setDashboard(data.dashboard);
+        setConfig(data.config);
+        setProducts(data.products);
+        setAccounts(data.accounts);
+        setOrders(data.orders);
+        setInquiries(data.inquiries);
+        setReviews(data.reviews);
 
-        if (
-          !dashRes.ok ||
-          !configRes.ok ||
-          !productsRes.ok ||
-          !ordersRes.ok ||
-          !inquiriesRes.ok ||
-          !reviewsRes.ok
-        ) {
-          throw new Error("관리자 인증에 실패했거나 데이터를 불러오지 못했습니다.");
-        }
-
-        setDashboard((await dashRes.json()) as Dashboard);
-        const configData = (await configRes.json()) as StoreConfig;
-        setConfig(configData);
-        setProducts((await productsRes.json()) as Product[]);
-        setOrders((await ordersRes.json()) as Order[]);
-        setInquiries((await inquiriesRes.json()) as Inquiry[]);
-        setReviews((await reviewsRes.json()) as Review[]);
-
-        setShopName(configData.shopName ?? "");
-        setSellerName(configData.sellerName ?? "");
-        setSellerPhone(configData.sellerPhone ?? "");
-        setOrigin(configData.origin ?? "");
-        setBankName(configData.bankName ?? "");
-        setAccountNumber(configData.accountNumber ?? "");
-        setAccountHolder(configData.accountHolder ?? "");
-        setTransferNote(configData.transferNote ?? "");
-        setDetailDescription(configData.detailDescription ?? "");
-        setVideoUrl(configData.videoUrl ?? "");
+        setShopName(data.config.shopName ?? "");
+        setSellerName(data.config.sellerName ?? "");
+        setSellerPhone(data.config.sellerPhone ?? "");
+        setOrigin(data.config.origin ?? "");
+        setBankName(data.config.bankName ?? "");
+        setAccountNumber(data.config.accountNumber ?? "");
+        setAccountHolder(data.config.accountHolder ?? "");
+        setTransferNote(data.config.transferNote ?? "");
+        setDetailDescription(data.config.detailDescription ?? "");
+        setVideoUrl(data.config.videoUrl ?? "");
       } catch (loadError) {
         const message =
           loadError instanceof Error
@@ -204,24 +207,13 @@ export function useAdminPage(): AdminPageState {
     event.preventDefault();
     setLoginError(null);
 
-    const response = await fetch(`${API_BASE}/api/admin/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        userId: loginUserId.trim(),
-        password: loginPassword.trim(),
-      }),
-    });
-
-    if (!response.ok) {
+    try {
+      await loginAdminApi(loginUserId.trim(), loginPassword.trim());
+      setIsAuthed(true);
+      window.localStorage.setItem("admin-authed", "true");
+    } catch {
       setLoginError("아이디 또는 비밀번호를 확인해주세요.");
-      return;
     }
-
-    setIsAuthed(true);
-    window.localStorage.setItem("admin-authed", "true");
   }
 
   function logout() {
@@ -231,51 +223,95 @@ export function useAdminPage(): AdminPageState {
   }
 
   async function updateOrderStatus(orderId: string, status: OrderStatus) {
-    const response = await fetch(`${API_BASE}/api/admin/orders/${orderId}/status`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ status }),
-    });
-
-    if (!response.ok) {
+    try {
+      await updateOrderStatusApi(orderId, status);
+      setOrders((prev) => prev.map((order) => (order.id === orderId ? { ...order, status } : order)));
+    } catch {
       setError("주문 상태 변경에 실패했습니다.");
-      return;
     }
-
-    setOrders((prev) => prev.map((order) => (order.id === orderId ? { ...order, status } : order)));
   }
 
   async function submitProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    const response = await fetch(`${API_BASE}/api/admin/products`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: newName,
-        description: newDescription,
-        price: Number(newPrice),
-        stock: Number(newStock),
-        imageUrl: newImageUrl,
-        badge: newBadge,
-        active: true,
-      }),
+    return createProduct({
+      name: newName,
+      description: newDescription,
+      price: Number(newPrice),
+      stock: Number(newStock),
+      totalQuantity: Number(newTotalQuantity),
+      imageUrl: newImageUrl,
+      badge: newBadge,
+      active: newProductPublic,
     });
+  }
 
-    if (!response.ok) {
-      setError("상품 등록에 실패했습니다.");
-      return;
+  async function createProduct(payload: {
+    name: string;
+    description: string;
+    price: number;
+    stock: number;
+    totalQuantity: number;
+    imageUrl: string;
+    badge: string;
+    active: boolean;
+  }) {
+    setError(null);
+    setNotice(null);
+
+    try {
+      const created = await createProductApi(payload);
+      setProducts((prev) => [created, ...prev]);
+      setNewName("");
+      setNewDescription("");
+      setNewPrice("9900");
+      setNewStock("20");
+      setNewTotalQuantity("20");
+      setNewImageUrl("");
+      setNewBadge("NEW");
+      setNewProductPublic(true);
+      setNotice("상품을 등록했습니다.");
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "상품 등록에 실패했습니다.");
+      throw createError;
     }
+  }
 
-    const created = (await response.json()) as Product;
-    setProducts((prev) => [created, ...prev]);
-    setNewName("");
-    setNewDescription("");
-    setNotice("상품을 등록했습니다.");
+  async function updateProduct(
+    id: number,
+    payload: {
+      name: string;
+      description: string;
+      price: number;
+      stock: number;
+      totalQuantity: number;
+      imageUrl: string;
+      badge: string;
+      active: boolean;
+    },
+  ) {
+    setError(null);
+    setNotice(null);
+    try {
+      const updated = await updateProductApi(id, payload);
+      setProducts((prev) => prev.map((item) => (item.id === id ? updated : item)));
+      setNotice("상품을 수정했습니다.");
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "상품 수정에 실패했습니다.");
+      throw updateError;
+    }
+  }
+
+  async function deleteProduct(id: number) {
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteProductApi(id);
+      setProducts((prev) => prev.filter((item) => item.id !== id));
+      setNotice("상품을 삭제했습니다.");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "상품 삭제에 실패했습니다.");
+      throw deleteError;
+    }
   }
 
   async function saveConfig(event: FormEvent<HTMLFormElement>) {
@@ -285,12 +321,8 @@ export function useAdminPage(): AdminPageState {
       return;
     }
 
-    const response = await fetch(`${API_BASE}/api/admin/config`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    try {
+      const saved = await saveConfigApi({
         ...config,
         shopName,
         sellerName,
@@ -302,17 +334,52 @@ export function useAdminPage(): AdminPageState {
         transferNote,
         detailDescription,
         videoUrl,
-      }),
-    });
+      });
 
-    if (!response.ok) {
+      setConfig(saved);
+      setNotice("기본정보를 저장했습니다.");
+    } catch {
       setError("기본정보 저장에 실패했습니다.");
-      return;
     }
+  }
 
-    const saved = (await response.json()) as StoreConfig;
-    setConfig(saved);
-    setNotice("기본정보를 저장했습니다.");
+  async function createAccount(payload: AdminUserCreatePayload) {
+    setError(null);
+    setNotice(null);
+    try {
+      const created = await createAdminAccountApi(payload);
+      setAccounts((prev) => [created, ...prev]);
+      setNotice("계정을 생성했습니다.");
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "계정 생성에 실패했습니다.");
+      throw createError;
+    }
+  }
+
+  async function updateAccount(id: number, payload: AdminUserUpdatePayload) {
+    setError(null);
+    setNotice(null);
+    try {
+      const updated = await updateAdminAccountApi(id, payload);
+      setAccounts((prev) => prev.map((item) => (item.id === id ? updated : item)));
+      setNotice("계정을 수정했습니다.");
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "계정 수정에 실패했습니다.");
+      throw updateError;
+    }
+  }
+
+  async function deleteAccount(id: number) {
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteAdminAccountApi(id);
+      setAccounts((prev) => prev.filter((item) => item.id !== id));
+      setNotice("계정을 삭제했습니다.");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "계정 삭제에 실패했습니다.");
+      throw deleteError;
+    }
   }
 
   return {
@@ -324,6 +391,7 @@ export function useAdminPage(): AdminPageState {
     dashboard,
     config,
     products,
+    accounts,
     orders,
     inquiries,
     reviews,
@@ -334,8 +402,10 @@ export function useAdminPage(): AdminPageState {
     newDescription,
     newPrice,
     newStock,
+    newTotalQuantity,
     newImageUrl,
     newBadge,
+    newProductPublic,
     shopName,
     sellerName,
     sellerPhone,
@@ -348,13 +418,15 @@ export function useAdminPage(): AdminPageState {
     videoUrl,
     setLoginUserId,
     setLoginPassword,
-    setActiveTab: setActiveTabWithRoute,
+    setActiveTab,
     setNewName,
     setNewDescription,
     setNewPrice,
     setNewStock,
+    setNewTotalQuantity,
     setNewImageUrl,
     setNewBadge,
+    setNewProductPublic,
     setShopName,
     setSellerName,
     setSellerPhone,
@@ -369,6 +441,12 @@ export function useAdminPage(): AdminPageState {
     logout,
     updateOrderStatus,
     submitProduct,
+    createProduct,
+    updateProduct,
+    deleteProduct,
     saveConfig,
+    createAccount,
+    updateAccount,
+    deleteAccount,
   };
 }

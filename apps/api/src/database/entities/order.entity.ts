@@ -15,11 +15,20 @@ export class OrderEntity {
   @Column({ type: 'varchar' })
   shippingAddress!: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  requestNote!: string | null;
+
   @Column({ type: 'varchar' })
   depositorName!: string;
 
+  @Column({ type: 'varchar', default: 'guest' })
+  purchaseType!: 'member' | 'guest';
+
   @Column({ type: 'varchar' })
   status!: string;
+
+  @Column({ type: 'text', nullable: true })
+  cancelReason!: string | null;
 
   @Column({ type: 'int' })
   totalAmount!: number;
