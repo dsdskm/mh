@@ -4,12 +4,13 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency, formatPhone, toEmbedVideoUrl } from "./_lib/format";
 import { getProfileApi, getShippingAddressesApi } from "./account/api/account.api";
 import type { ShippingAddress } from "../types/auth";
 import { getOrderStatusLabelKo } from "@repo/shared-types/order";
 import type { OrderStatus } from "@repo/shared-types/order";
+import type { Notice } from "@repo/shared-types/notice";
 
 const DAUM_POSTCODE_SCRIPT_URL =
   "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
@@ -89,8 +90,13 @@ type Review = {
   comments: ReviewComment[];
 };
 
+function isOperatorAuthor(name: string): boolean {
+  return /운영자|관리자/.test(name);
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3002";
 const MEMBER_PHONE_KEY = "cornmarket:member-phone";
+const NOTICE_DISMISS_KEY_PREFIX = "cornmarket:notice:dismissed:";
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -141,6 +147,9 @@ export default function Home() {
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
   const [logoutSubmitting, setLogoutSubmitting] = useState(false);
   const [showMenuDrawer, setShowMenuDrawer] = useState(false);
+  const [showContactAuthDialog, setShowContactAuthDialog] = useState(false);
+  const [activePopupNotice, setActivePopupNotice] = useState<Notice | null>(null);
+  const [dismissPopupChecked, setDismissPopupChecked] = useState(false);
   const [showOrderConfirmModal, setShowOrderConfirmModal] = useState(false);
   const [postcodeReady, setPostcodeReady] = useState(false);
   const [guestAddressBase, setGuestAddressBase] = useState("");
@@ -153,6 +162,7 @@ export default function Home() {
   const [guestOrderSendingCode, setGuestOrderSendingCode] = useState(false);
   const [guestOrderVerifyingCode, setGuestOrderVerifyingCode] = useState(false);
   const [guestHasRegisteredAccount, setGuestHasRegisteredAccount] = useState(false);
+  const videoIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
     const savedPhone = localStorage.getItem(MEMBER_PHONE_KEY);
@@ -222,6 +232,67 @@ export default function Home() {
     void load();
   }, []);
 
+  useEffect(() => {
+    async function loadPopupNotices() {
+      try {
+        const response = await fetch(`${API_BASE}/api/notices/popup`, {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const popupNotices = (await response.json()) as Notice[];
+        const now = Date.now();
+        const activeNotice = popupNotices.find((item) => {
+          if (!item.isImportant || !item.popupStartAt || !item.popupEndAt) {
+            return false;
+          }
+
+          const dismissed = localStorage.getItem(`${NOTICE_DISMISS_KEY_PREFIX}${item.id}`);
+          if (dismissed === "1") {
+            return false;
+          }
+
+          const start = new Date(item.popupStartAt).getTime();
+          const end = new Date(item.popupEndAt).getTime();
+          if (Number.isNaN(start) || Number.isNaN(end)) {
+            return false;
+          }
+
+          return start <= now && now <= end;
+        });
+
+        setActivePopupNotice(activeNotice ?? null);
+      } catch {
+        setActivePopupNotice(null);
+      }
+    }
+
+    void loadPopupNotices();
+  }, []);
+
+  function dismissNoticeForThisDevice() {
+    if (!activePopupNotice) {
+      return;
+    }
+
+    localStorage.setItem(`${NOTICE_DISMISS_KEY_PREFIX}${activePopupNotice.id}`, "1");
+    setActivePopupNotice(null);
+  }
+
+  function closePopupNotice() {
+    if (dismissPopupChecked) {
+      dismissNoticeForThisDevice();
+      setDismissPopupChecked(false);
+      return;
+    }
+
+    setActivePopupNotice(null);
+    setDismissPopupChecked(false);
+  }
+
   const cartItems = useMemo(() => {
     return products.reduce<Array<Product & { quantity: number; subtotal: number }>>(
       (acc, product) => {
@@ -274,8 +345,64 @@ export default function Home() {
       return "";
     }
 
-    return toEmbedVideoUrl(storeConfig.videoUrl);
+    const rawEmbedUrl = toEmbedVideoUrl(storeConfig.videoUrl);
+    if (!rawEmbedUrl) {
+      return "";
+    }
+
+    try {
+      const url = new URL(rawEmbedUrl);
+      const host = url.hostname.replace(/^www\./, "").toLowerCase();
+      url.searchParams.set("autoplay", "1");
+      url.searchParams.set("mute", "1");
+      url.searchParams.set("muted", "1");
+      url.searchParams.set("volume", "0");
+      url.searchParams.set("playsinline", "1");
+
+      if (host.includes("youtube.com") || host.includes("youtube-nocookie.com")) {
+        url.searchParams.set("enablejsapi", "1");
+        url.searchParams.set("rel", "0");
+        url.searchParams.set("modestbranding", "1");
+      }
+
+      if (host.includes("vimeo.com")) {
+        url.searchParams.set("api", "1");
+      }
+
+      return url.toString();
+    } catch {
+      return rawEmbedUrl;
+    }
   }, [storeConfig.videoUrl]);
+
+  function forceMuteEmbeddedVideo() {
+    const iframe = videoIframeRef.current;
+    if (!iframe || !iframe.src) {
+      return;
+    }
+
+    try {
+      const url = new URL(iframe.src);
+      const host = url.hostname.replace(/^www\./, "").toLowerCase();
+
+      if (host.includes("youtube.com") || host.includes("youtube-nocookie.com")) {
+        iframe.contentWindow?.postMessage(
+          JSON.stringify({ event: "command", func: "mute", args: [] }),
+          "*",
+        );
+        iframe.contentWindow?.postMessage(
+          JSON.stringify({ event: "command", func: "setVolume", args: [0] }),
+          "*",
+        );
+      }
+
+      if (host.includes("vimeo.com")) {
+        iframe.contentWindow?.postMessage(JSON.stringify({ method: "setVolume", value: 0 }), "*");
+      }
+    } catch {
+      // Ignore postMessage failures for unsupported providers.
+    }
+  }
 
   function changeQuantity(productId: number, delta: number): void {
     const product = products.find((item) => item.id === productId);
@@ -706,7 +833,7 @@ export default function Home() {
 
           {!loading && !error && (
             <div className="grid gap-3 sm:grid-cols-2">
-              {products.map((product) => (
+              {products.map((product, index) => (
                 <article
                   key={product.id}
                   className="group flex h-full flex-col overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-lg shadow-amber-900/10"
@@ -717,6 +844,7 @@ export default function Home() {
                       alt={product.name}
                       width={1200}
                       height={800}
+                      priority={index === 0}
                       className="h-36 w-full object-cover"
                     />
                     <span className="absolute left-3 top-3 rounded-full bg-lime-600 px-2 py-1 text-xs font-bold tracking-wide text-white">
@@ -797,9 +925,11 @@ export default function Home() {
             <div className="overflow-hidden rounded-2xl border border-stone-200">
               <div className="aspect-video w-full">
                 <iframe
+                  ref={videoIframeRef}
                   src={embeddedVideoUrl}
                   title="상품 소개 영상"
                   className="h-full w-full"
+                  onLoad={forceMuteEmbeddedVideo}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   referrerPolicy="strict-origin-when-cross-origin"
                   allowFullScreen
@@ -920,7 +1050,20 @@ export default function Home() {
                 <p className="mt-1 text-sm text-stone-700">{review.content}</p>
                 {review.comments.length > 0 && (
                   <div className="mt-3 rounded-xl bg-stone-50 p-3 text-sm text-stone-700">
-                    <p className="text-xs font-bold uppercase tracking-wide text-stone-600">운영자 답글</p>
+                    <p className="flex items-center gap-1.5 text-xs font-bold text-stone-600">
+                      <span
+                        className={`rounded-full px-2 py-0.5 ${
+                          isOperatorAuthor(review.comments[review.comments.length - 1]?.name ?? "")
+                            ? "bg-lime-100 text-lime-800"
+                            : "bg-amber-100 text-amber-800"
+                        }`}
+                      >
+                        {isOperatorAuthor(review.comments[review.comments.length - 1]?.name ?? "")
+                          ? "운영"
+                          : "고객"}
+                      </span>
+                      <span>{review.comments[review.comments.length - 1]?.name ?? "댓글"}</span>
+                    </p>
                     <p className="mt-1">{review.comments[review.comments.length - 1]?.content}</p>
                   </div>
                 )}
@@ -1484,6 +1627,13 @@ export default function Home() {
               >
                 주문내역
               </Link>
+              <Link
+                href="/notices"
+                onClick={() => setShowMenuDrawer(false)}
+                className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+              >
+                공지사항
+              </Link>
               <button
                 type="button"
                 onClick={() => {
@@ -1492,7 +1642,7 @@ export default function Home() {
                     router.push("/contact");
                     return;
                   }
-                  router.push("/signup?callback=/contact");
+                  setShowContactAuthDialog(true);
                 }}
                 className="w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold text-amber-800"
               >
@@ -1526,6 +1676,73 @@ export default function Home() {
               )}
             </div>
           </aside>
+        </div>
+      )}
+
+      {activePopupNotice && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4">
+          <div className="w-full max-w-lg rounded-3xl border border-amber-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-amber-700">긴급 공지</p>
+            </div>
+            <h3 className="mt-2 text-xl font-bold text-stone-900">{activePopupNotice.title}</h3>
+            <div className="mt-3 max-h-80 overflow-auto rounded-2xl bg-amber-50 p-3">
+              <p className="whitespace-pre-wrap text-sm text-stone-800">{activePopupNotice.content}</p>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <label className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
+                <input
+                  type="checkbox"
+                  checked={dismissPopupChecked}
+                  onChange={(event) => setDismissPopupChecked(event.target.checked)}
+                  className="h-5 w-5 rounded border-stone-300 accent-amber-600"
+                />
+                다시 보지 않기
+              </label>
+              <button
+                type="button"
+                onClick={closePopupNotice}
+                className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showContactAuthDialog && (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center bg-black/45 p-4"
+          onClick={() => setShowContactAuthDialog(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-amber-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="font-display text-3xl text-amber-800">문의하기 안내</h3>
+            <p className="mt-2 text-sm text-stone-700">문의하기는 로그인 후 이용할 수 있습니다.</p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowContactAuthDialog(false)}
+                className="flex-1 rounded-xl border border-stone-300 px-4 py-2 text-sm font-bold text-stone-700"
+              >
+                닫기
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowContactAuthDialog(false);
+                  setShowLoginModal(true);
+                  setLoginError(null);
+                }}
+                className="flex-1 rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white"
+              >
+                로그인
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

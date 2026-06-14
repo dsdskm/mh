@@ -302,7 +302,7 @@ export default function OrdersPage() {
 
       if (!response.ok) {
         const body = (await response.json()) as { message?: string };
-        throw new Error(body.message ?? "주문 취소에 실패했습니다.");
+        throw new Error(body.message ?? "주문 취소 요청에 실패했습니다.");
       }
 
       if (isLoggedIn) {
@@ -316,12 +316,12 @@ export default function OrdersPage() {
 
       setCancelOrderId(null);
       setCancelReason("");
-      setGuestSuccess("주문이 취소되었습니다.");
+      setGuestSuccess("주문 취소 요청이 완료되었습니다.");
     } catch (cancelSubmitError) {
       setCancelError(
         cancelSubmitError instanceof Error
           ? cancelSubmitError.message
-          : "주문 취소에 실패했습니다.",
+          : "주문 취소 요청에 실패했습니다.",
       );
     } finally {
       setCancelSubmitting(false);
@@ -425,7 +425,7 @@ export default function OrdersPage() {
                       }}
                       className="rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700"
                     >
-                      주문 취소
+                      주문 취소 요청
                     </button>
                   )}
                 </div>
@@ -450,16 +450,17 @@ export default function OrdersPage() {
               )}
               <p className="mt-2 text-xs text-stone-500">주문일시: {new Date(order.createdAt).toLocaleString()}</p>
               <p className="mt-2 text-base font-bold text-lime-800">현재 상태: {getOrderStatusLabelKo(order.status)}</p>
-              {order.status === ORDER_STATUS.CANCELLED && order.cancelReason && (
+              {(order.status === ORDER_STATUS.CANCEL_REQUESTED || order.status === ORDER_STATUS.CANCEL_COMPLETED) && order.cancelReason && (
                 <p className="mt-2 rounded-xl bg-red-50 p-2 text-xs text-red-700">
                   취소 사유: {order.cancelReason}
                 </p>
               )}
               <div className="mt-2 flex items-center gap-1 overflow-x-auto">
                 {STATUS_FLOW.map((step) => {
+                  const isCancelled = order.status === ORDER_STATUS.CANCEL_REQUESTED || order.status === ORDER_STATUS.CANCEL_COMPLETED;
                   const currentIndex = STATUS_FLOW.indexOf(order.status);
                   const stepIndex = STATUS_FLOW.indexOf(step);
-                  const done = order.status === ORDER_STATUS.CANCELLED ? false : stepIndex <= currentIndex;
+                  const done = isCancelled ? false : stepIndex <= currentIndex;
                   return (
                     <span
                       key={step}
@@ -471,9 +472,14 @@ export default function OrdersPage() {
                     </span>
                   );
                 })}
-                {order.status === ORDER_STATUS.CANCELLED && (
+                {order.status === ORDER_STATUS.CANCEL_REQUESTED && (
+                  <span className="whitespace-nowrap rounded-full bg-orange-100 px-2 py-1 text-[11px] font-semibold text-orange-700">
+                    {getOrderStatusLabelKo(ORDER_STATUS.CANCEL_REQUESTED)}
+                  </span>
+                )}
+                {order.status === ORDER_STATUS.CANCEL_COMPLETED && (
                   <span className="whitespace-nowrap rounded-full bg-red-100 px-2 py-1 text-[11px] font-semibold text-red-700">
-                    {getOrderStatusLabelKo(ORDER_STATUS.CANCELLED)}
+                    {getOrderStatusLabelKo(ORDER_STATUS.CANCEL_COMPLETED)}
                   </span>
                 )}
               </div>
@@ -512,7 +518,7 @@ export default function OrdersPage() {
                       }}
                       className="rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700"
                     >
-                      주문 취소
+                      주문 취소 요청
                     </button>
                   )}
                 </div>
@@ -537,16 +543,17 @@ export default function OrdersPage() {
               )}
               <p className="mt-2 text-xs text-stone-500">주문일시: {new Date(order.createdAt).toLocaleString()}</p>
               <p className="mt-2 text-base font-bold text-lime-800">현재 상태: {getOrderStatusLabelKo(order.status)}</p>
-              {order.status === ORDER_STATUS.CANCELLED && order.cancelReason && (
+              {(order.status === ORDER_STATUS.CANCEL_REQUESTED || order.status === ORDER_STATUS.CANCEL_COMPLETED) && order.cancelReason && (
                 <p className="mt-2 rounded-xl bg-red-50 p-2 text-xs text-red-700">
                   취소 사유: {order.cancelReason}
                 </p>
               )}
               <div className="mt-2 flex items-center gap-1 overflow-x-auto">
                 {STATUS_FLOW.map((step) => {
+                  const isCancelled = order.status === ORDER_STATUS.CANCEL_REQUESTED || order.status === ORDER_STATUS.CANCEL_COMPLETED;
                   const currentIndex = STATUS_FLOW.indexOf(order.status);
                   const stepIndex = STATUS_FLOW.indexOf(step);
-                  const done = order.status === ORDER_STATUS.CANCELLED ? false : stepIndex <= currentIndex;
+                  const done = isCancelled ? false : stepIndex <= currentIndex;
                   return (
                     <span
                       key={step}
@@ -558,9 +565,14 @@ export default function OrdersPage() {
                     </span>
                   );
                 })}
-                {order.status === ORDER_STATUS.CANCELLED && (
+                {order.status === ORDER_STATUS.CANCEL_REQUESTED && (
+                  <span className="whitespace-nowrap rounded-full bg-orange-100 px-2 py-1 text-[11px] font-semibold text-orange-700">
+                    {getOrderStatusLabelKo(ORDER_STATUS.CANCEL_REQUESTED)}
+                  </span>
+                )}
+                {order.status === ORDER_STATUS.CANCEL_COMPLETED && (
                   <span className="whitespace-nowrap rounded-full bg-red-100 px-2 py-1 text-[11px] font-semibold text-red-700">
-                    {getOrderStatusLabelKo(ORDER_STATUS.CANCELLED)}
+                    {getOrderStatusLabelKo(ORDER_STATUS.CANCEL_COMPLETED)}
                   </span>
                 )}
               </div>
@@ -589,12 +601,12 @@ export default function OrdersPage() {
             className="w-full max-w-md rounded-3xl border border-red-200 bg-white p-5 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <h2 className="font-display text-3xl text-red-700">주문 취소</h2>
-            <p className="mt-1 text-sm text-stone-600">취소 사유를 입력해주세요.</p>
+            <h2 className="font-display text-3xl text-red-700">주문 취소 요청</h2>
+            <p className="mt-1 text-sm text-stone-600">취소 요청 사유를 입력해주세요. 운영자가 확인후 알려드립니다.</p>
             <textarea
               value={cancelReason}
               onChange={(event) => setCancelReason(event.target.value)}
-              placeholder="취소 사유를 입력하세요"
+              placeholder="취소 요청 사유를 입력하세요"
               className="mt-3 h-24 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               required
             />
@@ -619,7 +631,7 @@ export default function OrdersPage() {
                 disabled={cancelSubmitting}
                 className="flex-1 rounded-xl bg-red-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
               >
-                {cancelSubmitting ? "처리 중..." : "주문 취소"}
+                {cancelSubmitting ? "처리 중..." : "주문 취소 요청"}
               </button>
             </div>
           </div>

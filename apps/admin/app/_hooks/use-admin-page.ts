@@ -1,23 +1,32 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
+  fetchAdminNotificationsApi,
   createAdminAccountApi,
+  createBackofficeOrderApi,
   createProductApi,
   deleteAdminAccountApi,
   deleteProductApi,
+  fetchAdminInquiriesApi,
+  fetchAdminOrdersApi,
+  fetchAdminReviewsApi,
   loadAdminInitialDataApi,
   loginAdminApi,
   saveConfigApi,
   updateAdminAccountApi,
+  updateBackofficeOrderApi,
   updateOrderStatusApi,
   updateProductApi,
 } from "../_lib/api";
+import { useFirestoreTriggers } from "./use-firestore-triggers";
 import {
   AdminUser,
   AdminUserCreatePayload,
   AdminUserUpdatePayload,
   AdminTab,
-  Dashboard,
+  AdminOrderCreatePayload,
+  AdminOrderUpdatePayload,
   Inquiry,
+  AdminNotification,
   Order,
   OrderStatus,
   Product,
@@ -31,13 +40,14 @@ export type AdminPageState = {
   loginPassword: string;
   loginError: string | null;
   activeTab: AdminTab;
-  dashboard: Dashboard | null;
   config: StoreConfig | null;
   products: Product[];
   accounts: AdminUser[];
   orders: Order[];
   inquiries: Inquiry[];
   reviews: Review[];
+  notifications: AdminNotification[];
+  readAlertIds: string[];
   loading: boolean;
   error: string | null;
   notice: string | null;
@@ -83,6 +93,8 @@ export type AdminPageState = {
   submitLogin: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   logout: () => void;
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
+  createOrder: (payload: AdminOrderCreatePayload) => Promise<void>;
+  updateOrder: (orderId: string, payload: AdminOrderUpdatePayload) => Promise<void>;
   submitProduct: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   createProduct: (payload: {
     name: string;
@@ -105,7 +117,10 @@ export type AdminPageState = {
     active: boolean;
   }) => Promise<void>;
   deleteProduct: (id: number) => Promise<void>;
-  saveConfig: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  saveConfig: (
+    event: FormEvent<HTMLFormElement>,
+    overrides?: Partial<Pick<StoreConfig, "videoUrl">>,
+  ) => Promise<void>;
   createAccount: (payload: AdminUserCreatePayload) => Promise<void>;
   updateAccount: (id: number, payload: AdminUserUpdatePayload) => Promise<void>;
   deleteAccount: (id: number) => Promise<void>;
@@ -119,13 +134,14 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
 
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [config, setConfig] = useState<StoreConfig | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [accounts, setAccounts] = useState<AdminUser[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [readAlertIds, setReadAlertIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -170,14 +186,17 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
       setLoading(true);
       setError(null);
       try {
-        const data = await loadAdminInitialDataApi();
-        setDashboard(data.dashboard);
+        const [data, notifications] = await Promise.all([
+          loadAdminInitialDataApi(),
+          fetchAdminNotificationsApi(),
+        ]);
         setConfig(data.config);
         setProducts(data.products);
         setAccounts(data.accounts);
         setOrders(data.orders);
         setInquiries(data.inquiries);
         setReviews(data.reviews);
+        setNotifications(notifications);
 
         setShopName(data.config.shopName ?? "");
         setSellerName(data.config.sellerName ?? "");
@@ -202,6 +221,63 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
 
     void loadAdminData();
   }, [isAuthed]);
+
+  const refreshOrders = useCallback(async () => {
+    try {
+      const orders = await fetchAdminOrdersApi();
+      setOrders(orders);
+    } catch {
+      // 실시간 갱신 실패는 조용히 무시
+    }
+  }, []);
+
+  const refreshInquiries = useCallback(async () => {
+    try {
+      const inquiries = await fetchAdminInquiriesApi();
+      setInquiries(inquiries);
+    } catch {
+      // 실시간 갱신 실패는 조용히 무시
+    }
+  }, []);
+
+  const refreshReviews = useCallback(async () => {
+    try {
+      const reviews = await fetchAdminReviewsApi();
+      setReviews(reviews);
+    } catch {
+      // 실시간 갱신 실패는 조용히 무시
+    }
+  }, []);
+
+  const refreshNotifications = useCallback(async () => {
+    try {
+      const notifications = await fetchAdminNotificationsApi();
+      setNotifications(notifications);
+    } catch {
+      // 실시간 갱신 실패는 조용히 무시
+    }
+  }, []);
+
+  useFirestoreTriggers({
+    onOrders: isAuthed
+      ? async () => {
+          await refreshOrders();
+          await refreshNotifications();
+        }
+      : undefined,
+    onInquiries: isAuthed
+      ? async () => {
+          await refreshInquiries();
+          await refreshNotifications();
+        }
+      : undefined,
+    onReviews: isAuthed
+      ? async () => {
+          await refreshReviews();
+          await refreshNotifications();
+        }
+      : undefined,
+  });
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -228,6 +304,32 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
       setOrders((prev) => prev.map((order) => (order.id === orderId ? { ...order, status } : order)));
     } catch {
       setError("주문 상태 변경에 실패했습니다.");
+    }
+  }
+
+  async function createOrder(payload: AdminOrderCreatePayload) {
+    setError(null);
+    setNotice(null);
+    try {
+      const created = await createBackofficeOrderApi(payload);
+      setOrders((prev) => [created, ...prev]);
+      setNotice("주문을 등록했습니다.");
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "주문 등록에 실패했습니다.");
+      throw createError;
+    }
+  }
+
+  async function updateOrder(orderId: string, payload: AdminOrderUpdatePayload) {
+    setError(null);
+    setNotice(null);
+    try {
+      const updated = await updateBackofficeOrderApi(orderId, payload);
+      setOrders((prev) => prev.map((order) => (order.id === orderId ? updated : order)));
+      setNotice("주문을 수정했습니다.");
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "주문 수정에 실패했습니다.");
+      throw updateError;
     }
   }
 
@@ -314,7 +416,10 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     }
   }
 
-  async function saveConfig(event: FormEvent<HTMLFormElement>) {
+  async function saveConfig(
+    event: FormEvent<HTMLFormElement>,
+    overrides?: Partial<Pick<StoreConfig, "videoUrl">>,
+  ) {
     event.preventDefault();
 
     if (!config) {
@@ -333,7 +438,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         accountHolder,
         transferNote,
         detailDescription,
-        videoUrl,
+        videoUrl: overrides?.videoUrl ?? videoUrl,
       });
 
       setConfig(saved);
@@ -388,13 +493,14 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     loginPassword,
     loginError,
     activeTab,
-    dashboard,
     config,
     products,
     accounts,
     orders,
     inquiries,
     reviews,
+    notifications,
+    readAlertIds,
     loading,
     error,
     notice,
@@ -440,6 +546,8 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     submitLogin,
     logout,
     updateOrderStatus,
+    createOrder,
+    updateOrder,
     submitProduct,
     createProduct,
     updateProduct,

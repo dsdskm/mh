@@ -1,11 +1,25 @@
 import * as path from 'node:path';
+import { existsSync } from 'node:fs';
 import * as dotenv from 'dotenv';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
-dotenv.config({
-  path: path.resolve(__dirname, '../../../.env'),
-});
+function loadEnvFiles() {
+  const candidates = [
+    path.resolve(process.cwd(), 'apps/api/.env'),
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(__dirname, '../.env'),
+    path.resolve(__dirname, '../../../.env'),
+  ];
+
+  for (const filePath of candidates) {
+    if (existsSync(filePath)) {
+      dotenv.config({ path: filePath, override: false });
+    }
+  }
+}
+
+loadEnvFiles();
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));

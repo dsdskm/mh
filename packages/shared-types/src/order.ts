@@ -4,7 +4,8 @@ export const ORDER_STATUS = {
   PREPARING: "preparing",
   SHIPPING: "shipping",
   DELIVERED: "delivered",
-  CANCELLED: "cancelled",
+  CANCEL_REQUESTED: "cancel_requested",
+  CANCEL_COMPLETED: "cancel_completed",
 } as const;
 
 export type OrderStatus = (typeof ORDER_STATUS)[keyof typeof ORDER_STATUS];
@@ -19,7 +20,8 @@ export const ORDER_STATUS_FLOW: OrderStatus[] = [
 
 export const ORDER_STATUS_OPTIONS: OrderStatus[] = [
   ...ORDER_STATUS_FLOW,
-  ORDER_STATUS.CANCELLED,
+  ORDER_STATUS.CANCEL_REQUESTED,
+  ORDER_STATUS.CANCEL_COMPLETED,
 ];
 
 export const ORDER_STATUS_LABELS_KO: Record<OrderStatus, string> = {
@@ -28,7 +30,8 @@ export const ORDER_STATUS_LABELS_KO: Record<OrderStatus, string> = {
   [ORDER_STATUS.PREPARING]: "상품 준비중",
   [ORDER_STATUS.SHIPPING]: "배송중",
   [ORDER_STATUS.DELIVERED]: "배송완료",
-  [ORDER_STATUS.CANCELLED]: "취소",
+  [ORDER_STATUS.CANCEL_REQUESTED]: "취소 요청",
+  [ORDER_STATUS.CANCEL_COMPLETED]: "취소 완료",
 };
 
 export function getOrderStatusLabelKo(status: OrderStatus): string {

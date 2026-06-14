@@ -1,6 +1,15 @@
 import type { OrderStatus } from '@repo/shared-types/order';
+import type {
+  Notice as SharedNotice,
+  CreateNoticeInput as SharedCreateNoticeInput,
+  UpdateNoticeInput as SharedUpdateNoticeInput,
+} from '@repo/shared-types/notice';
 
 export type { OrderStatus };
+
+export type Notice = SharedNotice;
+export type CreateNoticeInput = SharedCreateNoticeInput;
+export type UpdateNoticeInput = SharedUpdateNoticeInput;
 
 export type Product = {
   id: number;
@@ -71,6 +80,8 @@ export type Inquiry = {
   title: string;
   message: string;
   createdAt: string;
+  updatedAt: string;
+  comments: InquiryComment[];
 };
 
 export type CreateInquiryInput = {
@@ -78,6 +89,19 @@ export type CreateInquiryInput = {
   phone: string;
   title: string;
   message: string;
+};
+
+export type InquiryComment = {
+  id: string;
+  name: string;
+  content: string;
+  createdAt: string;
+};
+
+export type CreateInquiryCommentInput = {
+  inquiryId: string;
+  name: string;
+  content: string;
 };
 
 export type ReviewComment = {
@@ -92,6 +116,7 @@ export type Review = {
   name: string;
   content: string;
   createdAt: string;
+  updatedAt: string;
   comments: ReviewComment[];
 };
 
@@ -104,6 +129,23 @@ export type CreateReviewCommentInput = {
   reviewId: string;
   name: string;
   content: string;
+};
+
+export type AdminNotificationType =
+  | 'order'
+  | 'review'
+  | 'inquiry'
+  | 'review-comment'
+  | 'inquiry-comment';
+
+export type AdminNotification = {
+  id: number;
+  title: string;
+  content: string;
+  createdAt: string;
+  type: AdminNotificationType;
+  isRead: boolean;
+  url: string;
 };
 
 export type StoreStoryImage = {

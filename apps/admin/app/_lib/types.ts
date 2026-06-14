@@ -6,8 +6,10 @@ import type {
   UserType,
 } from "@repo/shared-types/user";
 import type { OrderStatus } from "@repo/shared-types/order";
+import type { Notice } from "@repo/shared-types/notice";
 
 export type { OrderStatus };
+export type { Notice };
 
 export type AdminUser = SharedUser;
 export type AdminUserCreatePayload = AdminUserCreateInput;
@@ -48,13 +50,25 @@ export type Order = {
   }>;
 };
 
-export type Dashboard = {
-  totalProducts: number;
-  totalOrders: number;
-  totalSales: number;
-  receivedOrders: number;
-  paidOrders: number;
-  preparingOrders: number;
+export type AdminOrderCreatePayload = {
+  customerName: string;
+  phone: string;
+  shippingAddress: string;
+  requestNote?: string;
+  depositorName: string;
+  items: Array<{
+    productId: number;
+    quantity: number;
+  }>;
+};
+
+export type AdminOrderUpdatePayload = {
+  customerName?: string;
+  phone?: string;
+  shippingAddress?: string;
+  requestNote?: string;
+  depositorName?: string;
+  cancelReason?: string | null;
 };
 
 export type Inquiry = {
@@ -63,6 +77,15 @@ export type Inquiry = {
   phone: string;
   title: string;
   message: string;
+  createdAt: string;
+  updatedAt: string;
+  comments: InquiryComment[];
+};
+
+export type InquiryComment = {
+  id: string;
+  name: string;
+  content: string;
   createdAt: string;
 };
 
@@ -78,7 +101,25 @@ export type Review = {
   name: string;
   content: string;
   createdAt: string;
+  updatedAt: string;
   comments: ReviewComment[];
+};
+
+export type AdminNotificationType =
+  | "order"
+  | "review"
+  | "inquiry"
+  | "review-comment"
+  | "inquiry-comment";
+
+export type AdminNotification = {
+  id: number;
+  title: string;
+  content: string;
+  createdAt: string;
+  type: AdminNotificationType;
+  isRead: boolean;
+  url: string;
 };
 
 export type StoreConfig = {
@@ -103,5 +144,5 @@ export type AdminTab =
   | "기본정보"
   | "상품관리"
   | "문의내역"
-  | "후기 목록"
+  | "후기"
   | "계정관리";

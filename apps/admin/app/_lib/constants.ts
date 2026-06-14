@@ -1,20 +1,17 @@
 import { AdminTab, OrderStatus } from "./types";
-import {
-  ORDER_STATUS_LABELS_KO,
-  ORDER_STATUS_OPTIONS,
-  getOrderStatusLabelKo,
-} from "@repo/shared-types/order";
+import { ORDER_STATUS_LABELS_KO, ORDER_STATUS_OPTIONS, getOrderStatusLabelKo } from "@repo/shared-types/order";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3002";
 
 export const TABS: AdminTab[] = [
   "주문내역",
+  "기본정보",
   "공지사항",
   "매출 상세",
-  "기본정보",
+
   "상품관리",
   "문의내역",
-  "후기 목록",
+  "후기",
   "계정관리",
 ];
 
@@ -25,7 +22,7 @@ export const TAB_QUERY_KEY_BY_LABEL: Record<AdminTab, string> = {
   기본정보: "settings",
   상품관리: "products",
   문의내역: "inquiries",
-  "후기 목록": "reviews",
+  후기: "reviews",
   계정관리: "accounts",
 };
 
@@ -36,7 +33,7 @@ export const TAB_ROUTE_BY_LABEL: Record<AdminTab, string> = {
   기본정보: "/settings",
   상품관리: "/products",
   문의내역: "/inquiries",
-  "후기 목록": "/reviews",
+  후기: "/reviews",
   계정관리: "/accounts",
 };
 
