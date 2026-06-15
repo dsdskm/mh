@@ -384,6 +384,7 @@ export class AuthService {
 
     return {
       profile: {
+        id: account.id,
         userId: account.userId ?? '',
         name: account.displayName ?? '',
         phone: account.phone ?? '',
@@ -446,6 +447,7 @@ export class AuthService {
 
     return {
       profile: {
+        id: updated.id,
         userId: updated.userId ?? '',
         name: updated.displayName ?? '',
         phone: updated.phone ?? '',

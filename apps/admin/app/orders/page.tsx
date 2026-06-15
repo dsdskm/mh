@@ -12,6 +12,7 @@ export default function OrdersPage() {
       <OrdersTab
         orders={state.orders}
         products={state.products}
+        accounts={state.accounts}
         updateOrderStatus={state.updateOrderStatus}
         createOrder={state.createOrder}
         updateOrder={state.updateOrder}

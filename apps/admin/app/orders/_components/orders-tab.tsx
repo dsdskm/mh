@@ -1,11 +1,13 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { formatCurrency, formatPhone, STATUS_OPTIONS, getOrderStatusLabelKo } from "../../_lib/constants";
-import { AdminOrderCreatePayload, AdminOrderUpdatePayload, Order, OrderStatus, Product } from "../../_lib/types";
-import { ORDER_STATUS } from "@repo/shared-types/order";
+import { AdminOrderCreatePayload, AdminOrderUpdatePayload, AdminUser, Order, OrderStatus, Product } from "../../_lib/types";
+import { ORDER_STATUS, ORDER_STATUS_FLOW } from "@repo/shared-types/order";
 import { PaginationControls } from "../../_components/pagination-controls";
 import { usePersistedPagination } from "../../_hooks/use-persisted-pagination";
 
 type DatePreset = "today" | "week" | "month1" | "month3" | "month6" | "year1" | "all" | "custom";
+
+const VIEW_MODE_STORAGE_KEY = "admin:orders:viewMode";
 
 function formatDateInput(date: Date): string {
   const year = date.getFullYear();
@@ -49,12 +51,13 @@ function getPresetRange(preset: Exclude<DatePreset, "custom">): { start: string;
 type Props = {
   orders: Order[];
   products: Product[];
-  updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
+  accounts: AdminUser[];
+  updateOrderStatus: (orderId: number, status: OrderStatus) => Promise<void>;
   createOrder: (payload: AdminOrderCreatePayload) => Promise<void>;
-  updateOrder: (orderId: string, payload: AdminOrderUpdatePayload) => Promise<void>;
+  updateOrder: (orderId: number, payload: AdminOrderUpdatePayload) => Promise<void>;
 };
 
-export function OrdersTab({ orders, products, updateOrderStatus, createOrder, updateOrder }: Props) {
+export function OrdersTab({ orders, products, accounts, updateOrderStatus, createOrder, updateOrder }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all");
   const initialWeekRange = getPresetRange("week");
@@ -62,17 +65,19 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
   const [endDate, setEndDate] = useState(initialWeekRange.end);
   const [datePreset, setDatePreset] = useState<DatePreset>("week");
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
-  const [pendingStatusByOrderId, setPendingStatusByOrderId] = useState<Record<string, OrderStatus>>({});
+  const [pendingStatusByOrderId, setPendingStatusByOrderId] = useState<Record<number, OrderStatus>>({});
   const [confirmState, setConfirmState] = useState<{
-    orderId: string;
+    orderId: number;
     currentStatus: OrderStatus;
     nextStatus: OrderStatus;
   } | null>(null);
-  const [submittingOrderId, setSubmittingOrderId] = useState<string | null>(null);
+  const [submittingOrderId, setSubmittingOrderId] = useState<number | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createPurchaseType, setCreatePurchaseType] = useState<"member" | "guest">("member");
+  const [createAccountId, setCreateAccountId] = useState<string>("");
   const [createCustomerName, setCreateCustomerName] = useState("");
   const [createPhone, setCreatePhone] = useState("");
   const [createDepositorName, setCreateDepositorName] = useState("");
@@ -80,7 +85,10 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
   const [createRequestNote, setCreateRequestNote] = useState("");
   const [createQuantities, setCreateQuantities] = useState<Record<number, string>>({});
 
-  const [editOrderId, setEditOrderId] = useState<string | null>(null);
+  const [smsTarget, setSmsTarget] = useState<Order | null>(null);
+  const [smsMessage, setSmsMessage] = useState("");
+
+  const [editOrderId, setEditOrderId] = useState<number | null>(null);
   const [updatingOrder, setUpdatingOrder] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [editCustomerName, setEditCustomerName] = useState("");
@@ -89,6 +97,19 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
   const [editShippingAddress, setEditShippingAddress] = useState("");
   const [editRequestNote, setEditRequestNote] = useState("");
   const [editCancelReason, setEditCancelReason] = useState("");
+
+  const [viewMode, setViewMode] = useState<"basic" | "simple" | "calendar">(() => {
+    if (typeof window === "undefined") {
+      return "basic";
+    }
+    const saved = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+    return saved === "simple" || saved === "calendar" ? saved : "basic";
+  });
+  const [calendarCursor, setCalendarCursor] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [dayPopup, setDayPopup] = useState<{ label: string; orders: Order[] } | null>(null);
 
   // URL hash에서 order ID 읽어서 자동으로 detail 열기
   useEffect(() => {
@@ -104,6 +125,11 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
+
+  // 뷰 모드 선택을 새로고침 후에도 유지
+  useEffect(() => {
+    window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+  }, [viewMode]);
 
   const dateFilteredOrders = useMemo(() => {
     const startAt = startDate ? new Date(`${startDate}T00:00:00`).getTime() : null;
@@ -133,7 +159,7 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
       }
 
       const haystack = [
-        order.id,
+        String(order.id),
         order.customerName,
         order.depositorName,
         order.phone,
@@ -185,11 +211,44 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
     return products.filter((product) => product.active);
   }, [products]);
 
+  const selectableAccounts = useMemo(() => {
+    return accounts
+      .filter((account) => account.status === "active")
+      .slice()
+      .sort((a, b) => {
+        const nameA = a.displayName ?? a.username ?? a.userId ?? "";
+        const nameB = b.displayName ?? b.username ?? b.userId ?? "";
+        return nameA.localeCompare(nameB, "ko");
+      });
+  }, [accounts]);
+
+  function getAccountLabel(account: AdminUser): string {
+    const name = account.displayName ?? account.username ?? account.userId ?? `계정 #${account.id}`;
+    return account.phone ? `${name} (${formatPhone(account.phone)})` : name;
+  }
+
+  function handleSelectAccount(accountIdValue: string) {
+    setCreateAccountId(accountIdValue);
+
+    const account = accounts.find((item) => String(item.id) === accountIdValue);
+    if (!account) {
+      return;
+    }
+
+    const name = account.displayName ?? account.username ?? account.userId ?? "";
+    const address = [account.address1, account.address2].filter(Boolean).join(" ").trim();
+
+    setCreateCustomerName(name);
+    setCreatePhone(account.phone ?? "");
+    setCreateDepositorName(name);
+    setCreateShippingAddress(address);
+  }
+
   function getPendingStatus(order: Order): OrderStatus {
     return pendingStatusByOrderId[order.id] ?? order.status;
   }
 
-  function setPendingStatus(orderId: string, status: OrderStatus) {
+  function setPendingStatus(orderId: number, status: OrderStatus) {
     setPendingStatusByOrderId((prev) => ({ ...prev, [orderId]: status }));
   }
 
@@ -251,6 +310,8 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
   }
 
   function resetCreateForm() {
+    setCreatePurchaseType("member");
+    setCreateAccountId("");
     setCreateCustomerName("");
     setCreatePhone("");
     setCreateDepositorName("");
@@ -258,6 +319,26 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
     setCreateRequestNote("");
     setCreateQuantities({});
     setCreateError(null);
+  }
+
+  function changePurchaseType(nextType: "member" | "guest") {
+    setCreatePurchaseType(nextType);
+    setCreateAccountId("");
+    setCreateCustomerName("");
+    setCreatePhone("");
+    setCreateDepositorName("");
+    setCreateShippingAddress("");
+    setCreateError(null);
+  }
+
+  function openSmsModal(order: Order) {
+    setSmsTarget(order);
+    setSmsMessage("");
+  }
+
+  function submitSms(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    // TODO: 문자 전송 이벤트 구현 예정
   }
 
   function openEditModal(order: Order) {
@@ -274,6 +355,11 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
   async function submitCreateOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setCreateError(null);
+
+    if (createPurchaseType === "member" && !createAccountId) {
+      setCreateError("회원 주문은 주문자 계정을 선택해주세요.");
+      return;
+    }
 
     const normalizedItems = activeProducts
       .map((product) => ({
@@ -313,6 +399,8 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
         depositorName: createDepositorName.trim(),
         shippingAddress: createShippingAddress.trim(),
         requestNote: createRequestNote.trim() || undefined,
+        purchaseType: createPurchaseType,
+        accountId: createPurchaseType === "member" ? Number(createAccountId) : null,
         items: normalizedItems,
       });
       setShowCreateModal(false);
@@ -349,6 +437,117 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
     }
   }
 
+  function renderStatusHistory(order: Order) {
+    if (!order.statusHistory?.length) {
+      return null;
+    }
+
+    const atByStatus = new Map<string, string>();
+    for (const entry of order.statusHistory) {
+      if (!atByStatus.has(entry.status)) {
+        atByStatus.set(entry.status, entry.at);
+      }
+    }
+
+    // 전체 흐름을 항상 표시하고, 처리되지 않은 단계는 흐릿하게 표시
+    const steps: { status: OrderStatus; at: string | null; done: boolean }[] =
+      ORDER_STATUS_FLOW.map((status) => ({
+        status,
+        at: atByStatus.get(status) ?? null,
+        done: atByStatus.has(status),
+      }));
+    // 취소 단계는 정방향 흐름에 없으므로 이력에 있으면 뒤에 추가
+    for (const cancelStatus of [ORDER_STATUS.CANCEL_REQUESTED, ORDER_STATUS.CANCEL_COMPLETED]) {
+      if (atByStatus.has(cancelStatus)) {
+        steps.push({ status: cancelStatus, at: atByStatus.get(cancelStatus)!, done: true });
+      }
+    }
+
+    return (
+      <div className="mb-4 rounded-xl bg-stone-50 p-3">
+        <p className="text-xs font-semibold text-stone-500">상태 처리 이력</p>
+        <ol className="mt-2 flex items-start gap-1 overflow-x-auto pb-1">
+          {steps.map((step, idx) => {
+            const d = step.at ? new Date(step.at) : null;
+            return (
+              <li key={`${order.id}-h${idx}`} className="flex items-start gap-1">
+                <div className={`flex min-w-[88px] flex-col items-center text-center ${step.done ? "" : "opacity-40"}`}>
+                  <span className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${
+                    step.done ? getStatusBadgeClass(step.status) : "border-stone-200 bg-stone-100 text-stone-400"
+                  }`}>
+                    {getOrderStatusLabelKo(step.status)}
+                  </span>
+                  <span className="mt-1 text-[10px] leading-tight text-stone-500">
+                    {d ? (
+                      <>
+                        {d.toLocaleDateString()}
+                        <br />
+                        {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </>
+                    ) : (
+                      "-"
+                    )}
+                  </span>
+                </div>
+                {idx < steps.length - 1 && <span className="mt-1.5 shrink-0 text-stone-400">→</span>}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    );
+  }
+
+  // 캘린더 뷰: 검색·상태 필터는 적용하되 날짜범위/페이지는 무시하고 월 단위로 봅니다.
+  const calendarOrders = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return orders.filter((order) => {
+      if (statusFilter !== "all" && order.status !== statusFilter) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      const haystack = [
+        String(order.id),
+        order.customerName,
+        order.depositorName,
+        order.phone,
+        ...order.items.map((item) => item.name),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [orders, searchQuery, statusFilter]);
+
+  const ordersByDay = useMemo(() => {
+    const map = new Map<string, Order[]>();
+    for (const order of calendarOrders) {
+      const d = new Date(order.createdAt);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const arr = map.get(key) ?? [];
+      arr.push(order);
+      map.set(key, arr);
+    }
+    return map;
+  }, [calendarOrders]);
+
+  const calendarWeeks = useMemo(() => {
+    const year = calendarCursor.getFullYear();
+    const month = calendarCursor.getMonth();
+    const startWeekday = new Date(year, month, 1).getDay();
+    const weeks: Date[][] = [];
+    for (let w = 0; w < 6; w += 1) {
+      const week: Date[] = [];
+      for (let d = 0; d < 7; d += 1) {
+        week.push(new Date(year, month, 1 - startWeekday + w * 7 + d));
+      }
+      weeks.push(week);
+    }
+    return weeks;
+  }, [calendarCursor]);
+
   return (
     <>
       <h2 className="font-display text-3xl text-lime-800">주문내역</h2>
@@ -371,7 +570,26 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
         ))}
       </section>
 
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="mt-4 inline-flex rounded-xl border border-stone-200 bg-white p-1">
+        {([
+          { key: "basic", label: "기본" },
+          { key: "simple", label: "요약" },
+          { key: "calendar", label: "캘린더" },
+        ] as const).map((mode) => (
+          <button
+            key={mode.key}
+            type="button"
+            onClick={() => setViewMode(mode.key)}
+            className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
+              viewMode === mode.key ? "bg-lime-600 text-white" : "text-stone-600 hover:bg-stone-100"
+            }`}
+          >
+            {mode.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
         <input
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
@@ -469,6 +687,7 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
         </div>
       </div>
 
+      {viewMode === "basic" && (
       <div className="mt-8 space-y-4">
         {filteredOrders.length === 0 && (
           <div className="rounded-2xl border border-stone-200 bg-white p-6 text-center text-sm text-stone-500">
@@ -482,6 +701,7 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
 
           return (
             <article key={order.id} className="rounded-2xl border border-stone-200 bg-white p-4">
+              {renderStatusHistory(order)}
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -502,7 +722,16 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
                     <p>고객명: {order.customerName}</p>
                     <p>연락처: {formatPhone(order.phone)}</p>
                     <p>입금자명: {order.depositorName}</p>
+                    {order.deliveryFee > 0 && <p>배송료: {formatCurrency(order.deliveryFee)}</p>}
+                    {order.couponDiscount > 0 && <p>쿠폰 할인: -{formatCurrency(order.couponDiscount)}</p>}
+                    {order.mileageUsed > 0 && <p>적립금 사용: -{formatCurrency(order.mileageUsed)}</p>}
+                    {order.mileageEarned > 0 && <p>적립금 적립: {formatCurrency(order.mileageEarned)}</p>}
                     <p className="font-semibold text-amber-700">주문금액: {formatCurrency(order.totalAmount)}</p>
+                    {order.paymentDueAt && order.status === ORDER_STATUS.RECEIVED && (
+                      <p className="font-semibold text-rose-700 sm:col-span-2">
+                        입금기한: {new Date(order.paymentDueAt).toLocaleString()} 까지
+                      </p>
+                    )}
                   </div>
 
                   <div className="rounded-xl bg-stone-50 p-3 text-sm text-stone-700">
@@ -575,6 +804,13 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
                     >
                       주문 정보 수정
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => openSmsModal(order)}
+                      className="w-full rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700"
+                    >
+                      문자 전송
+                    </button>
                   </div>
                 </div>
               </div>
@@ -582,16 +818,290 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
           );
         })}
       </div>
+      )}
 
-      <PaginationControls
-        currentPage={currentPage}
-        totalPages={totalPages}
-        totalItems={filteredOrders.length}
-        pageSize={pageSize}
-        pageSizeOptions={pageSizeOptions}
-        onPageSizeChange={setPageSize}
-        onPageChange={setCurrentPage}
-      />
+      {viewMode === "simple" && (
+        <div className="mt-8 overflow-x-auto rounded-2xl border border-stone-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-stone-50 text-xs font-semibold text-stone-600">
+              <tr>
+                <th className="px-3 py-2 text-left">주문번호</th>
+                <th className="px-3 py-2 text-left">일시</th>
+                <th className="px-3 py-2 text-left">고객</th>
+                <th className="px-3 py-2 text-left">품목</th>
+                <th className="px-3 py-2 text-right">금액</th>
+                <th className="px-3 py-2 text-left">상태</th>
+                <th className="px-3 py-2 text-left">관리</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {filteredOrders.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-6 text-center text-stone-400">조건에 맞는 주문이 없습니다.</td>
+                </tr>
+              )}
+              {paginatedOrders.map((order) => {
+                const pendingStatus = getPendingStatus(order);
+                const statusChanged = pendingStatus !== order.status;
+
+                return (
+                  <tr key={order.id} className="align-top hover:bg-stone-50">
+                    <td className="whitespace-nowrap px-3 py-2 font-semibold text-stone-900">{order.id}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs text-stone-500">{new Date(order.createdAt).toLocaleString()}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-stone-800">{order.customerName}</span>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                          order.purchaseType === "member" ? "bg-sky-100 text-sky-800" : "bg-stone-200 text-stone-700"
+                        }`}>
+                          {order.purchaseType === "member" ? "회원" : "비회원"}
+                        </span>
+                      </div>
+                      <span className="text-xs text-stone-500">{formatPhone(order.phone)}</span>
+                    </td>
+                    <td className="px-3 py-2 text-stone-700">
+                      <span className="line-clamp-1">{order.items.map((item) => `${item.name} x${item.quantity}`).join(", ")}</span>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-amber-700">{formatCurrency(order.totalAmount)}</td>
+                    <td className="px-3 py-2">
+                      <span className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${getStatusBadgeClass(order.status)}`}>
+                        {getOrderStatusLabelKo(order.status)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={pendingStatus}
+                          onChange={(event) => setPendingStatus(order.id, event.target.value as OrderStatus)}
+                          aria-label="주문 상태 변경"
+                          className="rounded-lg border border-stone-300 px-2 py-1 text-xs"
+                        >
+                          {STATUS_OPTIONS.map((status) => (
+                            <option key={status} value={status}>{getOrderStatusLabelKo(status)}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!statusChanged || submittingOrderId === order.id}
+                          onClick={() => {
+                            setConfirmState({ orderId: order.id, currentStatus: order.status, nextStatus: pendingStatus });
+                            setConfirmError(null);
+                          }}
+                          className="rounded-lg bg-lime-600 px-2 py-1 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          변경
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(order)}
+                          className="rounded-lg border border-stone-300 px-2 py-1 text-xs font-semibold text-stone-700"
+                        >
+                          수정
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openSmsModal(order)}
+                          className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700"
+                        >
+                          문자
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {viewMode === "calendar" && (
+        <div className="mt-8">
+          <div className="mb-3 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => setCalendarCursor((c) => new Date(c.getFullYear(), c.getMonth() - 1, 1))}
+              className="rounded-lg border border-stone-300 px-3 py-1.5 text-sm font-semibold text-stone-700"
+            >
+              ←
+            </button>
+            <p className="text-lg font-bold text-stone-900">
+              {calendarCursor.getFullYear()}년 {calendarCursor.getMonth() + 1}월
+            </p>
+            <button
+              type="button"
+              onClick={() => setCalendarCursor((c) => new Date(c.getFullYear(), c.getMonth() + 1, 1))}
+              className="rounded-lg border border-stone-300 px-3 py-1.5 text-sm font-semibold text-stone-700"
+            >
+              →
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const now = new Date();
+                setCalendarCursor(new Date(now.getFullYear(), now.getMonth(), 1));
+              }}
+              className="rounded-lg border border-stone-300 px-3 py-1.5 text-xs font-semibold text-stone-700"
+            >
+              오늘
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-2xl border border-stone-200 bg-stone-200">
+            {["일", "월", "화", "수", "목", "금", "토"].map((label) => (
+              <div key={label} className="bg-stone-50 py-2 text-center text-xs font-bold text-stone-600">{label}</div>
+            ))}
+            {calendarWeeks.flat().map((day) => {
+              const inMonth = day.getMonth() === calendarCursor.getMonth();
+              const key = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
+              const dayOrders = ordersByDay.get(key) ?? [];
+              const dayTotal = dayOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+
+              return (
+                <div
+                  key={key}
+                  onClick={
+                    dayOrders.length > 0
+                      ? () =>
+                          setDayPopup({
+                            label: `${day.getFullYear()}년 ${day.getMonth() + 1}월 ${day.getDate()}일`,
+                            orders: dayOrders,
+                          })
+                      : undefined
+                  }
+                  className={`min-h-[112px] p-1.5 ${inMonth ? "bg-white" : "bg-stone-50"} ${
+                    dayOrders.length > 0 ? "cursor-pointer hover:bg-lime-50" : ""
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-semibold ${inMonth ? "text-stone-700" : "text-stone-400"}`}>{day.getDate()}</span>
+                    {dayOrders.length > 0 && (
+                      <span className="rounded-full bg-lime-100 px-1.5 py-0.5 text-[10px] font-bold text-lime-800">{dayOrders.length}</span>
+                    )}
+                  </div>
+                  <div className="mt-1 space-y-0.5">
+                    {dayOrders.slice(0, 3).map((o) => (
+                      <div
+                        key={o.id}
+                        title={`${o.customerName}(${getOrderStatusLabelKo(o.status)}) · ${formatCurrency(o.totalAmount)}`}
+                        className="w-full truncate rounded bg-stone-100 px-1 py-0.5 text-[11px] text-stone-700"
+                      >
+                        {o.customerName}({getOrderStatusLabelKo(o.status)})
+                      </div>
+                    ))}
+                    {dayOrders.length > 3 && (
+                      <p className="text-[10px] font-semibold text-lime-700">+{dayOrders.length - 3}건 더보기</p>
+                    )}
+                  </div>
+                  {dayOrders.length > 0 && (
+                    <p className="mt-1 text-right text-[10px] font-semibold text-amber-700">{formatCurrency(dayTotal)}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {viewMode !== "calendar" && (
+        <PaginationControls
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredOrders.length}
+          pageSize={pageSize}
+          pageSizeOptions={pageSizeOptions}
+          onPageSizeChange={setPageSize}
+          onPageChange={setCurrentPage}
+        />
+      )}
+
+      {dayPopup && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setDayPopup(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-lg font-bold text-stone-900">{dayPopup.label} 주문 ({dayPopup.orders.length}건)</h3>
+              <button
+                type="button"
+                onClick={() => setDayPopup(null)}
+                className="rounded-lg border border-stone-300 px-3 py-1 text-xs font-semibold text-stone-600"
+              >
+                닫기
+              </button>
+            </div>
+            <ul className="mt-4 space-y-3 overflow-y-auto pr-1">
+              {dayPopup.orders.map((o) => (
+                <li key={o.id} className="space-y-2 rounded-2xl border border-stone-200 bg-white p-3 text-sm">
+                  {renderStatusHistory(o)}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-stone-900">주문번호 {o.id}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        o.purchaseType === "member" ? "bg-sky-100 text-sky-800" : "bg-stone-200 text-stone-700"
+                      }`}>
+                        {o.purchaseType === "member" ? "회원" : "비회원"}
+                      </span>
+                    </div>
+                    <span className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${getStatusBadgeClass(o.status)}`}>
+                      {getOrderStatusLabelKo(o.status)}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-stone-500">{new Date(o.createdAt).toLocaleString()}</p>
+
+                  <div className="grid gap-x-3 gap-y-0.5 text-stone-700 sm:grid-cols-2">
+                    <p>고객명: {o.customerName}</p>
+                    <p>연락처: {formatPhone(o.phone)}</p>
+                    <p>입금자명: {o.depositorName}</p>
+                    {o.deliveryFee > 0 && <p>배송료: {formatCurrency(o.deliveryFee)}</p>}
+                    {o.couponDiscount > 0 && <p>쿠폰 할인: -{formatCurrency(o.couponDiscount)}</p>}
+                    {o.mileageUsed > 0 && <p>적립금 사용: -{formatCurrency(o.mileageUsed)}</p>}
+                    {o.mileageEarned > 0 && <p>적립금 적립: {formatCurrency(o.mileageEarned)}</p>}
+                    <p className="font-semibold text-amber-700">주문금액: {formatCurrency(o.totalAmount)}</p>
+                  </div>
+
+                  {o.paymentDueAt && o.status === ORDER_STATUS.RECEIVED && (
+                    <p className="font-semibold text-rose-700">입금기한: {new Date(o.paymentDueAt).toLocaleString()} 까지</p>
+                  )}
+
+                  <p className="text-stone-700">
+                    <span className="text-xs font-semibold text-stone-500">배송지 </span>
+                    {o.shippingAddress}
+                  </p>
+                  <p className="text-stone-700">
+                    <span className="text-xs font-semibold text-stone-500">요청사항 </span>
+                    {o.requestNote?.trim() ? o.requestNote : "없음"}
+                  </p>
+
+                  {o.cancelReason?.trim() && (
+                    <p className="text-red-700">
+                      <span className="text-xs font-semibold text-red-600">취소 사유 </span>
+                      {o.cancelReason}
+                    </p>
+                  )}
+
+                  <div>
+                    <p className="text-xs font-semibold text-stone-500">주문 품목</p>
+                    <ul className="mt-1 space-y-0.5 text-stone-700">
+                      {o.items.map((item) => (
+                        <li key={`${o.id}-${item.productId}`} className="flex items-center justify-between gap-2">
+                          <span>{item.name} x {item.quantity}</span>
+                          <span className="font-medium">{formatCurrency(item.subtotal)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {confirmState && (
         <div
@@ -649,6 +1159,46 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
           >
             <h3 className="text-xl font-bold text-stone-900">주문 추가</h3>
             <form onSubmit={submitCreateOrder} className="mt-4 space-y-3">
+              <div className="flex gap-2">
+                {([
+                  { key: "member", label: "회원 주문" },
+                  { key: "guest", label: "비회원 주문" },
+                ] as const).map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => changePurchaseType(option.key)}
+                    className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                      createPurchaseType === option.key
+                        ? "border-lime-600 bg-lime-600 text-white"
+                        : "border-stone-300 bg-white text-stone-700 hover:bg-stone-50"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              {createPurchaseType === "member" && (
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-stone-600">주문자 계정</label>
+                  <select
+                    value={createAccountId}
+                    onChange={(e) => handleSelectAccount(e.target.value)}
+                    className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                    required
+                  >
+                    <option value="">계정을 선택하세요</option>
+                    {selectableAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>{getAccountLabel(account)}</option>
+                    ))}
+                  </select>
+                  {selectableAccounts.length === 0 && (
+                    <p className="mt-1 text-[11px] text-stone-500">선택 가능한 활성 계정이 없습니다.</p>
+                  )}
+                </div>
+              )}
+
               <div className="grid gap-3 sm:grid-cols-2">
                 <input value={createCustomerName} onChange={(e) => setCreateCustomerName(e.target.value)} placeholder="고객명" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
                 <input value={createPhone} onChange={(e) => setCreatePhone(e.target.value)} placeholder="연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
@@ -688,6 +1238,51 @@ export function OrdersTab({ orders, products, updateOrderStatus, createOrder, up
               <div className="flex gap-2">
                 <button type="button" onClick={() => setShowCreateModal(false)} disabled={creating} className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700 disabled:opacity-60">취소</button>
                 <button type="submit" disabled={creating} className="flex-1 rounded-xl bg-lime-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60">{creating ? "등록 중..." : "주문 등록"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {smsTarget && (
+        <div
+          className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4"
+          onClick={() => setSmsTarget(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold text-stone-900">문자 전송</h3>
+            <p className="mt-1 text-sm text-stone-500">주문번호 {smsTarget.id}</p>
+            <form onSubmit={submitSms} className="mt-4 space-y-3">
+              <div className="rounded-xl bg-stone-50 p-3 text-sm text-stone-700">
+                <p className="text-xs font-semibold text-stone-500">받는 사람</p>
+                <p className="mt-1">{smsTarget.customerName} · {formatPhone(smsTarget.phone)}</p>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-stone-600">메시지</label>
+                <textarea
+                  value={smsMessage}
+                  onChange={(e) => setSmsMessage(e.target.value)}
+                  placeholder="전송할 메시지를 입력하세요."
+                  className="h-32 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSmsTarget(null)}
+                  className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 rounded-xl bg-sky-600 px-3 py-2 text-sm font-bold text-white"
+                >
+                  전송
+                </button>
               </div>
             </form>
           </div>

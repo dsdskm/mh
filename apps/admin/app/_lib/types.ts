@@ -7,9 +7,13 @@ import type {
 } from "@repo/shared-types/user";
 import type { OrderStatus } from "@repo/shared-types/order";
 import type { Notice } from "@repo/shared-types/notice";
+import type { Coupon, CouponDiscountType, IssueCouponInput } from "@repo/shared-types/coupon";
+import type { MileageTransaction, MileageSummary } from "@repo/shared-types/mileage";
 
 export type { OrderStatus };
 export type { Notice };
+export type { Coupon, CouponDiscountType, IssueCouponInput };
+export type { MileageTransaction, MileageSummary };
 
 export type AdminUser = SharedUser;
 export type AdminUserCreatePayload = AdminUserCreateInput;
@@ -30,7 +34,8 @@ export type Product = {
 };
 
 export type Order = {
-  id: string;
+  id: number;
+  accountId: number | null;
   customerName: string;
   purchaseType: "member" | "guest";
   phone: string;
@@ -39,8 +44,15 @@ export type Order = {
   cancelReason?: string | null;
   depositorName: string;
   status: OrderStatus;
+  deliveryFee: number;
+  couponId?: number | null;
+  couponDiscount: number;
+  mileageUsed: number;
+  mileageEarned: number;
   totalAmount: number;
   createdAt: string;
+  paymentDueAt: string | null;
+  statusHistory: Array<{ status: OrderStatus; at: string }>;
   items: Array<{
     productId: number;
     name: string;
@@ -56,6 +68,8 @@ export type AdminOrderCreatePayload = {
   shippingAddress: string;
   requestNote?: string;
   depositorName: string;
+  purchaseType: "member" | "guest";
+  accountId?: number | null;
   items: Array<{
     productId: number;
     quantity: number;
@@ -135,6 +149,13 @@ export type StoreConfig = {
   storyImages: Array<{ title: string; imageUrl: string }>;
   videoUrl: string;
   recipes: Array<{ title: string; ingredients: string[]; steps: string[] }>;
+  paymentDueDays: number;
+  deliveryFee: number;
+  chargeDeliveryFee: boolean;
+  memberBonusProductId: number | null;
+  // 응답 전용 파생 값 (저장 시에는 무시됨)
+  memberBonusProductName?: string | null;
+  mileageEarnRate: number;
 };
 
 export type AdminTab =
@@ -145,4 +166,5 @@ export type AdminTab =
   | "상품관리"
   | "문의내역"
   | "후기"
-  | "계정관리";
+  | "계정관리"
+  | "쿠폰·적립금";

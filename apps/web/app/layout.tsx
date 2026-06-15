@@ -16,7 +16,7 @@ const body = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
-  title: "옥수수마켓 | 달콤한 산지직송",
+  title: "Corn",
   description: "모바일/PC 최적화 옥수수 쇼핑몰",
 };
 

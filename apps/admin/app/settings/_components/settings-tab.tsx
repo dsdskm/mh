@@ -145,6 +145,66 @@ export function SettingsTab({ state }: Props) {
             <input value={state.accountHolder} onChange={(e) => state.setAccountHolder(e.target.value)} placeholder="예금주" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
           </label>
           <label className="space-y-1">
+            <span className="text-xs font-semibold text-stone-600">입금 기한 (일)</span>
+            <input
+              type="number"
+              min={0}
+              value={state.paymentDueDays}
+              onChange={(e) => state.setPaymentDueDays(e.target.value)}
+              placeholder="예: 3 (0이면 기한 없음)"
+              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            />
+            <span className="block text-[11px] text-stone-500">주문 후 이 일수가 지나도록 미입금이면 자동으로 취소됩니다. 0이면 자동 취소하지 않습니다.</span>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold text-stone-600">배송료 (원)</span>
+            <input
+              type="number"
+              min={0}
+              value={state.deliveryFee}
+              onChange={(e) => state.setDeliveryFee(e.target.value)}
+              placeholder="예: 3000"
+              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            />
+            <span className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                checked={state.chargeDeliveryFee}
+                onChange={(e) => state.setChargeDeliveryFee(e.target.checked)}
+                className="h-4 w-4 cursor-pointer accent-lime-600"
+              />
+              <span className="text-[11px] text-stone-600">배송료 청구 (체크 시 주문 금액에 배송료가 더해집니다)</span>
+            </span>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold text-stone-600">회원 주문 포함 상품 (무료 사은품)</span>
+            <select
+              value={state.memberBonusProductId ?? ""}
+              onChange={(e) => state.setMemberBonusProductId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            >
+              <option value="">없음</option>
+              {state.products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name}
+                </option>
+              ))}
+            </select>
+            <span className="block text-[11px] text-stone-500">회원(로그인) 주문 시 선택한 상품이 0원 사은품으로 함께 발송됩니다. 재고는 차감되지 않으며, 매장에 노출하고 싶지 않으면 상품관리에서 비노출(숨김) 상태로 등록해도 사은품으로 사용할 수 있습니다.</span>
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold text-stone-600">적립금 적립률 (%)</span>
+            <input
+              type="number"
+              min={0}
+              value={state.mileageEarnRate}
+              onChange={(e) => state.setMileageEarnRate(e.target.value)}
+              placeholder="예: 5 (0이면 적립 안 함)"
+              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            />
+            <span className="block text-[11px] text-stone-500">회원 주문이 배송완료되면 결제 금액의 이 비율만큼 적립금이 자동 적립됩니다. 0이면 자동 적립하지 않습니다.</span>
+          </label>
+          <label className="space-y-1">
             <span className="text-xs font-semibold text-stone-600">영상 URL</span>
             <input value={state.videoUrl} onChange={(e) => state.setVideoUrl(e.target.value)} placeholder="영상 URL" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
             <input
@@ -206,6 +266,28 @@ export function SettingsTab({ state }: Props) {
             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-lime-200 border-t-lime-600" />
             <p className="mt-3 text-sm font-semibold text-stone-800">영상 업로드 중입니다</p>
             <p className="mt-1 text-xs text-stone-500">완료될 때까지 잠시만 기다려주세요.</p>
+          </div>
+        </div>
+      )}
+
+      {state.configSaved && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4"
+          onClick={() => state.setConfigSaved(false)}
+        >
+          <div
+            className="w-full max-w-xs rounded-2xl bg-white p-6 text-center shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-lime-100 text-2xl text-lime-700">✓</div>
+            <p className="mt-3 text-base font-bold text-stone-900">기본정보를 저장했습니다</p>
+            <button
+              type="button"
+              onClick={() => state.setConfigSaved(false)}
+              className="mt-4 w-full rounded-xl bg-lime-600 px-3 py-2 text-sm font-bold text-white"
+            >
+              확인
+            </button>
           </div>
         </div>
       )}

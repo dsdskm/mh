@@ -42,6 +42,23 @@ export class AppSettingEntity {
   @Column({ type: 'jsonb' })
   recipes!: StoreRecipe[];
 
+  @Column({ type: 'int', default: 0 })
+  paymentDueDays!: number;
+
+  @Column({ type: 'int', default: 0 })
+  deliveryFee!: number;
+
+  @Column({ type: 'boolean', default: false })
+  chargeDeliveryFee!: boolean;
+
+  // 회원 주문 시 무료로 함께 발송할 사은품 상품 ID (없으면 null)
+  @Column({ type: 'int', nullable: true })
+  memberBonusProductId!: number | null;
+
+  // 마일리지 적립률(%). 0이면 자동 적립 안 함. 주문 배송완료 시 결제액 × 비율로 적립
+  @Column({ type: 'int', default: 0 })
+  mileageEarnRate!: number;
+
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }

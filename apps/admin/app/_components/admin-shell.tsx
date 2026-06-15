@@ -136,8 +136,12 @@ export function AdminShell({ activeTab, state, children }: Props) {
     void kind;
     const notificationId = parseInt(alertId, 10);
     if (Number.isNaN(notificationId)) {
-      if (alertId.startsWith("order-cancel-")) {
-        const orderId = alertId.replace("order-cancel-", "");
+      // 주문내역에서 직접 생성한 합성 알림(주문 접수/취소 요청)은 해당 주문으로 이동
+      const orderPrefix = ["order-received-", "order-cancel-"].find((prefix) =>
+        alertId.startsWith(prefix),
+      );
+      if (orderPrefix) {
+        const orderId = alertId.replace(orderPrefix, "");
         window.location.href = `/orders#orders:${orderId}`;
       }
       return;
@@ -165,22 +169,31 @@ export function AdminShell({ activeTab, state, children }: Props) {
         url: notification.url,
       }));
 
-    // 취소 요청 주문은 상태 기반으로도 표시해서 누락되지 않게 보장합니다.
-    const cancelRequestedOrderAlerts: AlertItem[] = state.orders
-      .filter((order) => order.status === ORDER_STATUS.CANCEL_REQUESTED)
+    // 주문 접수·취소 요청은 실제 주문내역(state.orders)의 값을 그대로 사용해
+    // 알림 레코드 유무와 관계없이 누락되지 않게 표시합니다.
+    const orderRecordAlerts: AlertItem[] = state.orders
+      .filter((order) =>
+        order.status === ORDER_STATUS.RECEIVED ||
+        order.status === ORDER_STATUS.CANCEL_REQUESTED,
+      )
       .filter((order) => !notificationAlerts.some(
-        (alert) => alert.kind === "ORDER" && alert.preview.includes(order.id),
+        (alert) => alert.kind === "ORDER" && alert.preview.includes(String(order.id)),
       ))
-      .map((order) => ({
-        id: `order-cancel-${order.id}`,
-        kind: "ORDER" as const,
-        text: "주문 취소 요청이 접수되었습니다.",
-        preview: `${order.customerName} 님 주문 ${order.id}`,
-        createdAt: order.createdAt,
-        url: `/orders#orders:${order.id}`,
-      }));
+      .map((order) => {
+        const isCancel = order.status === ORDER_STATUS.CANCEL_REQUESTED;
+        return {
+          id: `${isCancel ? "order-cancel-" : "order-received-"}${order.id}`,
+          kind: "ORDER" as const,
+          text: isCancel
+            ? "주문 취소 요청이 접수되었습니다."
+            : "신규 주문이 접수되었습니다.",
+          preview: `${order.customerName} 님 주문 ${order.id}`,
+          createdAt: order.createdAt,
+          url: `/orders#orders:${order.id}`,
+        };
+      });
 
-    return [...notificationAlerts, ...cancelRequestedOrderAlerts]
+    return [...notificationAlerts, ...orderRecordAlerts]
       .sort((a, b) => toTime(b.createdAt) - toTime(a.createdAt))
       .slice(0, 12);
   }, [state.notifications, state.orders, readAlertIds]);

@@ -2,7 +2,7 @@ import { API_BASE } from "./constants";
 import { parseJsonOrThrow } from "./api-common";
 import { AdminOrderCreatePayload, AdminOrderUpdatePayload, Order, OrderStatus } from "./types";
 
-export async function updateOrderStatusApi(orderId: string, status: OrderStatus): Promise<void> {
+export async function updateOrderStatusApi(orderId: number, status: OrderStatus): Promise<void> {
   const response = await fetch(`${API_BASE}/api/backoffice/orders/${orderId}/status`, {
     method: "PATCH",
     headers: {
@@ -26,7 +26,7 @@ export async function createBackofficeOrderApi(payload: AdminOrderCreatePayload)
   return parseJsonOrThrow<Order>(response, "주문 생성에 실패했습니다.");
 }
 
-export async function updateBackofficeOrderApi(orderId: string, payload: AdminOrderUpdatePayload): Promise<Order> {
+export async function updateBackofficeOrderApi(orderId: number, payload: AdminOrderUpdatePayload): Promise<Order> {
   const response = await fetch(`${API_BASE}/api/backoffice/orders/${orderId}`, {
     method: "PATCH",
     headers: {

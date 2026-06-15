@@ -16,6 +16,11 @@ import {
   updateBackofficeOrderApi,
   updateOrderStatusApi,
   updateProductApi,
+  listCouponsApi,
+  issueCouponApi,
+  revokeCouponApi,
+  getAccountMileageApi,
+  adjustAccountMileageApi,
 } from "../_lib/api";
 import { useFirestoreTriggers } from "./use-firestore-triggers";
 import {
@@ -32,6 +37,9 @@ import {
   Product,
   Review,
   StoreConfig,
+  Coupon,
+  IssueCouponInput,
+  MileageSummary,
 } from "../_lib/types";
 
 export type AdminPageState = {
@@ -69,6 +77,11 @@ export type AdminPageState = {
   transferNote: string;
   detailDescription: string;
   videoUrl: string;
+  paymentDueDays: string;
+  deliveryFee: string;
+  chargeDeliveryFee: boolean;
+  memberBonusProductId: number | null;
+  configSaved: boolean;
   setLoginUserId: (value: string) => void;
   setLoginPassword: (value: string) => void;
   setActiveTab: (tab: AdminTab) => void;
@@ -90,11 +103,16 @@ export type AdminPageState = {
   setTransferNote: (value: string) => void;
   setDetailDescription: (value: string) => void;
   setVideoUrl: (value: string) => void;
+  setPaymentDueDays: (value: string) => void;
+  setDeliveryFee: (value: string) => void;
+  setChargeDeliveryFee: (value: boolean) => void;
+  setMemberBonusProductId: (value: number | null) => void;
+  setConfigSaved: (value: boolean) => void;
   submitLogin: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   logout: () => void;
-  updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
+  updateOrderStatus: (orderId: number, status: OrderStatus) => Promise<void>;
   createOrder: (payload: AdminOrderCreatePayload) => Promise<void>;
-  updateOrder: (orderId: string, payload: AdminOrderUpdatePayload) => Promise<void>;
+  updateOrder: (orderId: number, payload: AdminOrderUpdatePayload) => Promise<void>;
   submitProduct: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   createProduct: (payload: {
     name: string;
@@ -120,10 +138,22 @@ export type AdminPageState = {
   saveConfig: (
     event: FormEvent<HTMLFormElement>,
     overrides?: Partial<Pick<StoreConfig, "videoUrl">>,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   createAccount: (payload: AdminUserCreatePayload) => Promise<void>;
   updateAccount: (id: number, payload: AdminUserUpdatePayload) => Promise<void>;
   deleteAccount: (id: number) => Promise<void>;
+  // 쿠폰 · 적립금
+  coupons: Coupon[];
+  mileageEarnRate: string;
+  setMileageEarnRate: (value: string) => void;
+  issueCoupon: (input: IssueCouponInput) => Promise<boolean>;
+  revokeCoupon: (id: number) => Promise<void>;
+  getAccountMileage: (accountId: number) => Promise<MileageSummary | null>;
+  adjustMileage: (
+    accountId: number,
+    amount: number,
+    reason?: string,
+  ) => Promise<MileageSummary | null>;
 };
 
 export function useAdminPage(initialTab: AdminTab): AdminPageState {
@@ -165,6 +195,14 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   const [transferNote, setTransferNote] = useState("");
   const [detailDescription, setDetailDescription] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
+  const [paymentDueDays, setPaymentDueDays] = useState("0");
+  const [deliveryFee, setDeliveryFee] = useState("0");
+  const [chargeDeliveryFee, setChargeDeliveryFee] = useState(false);
+  const [memberBonusProductId, setMemberBonusProductId] = useState<number | null>(null);
+  const [mileageEarnRate, setMileageEarnRate] = useState("0");
+  const [configSaved, setConfigSaved] = useState(false);
+
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -208,6 +246,17 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         setTransferNote(data.config.transferNote ?? "");
         setDetailDescription(data.config.detailDescription ?? "");
         setVideoUrl(data.config.videoUrl ?? "");
+        setPaymentDueDays(String(data.config.paymentDueDays ?? 0));
+        setDeliveryFee(String(data.config.deliveryFee ?? 0));
+        setChargeDeliveryFee(Boolean(data.config.chargeDeliveryFee));
+        setMemberBonusProductId(data.config.memberBonusProductId ?? null);
+        setMileageEarnRate(String(data.config.mileageEarnRate ?? 0));
+
+        try {
+          setCoupons(await listCouponsApi());
+        } catch {
+          // 쿠폰 목록 로드 실패는 조용히 무시
+        }
       } catch (loadError) {
         const message =
           loadError instanceof Error
@@ -298,7 +347,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     window.localStorage.removeItem("admin-authed");
   }
 
-  async function updateOrderStatus(orderId: string, status: OrderStatus) {
+  async function updateOrderStatus(orderId: number, status: OrderStatus) {
     try {
       await updateOrderStatusApi(orderId, status);
       setOrders((prev) => prev.map((order) => (order.id === orderId ? { ...order, status } : order)));
@@ -320,7 +369,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     }
   }
 
-  async function updateOrder(orderId: string, payload: AdminOrderUpdatePayload) {
+  async function updateOrder(orderId: number, payload: AdminOrderUpdatePayload) {
     setError(null);
     setNotice(null);
     try {
@@ -419,11 +468,11 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   async function saveConfig(
     event: FormEvent<HTMLFormElement>,
     overrides?: Partial<Pick<StoreConfig, "videoUrl">>,
-  ) {
+  ): Promise<boolean> {
     event.preventDefault();
 
     if (!config) {
-      return;
+      return false;
     }
 
     try {
@@ -439,12 +488,25 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         transferNote,
         detailDescription,
         videoUrl: overrides?.videoUrl ?? videoUrl,
+        paymentDueDays: Math.max(0, Math.floor(Number(paymentDueDays) || 0)),
+        deliveryFee: Math.max(0, Math.floor(Number(deliveryFee) || 0)),
+        chargeDeliveryFee,
+        memberBonusProductId,
+        mileageEarnRate: Math.max(0, Math.floor(Number(mileageEarnRate) || 0)),
       });
 
       setConfig(saved);
+      setPaymentDueDays(String(saved.paymentDueDays ?? 0));
+      setDeliveryFee(String(saved.deliveryFee ?? 0));
+      setChargeDeliveryFee(Boolean(saved.chargeDeliveryFee));
+      setMemberBonusProductId(saved.memberBonusProductId ?? null);
+      setMileageEarnRate(String(saved.mileageEarnRate ?? 0));
       setNotice("기본정보를 저장했습니다.");
+      setConfigSaved(true);
+      return true;
     } catch {
       setError("기본정보 저장에 실패했습니다.");
+      return false;
     }
   }
 
@@ -487,6 +549,70 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     }
   }
 
+  async function issueCoupon(input: IssueCouponInput): Promise<boolean> {
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await issueCouponApi(input);
+      setCoupons(await listCouponsApi());
+      setNotice(`쿠폰 ${result.issued}건을 지급했습니다.`);
+      return true;
+    } catch (issueError) {
+      setError(issueError instanceof Error ? issueError.message : "쿠폰 지급에 실패했습니다.");
+      return false;
+    }
+  }
+
+  async function revokeCoupon(id: number) {
+    setError(null);
+    setNotice(null);
+    try {
+      await revokeCouponApi(id);
+      setCoupons((prev) =>
+        prev.map((coupon) =>
+          coupon.id === id ? { ...coupon, status: "revoked" } : coupon,
+        ),
+      );
+      setNotice("쿠폰을 회수했습니다.");
+    } catch (revokeError) {
+      setError(revokeError instanceof Error ? revokeError.message : "쿠폰 회수에 실패했습니다.");
+      throw revokeError;
+    }
+  }
+
+  async function getAccountMileage(
+    accountId: number,
+  ): Promise<MileageSummary | null> {
+    setError(null);
+    try {
+      return await getAccountMileageApi(accountId);
+    } catch (mileageError) {
+      setError(
+        mileageError instanceof Error
+          ? mileageError.message
+          : "적립금 정보를 불러오지 못했습니다.",
+      );
+      return null;
+    }
+  }
+
+  async function adjustMileage(
+    accountId: number,
+    amount: number,
+    reason?: string,
+  ): Promise<MileageSummary | null> {
+    setError(null);
+    setNotice(null);
+    try {
+      const summary = await adjustAccountMileageApi(accountId, amount, reason);
+      setNotice(amount > 0 ? "적립금을 지급했습니다." : "적립금을 차감했습니다.");
+      return summary;
+    } catch (adjustError) {
+      setError(adjustError instanceof Error ? adjustError.message : "적립금 조정에 실패했습니다.");
+      return null;
+    }
+  }
+
   return {
     isAuthed,
     loginUserId,
@@ -522,6 +648,18 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     transferNote,
     detailDescription,
     videoUrl,
+    paymentDueDays,
+    deliveryFee,
+    chargeDeliveryFee,
+    memberBonusProductId,
+    mileageEarnRate,
+    configSaved,
+    coupons,
+    setMileageEarnRate,
+    issueCoupon,
+    revokeCoupon,
+    getAccountMileage,
+    adjustMileage,
     setLoginUserId,
     setLoginPassword,
     setActiveTab,
@@ -543,6 +681,11 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setTransferNote,
     setDetailDescription,
     setVideoUrl,
+    setPaymentDueDays,
+    setDeliveryFee,
+    setChargeDeliveryFee,
+    setMemberBonusProductId,
+    setConfigSaved,
     submitLogin,
     logout,
     updateOrderStatus,

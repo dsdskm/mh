@@ -7,4 +7,5 @@ export * from "./api-notifications";
 export * from "./api-notices";
 export * from "./api-orders";
 export * from "./api-products";
+export * from "./api-rewards";
 export * from "./api-upload";

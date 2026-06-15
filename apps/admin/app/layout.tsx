@@ -15,7 +15,7 @@ const body = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
-  title: "옥수수마켓 관리자",
+  title: "Corn",
   description: "옥수수 쇼핑몰 주문/상품 관리 콘솔",
 };
 

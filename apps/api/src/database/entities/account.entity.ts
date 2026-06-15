@@ -66,6 +66,10 @@ export class AccountEntity {
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;
 
+  // 적립금(마일리지) 잔액. 원장은 mileage_transactions 에 기록
+  @Column({ type: 'int', default: 0 })
+  mileageBalance!: number;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

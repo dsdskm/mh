@@ -26,6 +26,10 @@ import { ReviewsController } from './features/reviews/controllers/reviews.contro
 import { ReviewsService } from './features/reviews/services/reviews.service';
 import { NotificationsController } from './features/notifications/controllers/notifications.controller';
 import { NotificationsService } from './features/notifications/services/notifications.service';
+import { CouponsController } from './features/coupons/controllers/coupons.controller';
+import { CouponsService } from './features/coupons/services/coupons.service';
+import { MileageController } from './features/mileage/controllers/mileage.controller';
+import { MileageService } from './features/mileage/services/mileage.service';
 
 import { AccountEntity } from './database/entities/account.entity';
 import { AppSettingEntity } from './database/entities/app-setting.entity';
@@ -39,6 +43,8 @@ import { ReviewCommentEntity } from './database/entities/review-comment.entity';
 import { ReviewEntity } from './database/entities/review.entity';
 import { AccountShippingAddressEntity } from './database/entities/account-shipping-address.entity';
 import { NotificationEntity } from './database/entities/notification.entity';
+import { CouponEntity } from './database/entities/coupon.entity';
+import { MileageTransactionEntity } from './database/entities/mileage-transaction.entity';
 import { FirestoreTriggerService } from './shared/firestore-trigger.service';
 
 function loadEnvFiles() {
@@ -81,6 +87,8 @@ const databaseUrl =
         ReviewEntity,
         ReviewCommentEntity,
         NotificationEntity,
+        CouponEntity,
+        MileageTransactionEntity,
       ],
     }),
     TypeOrmModule.forFeature([
@@ -96,6 +104,8 @@ const databaseUrl =
       ReviewEntity,
       ReviewCommentEntity,
       NotificationEntity,
+      CouponEntity,
+      MileageTransactionEntity,
     ]),
   ],
   controllers: [
@@ -109,6 +119,8 @@ const databaseUrl =
     ReviewsController,
     NotificationsController,
     AccountsController,
+    CouponsController,
+    MileageController,
   ],
   providers: [
     HealthService,
@@ -124,6 +136,8 @@ const databaseUrl =
     AccountRepository,
     AccountsService,
     UploadService,
+    CouponsService,
+    MileageService,
     FirestoreTriggerService,
   ],
 })

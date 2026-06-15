@@ -18,6 +18,10 @@ type CreateOrderBody = {
   depositorName?: string;
   purchaseType?: 'member' | 'guest';
   lookupToken?: string;
+  // 회원 전용: 주문자 계정 및 쿠폰/적립금
+  accountId?: number | null;
+  couponId?: number | null;
+  mileageToUse?: number;
   items?: Array<{
     productId?: number;
     quantity?: number;
@@ -49,6 +53,8 @@ type BackofficeCreateOrderBody = {
   shippingAddress?: string;
   requestNote?: string;
   depositorName?: string;
+  purchaseType?: 'member' | 'guest';
+  accountId?: number | null;
   items?: Array<{
     productId?: number;
     quantity?: number;
@@ -106,6 +112,17 @@ export class OrdersController {
       depositorName,
       purchaseType,
       lookupToken,
+      // 회원 전용: 주문자 계정 및 쿠폰/적립금 (비회원은 무시됨)
+      accountId:
+        purchaseType === 'member' && typeof body.accountId === 'number'
+          ? body.accountId
+          : null,
+      couponId:
+        purchaseType === 'member' && typeof body.couponId === 'number'
+          ? body.couponId
+          : null,
+      mileageToUse:
+        purchaseType === 'member' ? Math.max(0, Math.floor(Number(body.mileageToUse) || 0)) : 0,
       items: normalizedItems,
     });
   }
@@ -158,7 +175,7 @@ export class OrdersController {
 
   @Get('orders/:id')
   getOrderById(@Param('id') id: string) {
-    return this.ordersService.getOrderById(id);
+    return this.ordersService.getOrderById(this.parseOrderId(id));
   }
 
   @Patch('orders/:id/cancel')
@@ -179,7 +196,7 @@ export class OrdersController {
     }
 
     return this.ordersService.cancelOrderByCustomer({
-      id,
+      id: this.parseOrderId(id),
       phone,
       reason,
       lookupToken,
@@ -226,6 +243,8 @@ export class OrdersController {
       shippingAddress,
       requestNote,
       depositorName,
+      purchaseType: body.purchaseType === 'guest' ? 'guest' : 'member',
+      accountId: typeof body.accountId === 'number' ? body.accountId : null,
       items: normalizedItems,
     });
   }
@@ -235,7 +254,7 @@ export class OrdersController {
     @Param('id') id: string,
     @Body() body: BackofficeUpdateOrderBody,
   ) {
-    return this.ordersService.updateBackofficeOrder(id, {
+    return this.ordersService.updateBackofficeOrder(this.parseOrderId(id), {
       customerName: body.customerName,
       phone: body.phone,
       shippingAddress: body.shippingAddress,
@@ -254,6 +273,14 @@ export class OrdersController {
       throw new BadRequestException('주문 상태가 필요합니다.');
     }
 
-    return this.ordersService.updateOrderStatus(id, body.status);
+    return this.ordersService.updateOrderStatus(this.parseOrderId(id), body.status);
+  }
+
+  private parseOrderId(id: string): number {
+    const orderId = Number(id);
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      throw new BadRequestException('주문번호가 올바르지 않습니다.');
+    }
+    return orderId;
   }
 }

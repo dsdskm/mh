@@ -32,7 +32,8 @@ export type OrderItem = {
 };
 
 export type Order = {
-  id: string;
+  id: number;
+  accountId: number | null;
   customerName: string;
   purchaseType: 'member' | 'guest';
   phone: string;
@@ -41,12 +42,25 @@ export type Order = {
   cancelReason?: string | null;
   depositorName: string;
   status: OrderStatus;
+  deliveryFee: number;
+  couponId?: number | null;
+  couponDiscount: number;
+  mileageUsed: number;
+  mileageEarned: number;
   totalAmount: number;
   createdAt: string;
+  paymentDueAt: string | null;
+  statusHistory: OrderStatusHistoryEntry[];
   items: OrderItem[];
 };
 
+export type OrderStatusHistoryEntry = {
+  status: OrderStatus;
+  at: string;
+};
+
 export type CreateOrderInput = {
+  accountId?: number | null;
   customerName: string;
   phone: string;
   shippingAddress: string;
@@ -54,6 +68,11 @@ export type CreateOrderInput = {
   depositorName: string;
   purchaseType?: 'member' | 'guest';
   lookupToken?: string;
+  // 관리자 직접 등록처럼 휴대폰 인증 없이 비회원 주문을 생성할 때 사용합니다.
+  skipGuestVerification?: boolean;
+  // 회원 전용: 사용할 쿠폰 id / 사용할 적립금(원)
+  couponId?: number | null;
+  mileageToUse?: number;
   items: Array<{
     productId: number;
     quantity: number;
@@ -172,6 +191,17 @@ export type StoreConfig = {
   storyImages: StoreStoryImage[];
   videoUrl: string;
   recipes: StoreRecipe[];
+  // 주문 후 입금 기한(일). 0 이하이면 기한 없음(자동 취소 안 함).
+  paymentDueDays: number;
+  // 배송료 금액 및 청구 여부
+  deliveryFee: number;
+  chargeDeliveryFee: boolean;
+  // 회원 주문 시 무료로 포함할 사은품 상품 ID (없으면 null)
+  memberBonusProductId: number | null;
+  // 사은품 상품명 (응답 전용 파생 값, 저장하지 않음). 사은품이 없으면 null
+  memberBonusProductName: string | null;
+  // 마일리지 적립률(%). 0이면 자동 적립 안 함
+  mileageEarnRate: number;
 };
 
 export type RequestPhoneVerificationInput = {

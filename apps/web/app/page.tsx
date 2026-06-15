@@ -6,11 +6,17 @@ import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency, formatPhone, toEmbedVideoUrl } from "./_lib/format";
-import { getProfileApi, getShippingAddressesApi } from "./account/api/account.api";
+import {
+  getProfileApi,
+  getShippingAddressesApi,
+  getMyCouponsApi,
+  getMyMileageApi,
+} from "./account/api/account.api";
 import type { ShippingAddress } from "../types/auth";
 import { getOrderStatusLabelKo } from "@repo/shared-types/order";
 import type { OrderStatus } from "@repo/shared-types/order";
 import type { Notice } from "@repo/shared-types/notice";
+import type { Coupon } from "@repo/shared-types/coupon";
 
 const DAUM_POSTCODE_SCRIPT_URL =
   "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
@@ -64,13 +70,24 @@ type StoreConfig = {
     ingredients: string[];
     steps: string[];
   }>;
+  paymentDueDays: number;
+  deliveryFee: number;
+  chargeDeliveryFee: boolean;
+  memberBonusProductId: number | null;
+  memberBonusProductName: string | null;
+  mileageEarnRate: number;
 };
 
 type OrderResponse = {
   order: {
-    id: string;
+    id: number;
     totalAmount: number;
     status: OrderStatus;
+    paymentDueAt: string | null;
+    deliveryFee: number;
+    couponDiscount: number;
+    mileageUsed: number;
+    mileageEarned: number;
   };
   transfer: StoreConfig;
 };
@@ -94,7 +111,7 @@ function isOperatorAuthor(name: string): boolean {
   return /운영자|관리자/.test(name);
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3002";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:9000";
 const MEMBER_PHONE_KEY = "cornmarket:member-phone";
 const NOTICE_DISMISS_KEY_PREFIX = "cornmarket:notice:dismissed:";
 
@@ -117,6 +134,12 @@ export default function Home() {
     storyImages: [],
     videoUrl: "",
     recipes: [],
+    paymentDueDays: 0,
+    deliveryFee: 0,
+    chargeDeliveryFee: false,
+    memberBonusProductId: null,
+    memberBonusProductName: null,
+    mileageEarnRate: 0,
   });
   const [cart, setCart] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
@@ -130,6 +153,12 @@ export default function Home() {
   const [selectedShippingAddressId, setSelectedShippingAddressId] = useState<number | null>(null);
   const [orderRequestNote, setOrderRequestNote] = useState("");
   const [loadingDefaultShipping, setLoadingDefaultShipping] = useState(false);
+  // 회원 전용: 쿠폰/적립금
+  const [memberAccountId, setMemberAccountId] = useState<number | null>(null);
+  const [memberCoupons, setMemberCoupons] = useState<Coupon[]>([]);
+  const [selectedCouponId, setSelectedCouponId] = useState<number | null>(null);
+  const [mileageBalance, setMileageBalance] = useState(0);
+  const [mileageInput, setMileageInput] = useState("");
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [visibleReviewCount, setVisibleReviewCount] = useState(5);
@@ -322,6 +351,69 @@ export default function Home() {
     [cartItems],
   );
 
+  // 배송료: 청구 설정이 켜져 있을 때만 부과 (API orders.service 로직과 동일)
+  const effectiveDeliveryFee = useMemo(
+    () =>
+      storeConfig.chargeDeliveryFee
+        ? Math.max(0, Math.floor(storeConfig.deliveryFee || 0))
+        : 0,
+    [storeConfig.chargeDeliveryFee, storeConfig.deliveryFee],
+  );
+
+  const isMemberCheckout = purchaseType === "member";
+
+  const selectedCoupon = useMemo(
+    () => memberCoupons.find((c) => c.id === selectedCouponId) ?? null,
+    [memberCoupons, selectedCouponId],
+  );
+
+  // 쿠폰 할인액 (상품 소계 기준, API computeCouponDiscount 와 동일 규칙)
+  const couponDiscount = useMemo(() => {
+    if (!isMemberCheckout || !selectedCoupon) {
+      return 0;
+    }
+    if (totalPrice < (selectedCoupon.minOrderAmount ?? 0)) {
+      return 0;
+    }
+    let discount = 0;
+    if (selectedCoupon.discountType === "percent") {
+      discount = Math.floor((totalPrice * selectedCoupon.discountValue) / 100);
+      if (selectedCoupon.maxDiscountAmount != null) {
+        discount = Math.min(discount, selectedCoupon.maxDiscountAmount);
+      }
+    } else {
+      discount = selectedCoupon.discountValue;
+    }
+    return Math.max(0, Math.min(discount, totalPrice));
+  }, [isMemberCheckout, selectedCoupon, totalPrice]);
+
+  // 적립금 사용액 (잔액·결제예정액 한도 내)
+  const payableBeforeMileage = Math.max(
+    0,
+    totalPrice + effectiveDeliveryFee - couponDiscount,
+  );
+  const mileageToUse = useMemo(() => {
+    if (!isMemberCheckout) {
+      return 0;
+    }
+    const requested = Math.max(0, Math.floor(Number(mileageInput) || 0));
+    return Math.min(requested, mileageBalance, payableBeforeMileage);
+  }, [isMemberCheckout, mileageInput, mileageBalance, payableBeforeMileage]);
+
+  const finalPayable = Math.max(
+    0,
+    totalPrice + effectiveDeliveryFee - couponDiscount - mileageToUse,
+  );
+
+  // 적립 예정 적립금 (배송완료 시)
+  const expectedMileageEarn = useMemo(() => {
+    if (!isMemberCheckout) {
+      return 0;
+    }
+    const rate = Math.max(0, Math.floor(storeConfig.mileageEarnRate || 0));
+    return rate > 0 ? Math.floor((finalPayable * rate) / 100) : 0;
+  }, [isMemberCheckout, storeConfig.mileageEarnRate, finalPayable]);
+
   const sortedReviews = useMemo(() => {
     const copied = [...reviews];
 
@@ -485,6 +577,10 @@ export default function Home() {
           depositorName,
           purchaseType,
           lookupToken: purchaseType === "guest" ? guestOrderLookupToken : undefined,
+          // 회원 전용: 주문자 계정 및 쿠폰/적립금
+          accountId: purchaseType === "member" ? memberAccountId : undefined,
+          couponId: purchaseType === "member" ? selectedCouponId ?? undefined : undefined,
+          mileageToUse: purchaseType === "member" && mileageToUse > 0 ? mileageToUse : undefined,
           items: cartItems.map((item) => ({
             productId: item.id,
             quantity: item.quantity,
@@ -748,6 +844,23 @@ export default function Home() {
       setDepositorName(profileData.profile.name || session?.user?.name || "");
       setPhone(profileData.profile.phone || savedMemberPhone);
 
+      // 회원 쿠폰/적립금 로드
+      const accountId = profileData.profile.id;
+      setMemberAccountId(accountId);
+      setSelectedCouponId(null);
+      setMileageInput("");
+      try {
+        const [couponsData, mileageData] = await Promise.all([
+          getMyCouponsApi(accountId),
+          getMyMileageApi(accountId),
+        ]);
+        setMemberCoupons(couponsData);
+        setMileageBalance(mileageData.balance);
+      } catch {
+        setMemberCoupons([]);
+        setMileageBalance(0);
+      }
+
       setMemberShippingAddresses(shippingData.shippingAddresses);
 
       const selected =
@@ -763,6 +876,8 @@ export default function Home() {
       setMemberShippingAddresses([]);
       setSelectedShippingAddressId(null);
       setShippingAddress("");
+      setMemberCoupons([]);
+      setMileageBalance(0);
     } finally {
       setLoadingDefaultShipping(false);
     }
@@ -1157,6 +1272,11 @@ export default function Home() {
             {!orderDone ? (
               <>
                 <h2 className="font-display text-3xl text-amber-800">구매 신청</h2>
+                {storeConfig.memberBonusProductName && (
+                  <p className="mt-3 rounded-xl bg-lime-50 px-3 py-2 text-xs font-semibold text-lime-800">
+                    🎁 회원으로 주문하시면 &lsquo;{storeConfig.memberBonusProductName}&rsquo;을(를) 사은품으로 함께 보내드려요.
+                  </p>
+                )}
                 {purchaseType === null ? (
                   <div className="mt-4 space-y-3">
                     <p className="text-sm text-stone-600">구매 방식을 선택해주세요.</p>
@@ -1354,9 +1474,102 @@ export default function Home() {
                         </p>
                       )}
 
+                      {isMemberCheckout && (
+                        <div className="space-y-3 rounded-2xl border border-lime-200 bg-lime-50/60 p-3">
+                          <div className="space-y-1">
+                            <span className="text-xs font-semibold text-stone-700">쿠폰</span>
+                            <select
+                              value={selectedCouponId ?? ""}
+                              onChange={(e) =>
+                                setSelectedCouponId(e.target.value ? Number(e.target.value) : null)
+                              }
+                              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                            >
+                              <option value="">쿠폰 미사용</option>
+                              {memberCoupons.map((coupon) => {
+                                const usable = totalPrice >= (coupon.minOrderAmount ?? 0);
+                                return (
+                                  <option key={coupon.id} value={coupon.id} disabled={!usable}>
+                                    {coupon.name} (
+                                    {coupon.discountType === "percent"
+                                      ? `${coupon.discountValue}%`
+                                      : formatCurrency(coupon.discountValue)}
+                                    {coupon.minOrderAmount > 0
+                                      ? `, ${formatCurrency(coupon.minOrderAmount)} 이상`
+                                      : ""}
+                                    {usable ? "" : " · 최소금액 미달"})
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            {memberCoupons.length === 0 && (
+                              <span className="block text-[11px] text-stone-500">보유한 쿠폰이 없습니다.</span>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-xs font-semibold text-stone-700">
+                              적립금 사용 (보유 {formatCurrency(mileageBalance)})
+                            </span>
+                            <div className="flex gap-2">
+                              <input
+                                type="number"
+                                min={0}
+                                value={mileageInput}
+                                onChange={(e) => setMileageInput(e.target.value)}
+                                placeholder="0"
+                                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setMileageInput(
+                                    String(Math.min(mileageBalance, payableBeforeMileage)),
+                                  )
+                                }
+                                disabled={mileageBalance <= 0}
+                                className="shrink-0 rounded-xl border border-stone-300 px-3 py-2 text-xs font-bold text-stone-700 disabled:opacity-50"
+                              >
+                                전액 사용
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="rounded-2xl bg-amber-50 p-3">
+                        {(effectiveDeliveryFee > 0 || couponDiscount > 0 || mileageToUse > 0) && (
+                          <div className="mb-2 space-y-0.5 text-xs text-stone-600">
+                            <p className="flex justify-between">
+                              <span>상품 금액</span>
+                              <span>{formatCurrency(totalPrice)}</span>
+                            </p>
+                            {effectiveDeliveryFee > 0 && (
+                              <p className="flex justify-between">
+                                <span>배송료</span>
+                                <span>{formatCurrency(effectiveDeliveryFee)}</span>
+                              </p>
+                            )}
+                            {couponDiscount > 0 && (
+                              <p className="flex justify-between text-lime-700">
+                                <span>쿠폰 할인</span>
+                                <span>-{formatCurrency(couponDiscount)}</span>
+                              </p>
+                            )}
+                            {mileageToUse > 0 && (
+                              <p className="flex justify-between text-lime-700">
+                                <span>적립금 사용</span>
+                                <span>-{formatCurrency(mileageToUse)}</span>
+                              </p>
+                            )}
+                          </div>
+                        )}
                         <p className="text-xs text-stone-600">최종 결제 예정 금액</p>
-                        <p className="text-2xl font-extrabold text-amber-700">{formatCurrency(totalPrice)}</p>
+                        <p className="text-2xl font-extrabold text-amber-700">{formatCurrency(finalPayable)}</p>
+                        {expectedMileageEarn > 0 && (
+                          <p className="mt-1 text-[11px] font-semibold text-lime-700">
+                            배송완료 시 {formatCurrency(expectedMileageEarn)} 적립 예정
+                          </p>
+                        )}
                       </div>
 
                       {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
@@ -1392,7 +1605,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={async () => {
-                      await navigator.clipboard.writeText(orderDone.order.id);
+                      await navigator.clipboard.writeText(String(orderDone.order.id));
                       setCopyDone(true);
                       setTimeout(() => setCopyDone(false), 1500);
                     }}
@@ -1402,6 +1615,15 @@ export default function Home() {
                   </button>
                 </div>
                 <p className="text-sm text-stone-700">현재상태: {getOrderStatusLabelKo(orderDone.order.status)}</p>
+                {orderDone.order.deliveryFee > 0 && (
+                  <p className="text-sm text-stone-700">배송료: {formatCurrency(orderDone.order.deliveryFee)}</p>
+                )}
+                {orderDone.order.couponDiscount > 0 && (
+                  <p className="text-sm text-lime-700">쿠폰 할인: -{formatCurrency(orderDone.order.couponDiscount)}</p>
+                )}
+                {orderDone.order.mileageUsed > 0 && (
+                  <p className="text-sm text-lime-700">적립금 사용: -{formatCurrency(orderDone.order.mileageUsed)}</p>
+                )}
                 <p className="text-sm text-stone-700">주문금액: {formatCurrency(orderDone.order.totalAmount)}</p>
 
                 <div className="mt-3 rounded-2xl border border-dashed border-lime-300 bg-lime-50 p-3 text-sm text-lime-900">
@@ -1409,6 +1631,13 @@ export default function Home() {
                   <p>{orderDone.transfer.bankName}</p>
                   <p>{orderDone.transfer.accountNumber}</p>
                   <p>{orderDone.transfer.accountHolder}</p>
+                  {orderDone.order.paymentDueAt && (
+                    <p className="mt-2 rounded-lg bg-white/70 px-2 py-1 text-xs font-bold text-rose-700">
+                      입금 기한: {new Date(orderDone.order.paymentDueAt).toLocaleString()} 까지
+                      <br />
+                      기한 내 미입금 시 주문이 자동 취소됩니다.
+                    </p>
+                  )}
                   <p className="mt-2 text-xs">입금 확인 후 판매자가 주문 상태를 변경합니다.</p>
                 </div>
 
@@ -1456,7 +1685,29 @@ export default function Home() {
           >
             <h2 className="font-display text-3xl text-lime-800">주문 접수 확인</h2>
             <p className="mt-1 text-sm text-stone-600">입력하신 정보로 주문을 접수할까요?</p>
-            <p className="mt-2 text-sm font-semibold text-stone-800">총 결제 예정 금액 {formatCurrency(totalPrice)}</p>
+            {effectiveDeliveryFee > 0 || couponDiscount > 0 || mileageToUse > 0 ? (
+              <div className="mt-2 space-y-0.5 text-sm text-stone-700">
+                <p>상품 금액 {formatCurrency(totalPrice)}</p>
+                {effectiveDeliveryFee > 0 && <p>배송료 {formatCurrency(effectiveDeliveryFee)}</p>}
+                {couponDiscount > 0 && (
+                  <p className="text-lime-700">쿠폰 할인 -{formatCurrency(couponDiscount)}</p>
+                )}
+                {mileageToUse > 0 && (
+                  <p className="text-lime-700">적립금 사용 -{formatCurrency(mileageToUse)}</p>
+                )}
+                <p className="font-semibold text-stone-900">총 결제 예정 금액 {formatCurrency(finalPayable)}</p>
+                {expectedMileageEarn > 0 && (
+                  <p className="text-[11px] text-lime-700">배송완료 시 {formatCurrency(expectedMileageEarn)} 적립 예정</p>
+                )}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm font-semibold text-stone-800">총 결제 예정 금액 {formatCurrency(totalPrice)}</p>
+            )}
+            {storeConfig.paymentDueDays > 0 && (
+              <p className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                주문 후 {storeConfig.paymentDueDays}일 이내에 입금해주세요. 기한이 지나면 주문이 자동 취소됩니다.
+              </p>
+            )}
 
             <div className="mt-4 flex gap-2">
               <button

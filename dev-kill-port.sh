@@ -4,7 +4,7 @@ set -eu
 if [ "$#" -gt 0 ]; then
   PORTS="$*"
 else
-  PORTS="3000 3001 3002"
+  PORTS="9000 9001 9002"
 fi
 
 FOUND=0

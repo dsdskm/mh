@@ -1,14 +1,15 @@
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Index } from 'typeorm';
 import { OrderEntity } from './order.entity';
 import { ProductEntity } from './product.entity';
+import { bigintTransformer } from '../column-transformers';
 
 @Entity({ name: 'order_items' })
 export class OrderItemEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({ type: 'varchar' })
-  orderId!: string;
+  @Column({ type: 'bigint', transformer: bigintTransformer })
+  orderId!: number;
 
   @ManyToOne(() => OrderEntity, (order) => order.items, {
     onDelete: 'CASCADE',

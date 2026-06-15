@@ -1,5 +1,8 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { AppSettingEntity } from '../../../database/entities/app-setting.entity';
+import { ProductEntity } from '../../../database/entities/product.entity';
 import { ConfigRepository } from '../repositories/config.repository';
 import {
   StoreConfig,
@@ -9,7 +12,11 @@ import {
 
 @Injectable()
 export class ConfigService implements OnModuleInit {
-  constructor(private readonly configRepository: ConfigRepository) {}
+  constructor(
+    private readonly configRepository: ConfigRepository,
+    @InjectRepository(ProductEntity)
+    private readonly productRepository: Repository<ProductEntity>,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     const count = await this.configRepository.count();
@@ -31,10 +38,10 @@ export class ConfigService implements OnModuleInit {
         this.configRepository.create(this.buildInitialSetting()),
       );
 
-      return this.mapSetting(created);
+      return this.resolveBonusProductName(this.mapSetting(created));
     }
 
-    return this.mapSetting(setting);
+    return this.resolveBonusProductName(this.mapSetting(setting));
   }
 
   async updateStoreConfig(input: Partial<StoreConfig>): Promise<StoreConfig> {
@@ -57,10 +64,48 @@ export class ConfigService implements OnModuleInit {
       storyImages: input.storyImages ?? base.storyImages,
       videoUrl: input.videoUrl ?? base.videoUrl,
       recipes: input.recipes ?? base.recipes,
+      paymentDueDays:
+        input.paymentDueDays === undefined
+          ? base.paymentDueDays
+          : Math.max(0, Math.floor(Number(input.paymentDueDays) || 0)),
+      deliveryFee:
+        input.deliveryFee === undefined
+          ? base.deliveryFee
+          : Math.max(0, Math.floor(Number(input.deliveryFee) || 0)),
+      chargeDeliveryFee:
+        input.chargeDeliveryFee === undefined
+          ? base.chargeDeliveryFee
+          : Boolean(input.chargeDeliveryFee),
+      memberBonusProductId:
+        input.memberBonusProductId === undefined
+          ? base.memberBonusProductId
+          : Math.floor(Number(input.memberBonusProductId)) > 0
+            ? Math.floor(Number(input.memberBonusProductId))
+            : null,
+      mileageEarnRate:
+        input.mileageEarnRate === undefined
+          ? base.mileageEarnRate
+          : Math.max(0, Math.floor(Number(input.mileageEarnRate) || 0)),
     });
 
     const saved = await this.configRepository.save(merged);
-    return this.mapSetting(saved);
+    return this.resolveBonusProductName(this.mapSetting(saved));
+  }
+
+  // 사은품 상품명을 조회해 응답에 채운다. 숨김(비노출) 상품도 이름을 노출하기 위해 active 조건은 두지 않는다.
+  private async resolveBonusProductName(
+    config: StoreConfig,
+  ): Promise<StoreConfig> {
+    if (!config.memberBonusProductId) {
+      return { ...config, memberBonusProductName: null };
+    }
+
+    const product = await this.productRepository.findOne({
+      where: { id: config.memberBonusProductId },
+      select: { name: true },
+    });
+
+    return { ...config, memberBonusProductName: product?.name ?? null };
   }
 
   private buildInitialSetting(): Partial<AppSettingEntity> {
@@ -77,6 +122,12 @@ export class ConfigService implements OnModuleInit {
       storyImages: this.parseJsonEnv<StoreStoryImage[]>('STORY_IMAGES', []),
       videoUrl: process.env.PRODUCT_VIDEO_URL ?? '',
       recipes: this.parseJsonEnv<StoreRecipe[]>('RECIPES', []),
+      paymentDueDays: Number(process.env.PAYMENT_DUE_DAYS ?? 0) || 0,
+      deliveryFee: Number(process.env.DELIVERY_FEE ?? 0) || 0,
+      chargeDeliveryFee: process.env.CHARGE_DELIVERY_FEE === 'true',
+      memberBonusProductId:
+        Number(process.env.MEMBER_BONUS_PRODUCT_ID ?? 0) || null,
+      mileageEarnRate: Number(process.env.MILEAGE_EARN_RATE ?? 0) || 0,
     };
   }
 
@@ -94,6 +145,12 @@ export class ConfigService implements OnModuleInit {
       storyImages: setting.storyImages as StoreStoryImage[],
       videoUrl: setting.videoUrl,
       recipes: setting.recipes as StoreRecipe[],
+      paymentDueDays: setting.paymentDueDays ?? 0,
+      deliveryFee: setting.deliveryFee ?? 0,
+      chargeDeliveryFee: setting.chargeDeliveryFee ?? false,
+      memberBonusProductId: setting.memberBonusProductId ?? null,
+      memberBonusProductName: null,
+      mileageEarnRate: setting.mileageEarnRate ?? 0,
     };
   }
 

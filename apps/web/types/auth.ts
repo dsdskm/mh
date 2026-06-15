@@ -58,6 +58,7 @@ export type SignupResponse = {
 
 export type UserProfileResponse = {
   profile: {
+    id: number;
     userId: string;
     name: string;
     phone: string;

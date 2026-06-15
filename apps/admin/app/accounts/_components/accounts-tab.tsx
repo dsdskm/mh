@@ -11,6 +11,7 @@ import {
   checkAdminUserIdApi,
   getAdminAccountShippingAddressesApi,
 } from "../../_lib/api";
+import { formatPhone } from "../../_lib/constants";
 import { PaginationControls } from "../../_components/pagination-controls";
 import { usePersistedPagination } from "../../_hooks/use-persisted-pagination";
 
@@ -64,6 +65,38 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
   const [detailAccount, setDetailAccount] = useState<AdminUser | null>(null);
   const [detailShipping, setDetailShipping] = useState<AdminShippingAddress[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // ── SMS popup state ────────────────────────────────────────────────────────
+  const [smsTargets, setSmsTargets] = useState<AdminUser[] | null>(null);
+  const [smsMessage, setSmsMessage] = useState("");
+
+  // ── 단체 문자용 선택 상태 ──────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  function toggleSelect(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function openSmsModal(targets: AdminUser[]) {
+    if (targets.length === 0) {
+      return;
+    }
+    setSmsTargets(targets);
+    setSmsMessage("");
+  }
+
+  function submitSms(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    // TODO: 문자 전송 이벤트 구현 예정 (단건/단체 공통)
+  }
 
   async function openDetail(acc: AdminUser) {
     setDetailAccount(acc);
@@ -302,17 +335,46 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
 
   const uniqueTypes = useMemo(() => [...new Set(accounts.map((a) => a.type))], [accounts]);
 
+  // 단체 문자: 전화번호가 있는 계정만 선택 가능
+  const selectablePageAccounts = paginatedAccounts.filter((acc) => acc.phone);
+  const allPageSelected =
+    selectablePageAccounts.length > 0 &&
+    selectablePageAccounts.every((acc) => selectedIds.has(acc.id));
+  const selectedSmsAccounts = accounts.filter((acc) => selectedIds.has(acc.id) && acc.phone);
+
+  function toggleSelectAllPage() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        selectablePageAccounts.forEach((acc) => next.delete(acc.id));
+      } else {
+        selectablePageAccounts.forEach((acc) => next.add(acc.id));
+      }
+      return next;
+    });
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-display text-3xl text-lime-800">계정관리</h2>
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white"
-        >
-          + 계정 생성
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => openSmsModal(selectedSmsAccounts)}
+            disabled={selectedSmsAccounts.length === 0}
+            className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-bold text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            단체 문자 전송{selectedSmsAccounts.length > 0 ? ` (${selectedSmsAccounts.length})` : ""}
+          </button>
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white"
+          >
+            + 계정 생성
+          </button>
+        </div>
       </div>
 
       {/* search & filter */}
@@ -350,22 +412,43 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
         <table className="w-full bg-white text-sm">
           <thead className="bg-stone-50 text-xs font-semibold text-stone-600">
             <tr>
+              <th className="px-3 py-2 text-left">
+                <input
+                  type="checkbox"
+                  checked={allPageSelected}
+                  onChange={toggleSelectAllPage}
+                  disabled={selectablePageAccounts.length === 0}
+                  aria-label="현재 페이지 전체 선택"
+                  className="h-4 w-4 cursor-pointer accent-sky-600"
+                />
+              </th>
               <th className="px-3 py-2 text-left">ID</th>
               <th className="px-3 py-2 text-left">이름</th>
               <th className="px-3 py-2 text-left">아이디</th>
               <th className="px-3 py-2 text-left">전화번호</th>
               <th className="px-3 py-2 text-left">상태</th>
               <th className="px-3 py-2 text-left">가입일</th>
+              <th className="px-3 py-2 text-left">문자</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100 bg-white">
             {filteredAccounts.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-stone-400">결과 없음</td>
+                <td colSpan={8} className="px-3 py-6 text-center text-stone-400">결과 없음</td>
               </tr>
             )}
             {paginatedAccounts.map((acc) => (
               <tr key={acc.id} className="hover:bg-stone-50 cursor-pointer" onClick={() => void openDetail(acc)}>
+                <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(acc.id)}
+                    onChange={() => toggleSelect(acc.id)}
+                    disabled={!acc.phone}
+                    aria-label={`${acc.displayName ?? acc.userId ?? acc.id} 선택`}
+                    className="h-4 w-4 cursor-pointer accent-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+                </td>
                 <td className="px-3 py-2 text-stone-500">#{acc.id}</td>
                 <td className="px-3 py-2 font-medium text-stone-900">{acc.displayName ?? "-"}</td>
                 <td className="px-3 py-2 text-stone-700">{acc.userId ?? "-"}</td>
@@ -380,6 +463,19 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
                   </span>
                 </td>
                 <td className="px-3 py-2 text-stone-500 text-xs">{acc.createdAt.slice(0, 10)}</td>
+                <td className="px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openSmsModal([acc]);
+                    }}
+                    disabled={!acc.phone}
+                    className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    문자 전송
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -395,6 +491,66 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
         onPageSizeChange={setPageSize}
         onPageChange={setCurrentPage}
       />
+
+      {/* SMS popup (단건/단체 공통) */}
+      {smsTargets && (
+        <div
+          className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4"
+          onClick={() => setSmsTargets(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold text-stone-900">
+              {smsTargets.length > 1 ? `단체 문자 전송 (${smsTargets.length}명)` : "문자 전송"}
+            </h3>
+            <form onSubmit={submitSms} className="mt-4 space-y-3">
+              <div className="rounded-xl bg-stone-50 p-3 text-sm text-stone-700">
+                <p className="text-xs font-semibold text-stone-500">받는 사람</p>
+                {smsTargets.length === 1 ? (
+                  <p className="mt-1">
+                    {smsTargets[0]!.displayName ?? smsTargets[0]!.userId ?? "이름없음"} · {smsTargets[0]!.phone ? formatPhone(smsTargets[0]!.phone!) : "번호 없음"}
+                  </p>
+                ) : (
+                  <div className="mt-1 max-h-28 overflow-y-auto">
+                    <p className="text-stone-800">{smsTargets.length}명에게 전송</p>
+                    <p className="mt-1 text-xs text-stone-500">
+                      {smsTargets
+                        .map((t) => t.displayName ?? t.userId ?? `#${t.id}`)
+                        .join(", ")}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-stone-600">메시지</label>
+                <textarea
+                  value={smsMessage}
+                  onChange={(e) => setSmsMessage(e.target.value)}
+                  placeholder="전송할 메시지를 입력하세요."
+                  className="h-32 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSmsTargets(null)}
+                  className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 rounded-xl bg-sky-600 px-3 py-2 text-sm font-bold text-white"
+                >
+                  전송
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* detail popup */}
       {detailAccount && (

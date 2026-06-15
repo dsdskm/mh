@@ -18,26 +18,36 @@ type UploadedAssetFile = {
 
 @Injectable()
 export class UploadService {
-  private readonly storage: Storage;
-  private readonly bucketName: string;
+  private storage: Storage | null = null;
+  private bucketName: string | null = null;
 
   constructor() {
+    // lazy init - 키 값이 없어도 앱은 정상 부팅되고, 업로드 호출 시점에 초기화한다.
+  }
+
+  // Storage 를 지연 초기화한다. 키 값이 없거나 잘못된 경우 호출 시점에 에러를 던진다.
+  private ensureStorage(): { storage: Storage; bucketName: string } {
+    if (this.storage && this.bucketName) {
+      return { storage: this.storage, bucketName: this.bucketName };
+    }
+
     const bucketName = process.env.FIREBASE_STORAGE_BUCKET?.trim();
     if (!bucketName) {
       throw new InternalServerErrorException(
         'FIREBASE_STORAGE_BUCKET 값이 필요합니다.',
       );
     }
-    this.bucketName = bucketName;
 
     const app =
       getApps()[0] ??
       initializeApp({
         credential: this.resolveCredential(),
-        storageBucket: this.bucketName,
+        storageBucket: bucketName,
       });
 
+    this.bucketName = bucketName;
     this.storage = getStorage(app);
+    return { storage: this.storage, bucketName };
   }
 
   async uploadAsset(
@@ -49,13 +59,15 @@ export class UploadService {
       throw new BadRequestException('업로드 파일이 필요합니다.');
     }
 
+    const { storage, bucketName } = this.ensureStorage();
+
     const extension = this.getExtension(file.originalname);
     const timestamp = Date.now();
     const objectPath =
       target === 'videos'
         ? `info/video/${timestamp}.${extension}`
         : `product/${this.normalizeProductId(productId)}/${timestamp}.${extension}`;
-    const bucket = this.storage.bucket(this.bucketName);
+    const bucket = storage.bucket(bucketName);
     const uploaded = bucket.file(objectPath);
 
     try {
@@ -85,7 +97,7 @@ export class UploadService {
       );
     }
 
-    return `https://storage.googleapis.com/${this.bucketName}/${objectPath}`;
+    return `https://storage.googleapis.com/${bucketName}/${objectPath}`;
   }
 
   private resolveCredential() {

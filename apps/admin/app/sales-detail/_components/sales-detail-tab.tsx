@@ -12,7 +12,7 @@ type Props = {
 };
 
 type SalesRow = {
-  orderId: string;
+  orderId: number;
   customerName: string;
   status: OrderStatus;
   productName: string;
@@ -141,7 +141,7 @@ export function SalesDetailTab({ orders }: Props) {
           return true;
         }
 
-        const haystack = [row.orderId, row.customerName, row.productName].join(" ").toLowerCase();
+        const haystack = [String(row.orderId), row.customerName, row.productName].join(" ").toLowerCase();
         return haystack.includes(q);
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -160,7 +160,7 @@ export function SalesDetailTab({ orders }: Props) {
         return sortDirection === "asc" ? aSubtotal - bSubtotal : bSubtotal - aSubtotal;
       }
 
-      const byOrderId = a.orderId.localeCompare(b.orderId, "ko", { numeric: true, sensitivity: "base" });
+      const byOrderId = a.orderId - b.orderId;
       if (byOrderId !== 0) {
         return sortDirection === "asc" ? byOrderId : -byOrderId;
       }

@@ -29,9 +29,9 @@ pnpm dev
 
 기본 주소:
 
-- 웹: http://localhost:3000
-- 관리자: http://localhost:3001
-- API: http://localhost:3002
+- API: http://localhost:9000
+- 웹: http://localhost:9001
+- 관리자: http://localhost:9002
 
 개별 실행:
 
@@ -83,14 +83,14 @@ pnpm dev:api
 - `DETAIL_DESCRIPTION`, `STORY_IMAGES`, `PRODUCT_VIDEO_URL`, `RECIPES`: 상품 상세/영상/레시피 데이터
 - `ADMIN_KEY`: 관리자 API 키
 - `NEXT_PUBLIC_API_BASE_URL`: 웹/관리자에서 호출할 API 주소
-- `NEXTAUTH_URL`: 웹 앱 주소(로컬 개발은 `http://localhost:3000`)
+- `NEXTAUTH_URL`: 웹 앱 주소(로컬 개발은 `http://localhost:9001`)
 - `NEXTAUTH_SECRET`: NextAuth 세션 암호화 시크릿
 - `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET`: 카카오 로그인 앱 키
 
 카카오 디벨로퍼 설정:
 
-- 플랫폼 Web: `http://localhost:3000`
-- Redirect URI: `http://localhost:3000/api/auth/callback/kakao`
+- 플랫폼 Web: `http://localhost:9001`
+- Redirect URI: `http://localhost:9001/api/auth/callback/kakao`
 
 ## 검증 명령어
 

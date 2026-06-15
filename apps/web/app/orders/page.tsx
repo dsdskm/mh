@@ -14,10 +14,14 @@ import {
 import type { OrderStatus } from "@repo/shared-types/order";
 
 type Order = {
-  id: string;
+  id: number;
   status: OrderStatus;
   cancelReason?: string | null;
   totalAmount: number;
+  deliveryFee?: number;
+  couponDiscount?: number;
+  mileageUsed?: number;
+  mileageEarned?: number;
   depositorName: string;
   phone: string;
   shippingAddress?: string;
@@ -30,12 +34,76 @@ type Order = {
     subtotal: number;
   }>;
   createdAt: string;
+  paymentDueAt?: string | null;
+  statusHistory?: Array<{ status: OrderStatus; at: string }>;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3002";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:9000";
 const GUEST_LOOKUP_PHONE_KEY = "cornmarket:guest-lookup-phone";
 const GUEST_LOOKUP_TOKEN_KEY = "cornmarket:guest-lookup-token";
 const STATUS_FLOW: Order["status"][] = ORDER_STATUS_FLOW;
+
+// 전체 상태 흐름을 가로로 표시하고, 처리되지 않은 단계는 흐릿하게 표시
+function renderStatusTimeline(order: Order) {
+  if (!order.statusHistory || order.statusHistory.length === 0) {
+    return null;
+  }
+
+  const atByStatus = new Map<string, string>();
+  for (const entry of order.statusHistory) {
+    if (!atByStatus.has(entry.status)) {
+      atByStatus.set(entry.status, entry.at);
+    }
+  }
+
+  const steps: { status: OrderStatus; at: string | null; done: boolean }[] =
+    ORDER_STATUS_FLOW.map((status) => ({
+      status,
+      at: atByStatus.get(status) ?? null,
+      done: atByStatus.has(status),
+    }));
+  for (const cancelStatus of [ORDER_STATUS.CANCEL_REQUESTED, ORDER_STATUS.CANCEL_COMPLETED] as OrderStatus[]) {
+    if (atByStatus.has(cancelStatus)) {
+      steps.push({ status: cancelStatus, at: atByStatus.get(cancelStatus)!, done: true });
+    }
+  }
+
+  return (
+    <div className="mb-2 mt-2 rounded-xl bg-stone-50 p-2">
+      <p className="text-xs font-semibold text-stone-500">상태 처리 이력</p>
+      <ol className="mt-1 flex items-start gap-1 overflow-x-auto pb-1">
+        {steps.map((step, idx) => {
+          const d = step.at ? new Date(step.at) : null;
+          const isCancel =
+            step.status === ORDER_STATUS.CANCEL_REQUESTED || step.status === ORDER_STATUS.CANCEL_COMPLETED;
+          return (
+            <li key={idx} className="flex items-start gap-1">
+              <div className={`flex min-w-[80px] flex-col items-center text-center ${step.done ? "" : "opacity-40"}`}>
+                <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  step.done ? (isCancel ? "bg-red-100 text-red-700" : "bg-lime-100 text-lime-800") : "bg-stone-100 text-stone-400"
+                }`}>
+                  {getOrderStatusLabelKo(step.status)}
+                </span>
+                <span className="mt-1 text-[10px] leading-tight text-stone-500">
+                  {d ? (
+                    <>
+                      {d.toLocaleDateString()}
+                      <br />
+                      {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </>
+                  ) : (
+                    "-"
+                  )}
+                </span>
+              </div>
+              {idx < steps.length - 1 && <span className="mt-1.5 shrink-0 text-stone-400">→</span>}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
 
 export default function OrdersPage() {
   const router = useRouter();
@@ -56,7 +124,7 @@ export default function OrdersPage() {
   const [memberOrders, setMemberOrders] = useState<Order[]>([]);
   const [memberLoading, setMemberLoading] = useState(false);
   const [memberError, setMemberError] = useState<string | null>(null);
-  const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
+  const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
@@ -430,8 +498,21 @@ export default function OrdersPage() {
                   )}
                 </div>
               </div>
+              {renderStatusTimeline(order)}
               <p className="text-sm text-stone-700">입금자명: {order.depositorName}</p>
               <p className="text-sm text-stone-700">연락처: {formatPhone(order.phone)}</p>
+              {order.deliveryFee != null && order.deliveryFee > 0 && (
+                <p className="text-sm text-stone-700">배송료: {formatCurrency(order.deliveryFee)}</p>
+              )}
+              {order.couponDiscount != null && order.couponDiscount > 0 && (
+                <p className="text-sm text-lime-700">쿠폰 할인: -{formatCurrency(order.couponDiscount)}</p>
+              )}
+              {order.mileageUsed != null && order.mileageUsed > 0 && (
+                <p className="text-sm text-lime-700">적립금 사용: -{formatCurrency(order.mileageUsed)}</p>
+              )}
+              {order.mileageEarned != null && order.mileageEarned > 0 && (
+                <p className="text-sm text-lime-700">적립금 적립: {formatCurrency(order.mileageEarned)}</p>
+              )}
               <p className="text-sm text-stone-700">주문금액: {formatCurrency(order.totalAmount)}</p>
               <p className="text-sm text-stone-700">배송지: {order.shippingAddress || "-"}</p>
               <p className="text-sm text-stone-700">요청사항: {order.requestNote?.trim() ? order.requestNote : "없음"}</p>
@@ -450,6 +531,11 @@ export default function OrdersPage() {
               )}
               <p className="mt-2 text-xs text-stone-500">주문일시: {new Date(order.createdAt).toLocaleString()}</p>
               <p className="mt-2 text-base font-bold text-lime-800">현재 상태: {getOrderStatusLabelKo(order.status)}</p>
+              {order.status === ORDER_STATUS.RECEIVED && order.paymentDueAt && (
+                <p className="mt-1 rounded-xl bg-rose-50 p-2 text-xs font-semibold text-rose-700">
+                  입금 기한: {new Date(order.paymentDueAt).toLocaleString()} 까지 (미입금 시 자동 취소)
+                </p>
+              )}
               {(order.status === ORDER_STATUS.CANCEL_REQUESTED || order.status === ORDER_STATUS.CANCEL_COMPLETED) && order.cancelReason && (
                 <p className="mt-2 rounded-xl bg-red-50 p-2 text-xs text-red-700">
                   취소 사유: {order.cancelReason}
@@ -523,8 +609,21 @@ export default function OrdersPage() {
                   )}
                 </div>
               </div>
+              {renderStatusTimeline(order)}
               <p className="text-sm text-stone-700">입금자명: {order.depositorName}</p>
               <p className="text-sm text-stone-700">연락처: {formatPhone(order.phone)}</p>
+              {order.deliveryFee != null && order.deliveryFee > 0 && (
+                <p className="text-sm text-stone-700">배송료: {formatCurrency(order.deliveryFee)}</p>
+              )}
+              {order.couponDiscount != null && order.couponDiscount > 0 && (
+                <p className="text-sm text-lime-700">쿠폰 할인: -{formatCurrency(order.couponDiscount)}</p>
+              )}
+              {order.mileageUsed != null && order.mileageUsed > 0 && (
+                <p className="text-sm text-lime-700">적립금 사용: -{formatCurrency(order.mileageUsed)}</p>
+              )}
+              {order.mileageEarned != null && order.mileageEarned > 0 && (
+                <p className="text-sm text-lime-700">적립금 적립: {formatCurrency(order.mileageEarned)}</p>
+              )}
               <p className="text-sm text-stone-700">주문금액: {formatCurrency(order.totalAmount)}</p>
               <p className="text-sm text-stone-700">배송지: {order.shippingAddress || "-"}</p>
               <p className="text-sm text-stone-700">요청사항: {order.requestNote?.trim() ? order.requestNote : "없음"}</p>
@@ -543,6 +642,11 @@ export default function OrdersPage() {
               )}
               <p className="mt-2 text-xs text-stone-500">주문일시: {new Date(order.createdAt).toLocaleString()}</p>
               <p className="mt-2 text-base font-bold text-lime-800">현재 상태: {getOrderStatusLabelKo(order.status)}</p>
+              {order.status === ORDER_STATUS.RECEIVED && order.paymentDueAt && (
+                <p className="mt-1 rounded-xl bg-rose-50 p-2 text-xs font-semibold text-rose-700">
+                  입금 기한: {new Date(order.paymentDueAt).toLocaleString()} 까지 (미입금 시 자동 취소)
+                </p>
+              )}
               {(order.status === ORDER_STATUS.CANCEL_REQUESTED || order.status === ORDER_STATUS.CANCEL_COMPLETED) && order.cancelReason && (
                 <p className="mt-2 rounded-xl bg-red-50 p-2 text-xs text-red-700">
                   취소 사유: {order.cancelReason}

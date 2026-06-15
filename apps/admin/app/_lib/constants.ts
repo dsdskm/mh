@@ -1,7 +1,7 @@
 import { AdminTab, OrderStatus } from "./types";
 import { ORDER_STATUS_LABELS_KO, ORDER_STATUS_OPTIONS, getOrderStatusLabelKo } from "@repo/shared-types/order";
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3002";
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:9000";
 
 export const TABS: AdminTab[] = [
   "주문내역",
@@ -13,6 +13,7 @@ export const TABS: AdminTab[] = [
   "문의내역",
   "후기",
   "계정관리",
+  "쿠폰·적립금",
 ];
 
 export const TAB_QUERY_KEY_BY_LABEL: Record<AdminTab, string> = {
@@ -24,6 +25,7 @@ export const TAB_QUERY_KEY_BY_LABEL: Record<AdminTab, string> = {
   문의내역: "inquiries",
   후기: "reviews",
   계정관리: "accounts",
+  "쿠폰·적립금": "rewards",
 };
 
 export const TAB_ROUTE_BY_LABEL: Record<AdminTab, string> = {
@@ -35,6 +37,7 @@ export const TAB_ROUTE_BY_LABEL: Record<AdminTab, string> = {
   문의내역: "/inquiries",
   후기: "/reviews",
   계정관리: "/accounts",
+  "쿠폰·적립금": "/rewards",
 };
 
 const TAB_LABEL_BY_QUERY_KEY: Record<string, AdminTab> = Object.entries(TAB_QUERY_KEY_BY_LABEL).reduce(

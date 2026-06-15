@@ -29,7 +29,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors();
 
-  const port = Number(process.env.PORT ?? 3002);
+  const port = Number(process.env.PORT ?? 9000);
   const maxRetries = 8;
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {

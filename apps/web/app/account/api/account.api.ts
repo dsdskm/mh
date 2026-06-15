@@ -5,8 +5,10 @@ import type {
   UserProfileResponse,
   WithdrawPayload,
 } from "../../../types/auth";
+import type { Coupon } from "@repo/shared-types/coupon";
+import type { MileageSummary } from "@repo/shared-types/mileage";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3002";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:9000";
 
 type ApiErrorBody = {
   message?: string;
@@ -60,5 +62,31 @@ export function saveShippingAddressApi(
     "/api/auth/shipping-addresses/save",
     payload,
     "배송지 저장에 실패했습니다.",
+  );
+}
+
+async function getJson<TResponse>(
+  path: string,
+  fallbackMessage: string,
+): Promise<TResponse> {
+  const response = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(body.message ?? fallbackMessage);
+  }
+  return (await response.json()) as TResponse;
+}
+
+export function getMyCouponsApi(accountId: number): Promise<Coupon[]> {
+  return getJson<Coupon[]>(
+    `/api/coupons?accountId=${accountId}`,
+    "쿠폰을 불러오지 못했습니다.",
+  );
+}
+
+export function getMyMileageApi(accountId: number): Promise<MileageSummary> {
+  return getJson<MileageSummary>(
+    `/api/mileage?accountId=${accountId}`,
+    "적립금을 불러오지 못했습니다.",
   );
 }
