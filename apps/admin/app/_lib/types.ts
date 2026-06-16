@@ -7,12 +7,26 @@ import type {
 } from "@repo/shared-types/user";
 import type { OrderStatus } from "@repo/shared-types/order";
 import type { Notice } from "@repo/shared-types/notice";
-import type { Coupon, CouponDiscountType, IssueCouponInput } from "@repo/shared-types/coupon";
+import type {
+  Coupon,
+  CouponDiscountType,
+  CouponTemplate,
+  CreateCouponTemplateInput,
+  IssueCouponByTemplateInput,
+  IssueCouponInput,
+} from "@repo/shared-types/coupon";
 import type { MileageTransaction, MileageSummary } from "@repo/shared-types/mileage";
 
 export type { OrderStatus };
 export type { Notice };
-export type { Coupon, CouponDiscountType, IssueCouponInput };
+export type {
+  Coupon,
+  CouponDiscountType,
+  CouponTemplate,
+  CreateCouponTemplateInput,
+  IssueCouponByTemplateInput,
+  IssueCouponInput,
+};
 export type { MileageTransaction, MileageSummary };
 
 export type AdminUser = SharedUser;

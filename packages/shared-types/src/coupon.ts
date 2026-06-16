@@ -33,3 +33,28 @@ export type IssueCouponInput = {
   maxDiscountAmount?: number | null;
   validUntil?: string | null;
 };
+
+export type CouponTemplate = {
+  id: number;
+  name: string;
+  discountType: CouponDiscountType;
+  discountValue: number;
+  minOrderAmount: number;
+  maxDiscountAmount: number | null;
+  validUntil: string | null;
+  createdAt: string;
+};
+
+export type CreateCouponTemplateInput = {
+  name: string;
+  discountType: CouponDiscountType;
+  discountValue: number;
+  minOrderAmount?: number;
+  maxDiscountAmount?: number | null;
+  validUntil?: string | null;
+};
+
+export type IssueCouponByTemplateInput = {
+  couponTemplateId: number;
+  accountIds: number[] | "all";
+};

@@ -339,7 +339,10 @@ export default function AccountPage() {
         {success && <p className="mt-3 rounded-xl bg-lime-50 p-3 text-sm text-lime-800">{success}</p>}
       </section>
 
-      <section className="rounded-2xl border border-lime-200 bg-white p-4 shadow-sm sm:p-5">
+      <section
+        id="coupon-mileage"
+        className="rounded-2xl border border-lime-200 bg-white p-4 shadow-sm sm:p-5"
+      >
         <h2 className="text-xl font-bold text-lime-800">내 쿠폰 / 적립금</h2>
 
         <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3">

@@ -1910,6 +1910,13 @@ export default function Home() {
               {isLoggedIn && (
                 <>
                   <Link
+                    href="/account#coupon-mileage"
+                    onClick={() => setShowMenuDrawer(false)}
+                    className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+                  >
+                    쿠폰/마일리지
+                  </Link>
+                  <Link
                     href="/account/shipping"
                     onClick={() => setShowMenuDrawer(false)}
                     className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"

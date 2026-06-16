@@ -17,10 +17,12 @@ import {
   updateOrderStatusApi,
   updateProductApi,
   listCouponsApi,
+  listCouponTemplatesApi,
+  createCouponTemplateApi,
   issueCouponApi,
+  issueCouponByTemplateApi,
   revokeCouponApi,
   getAccountMileageApi,
-  adjustAccountMileageApi,
 } from "../_lib/api";
 import { useFirestoreTriggers } from "./use-firestore-triggers";
 import {
@@ -38,6 +40,9 @@ import {
   Review,
   StoreConfig,
   Coupon,
+  CouponTemplate,
+  CreateCouponTemplateInput,
+  IssueCouponByTemplateInput,
   IssueCouponInput,
   MileageSummary,
 } from "../_lib/types";
@@ -144,16 +149,14 @@ export type AdminPageState = {
   deleteAccount: (id: number) => Promise<void>;
   // 쿠폰 · 적립금
   coupons: Coupon[];
+  couponTemplates: CouponTemplate[];
   mileageEarnRate: string;
   setMileageEarnRate: (value: string) => void;
+  createCouponTemplate: (input: CreateCouponTemplateInput) => Promise<boolean>;
+  issueCouponByTemplate: (input: IssueCouponByTemplateInput) => Promise<boolean>;
   issueCoupon: (input: IssueCouponInput) => Promise<boolean>;
   revokeCoupon: (id: number) => Promise<void>;
   getAccountMileage: (accountId: number) => Promise<MileageSummary | null>;
-  adjustMileage: (
-    accountId: number,
-    amount: number,
-    reason?: string,
-  ) => Promise<MileageSummary | null>;
 };
 
 export function useAdminPage(initialTab: AdminTab): AdminPageState {
@@ -203,6 +206,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   const [configSaved, setConfigSaved] = useState(false);
 
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [couponTemplates, setCouponTemplates] = useState<CouponTemplate[]>([]);
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -253,7 +257,12 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         setMileageEarnRate(String(data.config.mileageEarnRate ?? 0));
 
         try {
-          setCoupons(await listCouponsApi());
+          const [couponRows, templateRows] = await Promise.all([
+            listCouponsApi(),
+            listCouponTemplatesApi(),
+          ]);
+          setCoupons(couponRows);
+          setCouponTemplates(templateRows);
         } catch {
           // 쿠폰 목록 로드 실패는 조용히 무시
         }
@@ -549,6 +558,38 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     }
   }
 
+  async function createCouponTemplate(
+    input: CreateCouponTemplateInput,
+  ): Promise<boolean> {
+    setError(null);
+    setNotice(null);
+    try {
+      const created = await createCouponTemplateApi(input);
+      setCouponTemplates((prev) => [created, ...prev]);
+      setNotice("쿠폰을 생성했습니다.");
+      return true;
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "쿠폰 생성에 실패했습니다.");
+      return false;
+    }
+  }
+
+  async function issueCouponByTemplate(
+    input: IssueCouponByTemplateInput,
+  ): Promise<boolean> {
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await issueCouponByTemplateApi(input);
+      setCoupons(await listCouponsApi());
+      setNotice(`쿠폰 ${result.issued}건을 발급했습니다.`);
+      return true;
+    } catch (issueError) {
+      setError(issueError instanceof Error ? issueError.message : "쿠폰 발급에 실패했습니다.");
+      return false;
+    }
+  }
+
   async function issueCoupon(input: IssueCouponInput): Promise<boolean> {
     setError(null);
     setNotice(null);
@@ -596,23 +637,6 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     }
   }
 
-  async function adjustMileage(
-    accountId: number,
-    amount: number,
-    reason?: string,
-  ): Promise<MileageSummary | null> {
-    setError(null);
-    setNotice(null);
-    try {
-      const summary = await adjustAccountMileageApi(accountId, amount, reason);
-      setNotice(amount > 0 ? "적립금을 지급했습니다." : "적립금을 차감했습니다.");
-      return summary;
-    } catch (adjustError) {
-      setError(adjustError instanceof Error ? adjustError.message : "적립금 조정에 실패했습니다.");
-      return null;
-    }
-  }
-
   return {
     isAuthed,
     loginUserId,
@@ -655,11 +679,13 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     mileageEarnRate,
     configSaved,
     coupons,
+    couponTemplates,
     setMileageEarnRate,
+    createCouponTemplate,
+    issueCouponByTemplate,
     issueCoupon,
     revokeCoupon,
     getAccountMileage,
-    adjustMileage,
     setLoginUserId,
     setLoginPassword,
     setActiveTab,
