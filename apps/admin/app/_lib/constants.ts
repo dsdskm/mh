@@ -6,6 +6,7 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhos
 export const TABS: AdminTab[] = [
   "주문내역",
   "기본정보",
+  "약관관리",
   "공지사항",
   "매출 상세",
 
@@ -21,6 +22,7 @@ export const TAB_QUERY_KEY_BY_LABEL: Record<AdminTab, string> = {
   공지사항: "notices",
   "매출 상세": "sales-detail",
   기본정보: "settings",
+  약관관리: "terms",
   상품관리: "products",
   문의내역: "inquiries",
   후기: "reviews",
@@ -33,6 +35,7 @@ export const TAB_ROUTE_BY_LABEL: Record<AdminTab, string> = {
   공지사항: "/notices",
   "매출 상세": "/sales-detail",
   기본정보: "/settings",
+  약관관리: "/terms",
   상품관리: "/products",
   문의내역: "/inquiries",
   후기: "/reviews",

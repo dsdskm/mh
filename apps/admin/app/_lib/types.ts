@@ -150,6 +150,17 @@ export type AdminNotification = {
   url: string;
 };
 
+export type StoreRecipeStep = {
+  description: string;
+  imageUrl: string;
+};
+
+export type StoreRecipe = {
+  title: string;
+  ingredients: string[];
+  steps: StoreRecipeStep[];
+};
+
 export type StoreConfig = {
   shopName: string;
   sellerName: string;
@@ -162,7 +173,15 @@ export type StoreConfig = {
   detailDescription: string;
   storyImages: Array<{ title: string; imageUrl: string }>;
   videoUrl: string;
-  recipes: Array<{ title: string; ingredients: string[]; steps: string[] }>;
+  termsUrl: string;
+  termsVersion: string;
+  termsUpdatedAt: string | null;
+  termsHistory: Array<{
+    termsUrl: string;
+    termsVersion: string;
+    termsUpdatedAt: string;
+  }>;
+  recipes: StoreRecipe[];
   paymentDueDays: number;
   deliveryFee: number;
   chargeDeliveryFee: boolean;
@@ -177,6 +196,7 @@ export type AdminTab =
   | "공지사항"
   | "매출 상세"
   | "기본정보"
+  | "약관관리"
   | "상품관리"
   | "문의내역"
   | "후기"

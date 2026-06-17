@@ -65,6 +65,9 @@ type StoreConfig = {
     imageUrl: string;
   }>;
   videoUrl: string;
+  termsUrl: string;
+  termsVersion: string;
+  termsUpdatedAt: string | null;
   recipes: Array<{
     title: string;
     ingredients: string[];
@@ -114,6 +117,7 @@ function isOperatorAuthor(name: string): boolean {
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:9000";
 const MEMBER_PHONE_KEY = "cornmarket:member-phone";
 const NOTICE_DISMISS_KEY_PREFIX = "cornmarket:notice:dismissed:";
+const TERMS_SEEN_VERSION_KEY = "cornmarket:terms:seen-version";
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -133,6 +137,9 @@ export default function Home() {
     detailDescription: "",
     storyImages: [],
     videoUrl: "",
+    termsUrl: "",
+    termsVersion: "",
+    termsUpdatedAt: null,
     recipes: [],
     paymentDueDays: 0,
     deliveryFee: 0,
@@ -180,6 +187,7 @@ export default function Home() {
   const [activePopupNotice, setActivePopupNotice] = useState<Notice | null>(null);
   const [dismissPopupChecked, setDismissPopupChecked] = useState(false);
   const [showOrderConfirmModal, setShowOrderConfirmModal] = useState(false);
+  const [showTermsUpdateModal, setShowTermsUpdateModal] = useState(false);
   const [postcodeReady, setPostcodeReady] = useState(false);
   const [guestAddressBase, setGuestAddressBase] = useState("");
   const [guestAddressDetail, setGuestAddressDetail] = useState("");
@@ -302,6 +310,23 @@ export default function Home() {
     void loadPopupNotices();
   }, []);
 
+  useEffect(() => {
+    if (!storeConfig.termsUrl || !storeConfig.termsVersion) {
+      setShowTermsUpdateModal(false);
+      return;
+    }
+
+    const seenVersion = localStorage.getItem(TERMS_SEEN_VERSION_KEY);
+    if (!seenVersion) {
+      localStorage.setItem(TERMS_SEEN_VERSION_KEY, storeConfig.termsVersion);
+      return;
+    }
+
+    if (seenVersion !== storeConfig.termsVersion) {
+      setShowTermsUpdateModal(true);
+    }
+  }, [storeConfig.termsUrl, storeConfig.termsVersion]);
+
   function dismissNoticeForThisDevice() {
     if (!activePopupNotice) {
       return;
@@ -320,6 +345,13 @@ export default function Home() {
 
     setActivePopupNotice(null);
     setDismissPopupChecked(false);
+  }
+
+  function closeTermsUpdateModal() {
+    if (storeConfig.termsVersion) {
+      localStorage.setItem(TERMS_SEEN_VERSION_KEY, storeConfig.termsVersion);
+    }
+    setShowTermsUpdateModal(false);
   }
 
   const cartItems = useMemo(() => {
@@ -1082,9 +1114,18 @@ export default function Home() {
                   </div>
                   <div>
                     <p className="font-semibold text-stone-900">조리순서</p>
-                    <ol className="mt-2 list-decimal space-y-1 pl-5">
-                      {recipe.steps.map((step) => (
-                        <li key={step}>{step}</li>
+                    <ol className="mt-2 list-decimal space-y-4 pl-5">
+                      {recipe.steps.map((step, idx) => (
+                        <li key={idx} className="space-y-2">
+                          <p>{step.description}</p>
+                          {step.imageUrl && (
+                            <img
+                              src={step.imageUrl}
+                              alt={`${recipe.title} ${idx + 1}단계`}
+                              className="w-full rounded-lg border border-stone-200 object-cover"
+                            />
+                          )}
+                        </li>
                       ))}
                     </ol>
                   </div>
@@ -1244,22 +1285,34 @@ export default function Home() {
         </div>
       </div>
 
-      <footer className="border-t border-stone-200 bg-stone-50/95 px-3 py-4 text-stone-700 sm:px-4">
+      <footer className="border-t border-amber-200/80 bg-gradient-to-b from-amber-50/80 to-white px-3 py-5 text-stone-700 sm:px-4 sm:py-6">
         <div className="mx-auto w-full max-w-3xl space-y-3">
-          <div className="grid grid-cols-1 gap-1 text-[11px] leading-5 sm:grid-cols-3 sm:gap-2 sm:text-xs">
-            <p>
-              <span className="font-semibold text-stone-900">판매자</span> {storeConfig.sellerName || "-"}
-            </p>
-            <p>
-              <span className="font-semibold text-stone-900">연락처</span>{" "}
-              {storeConfig.sellerPhone ? formatPhone(storeConfig.sellerPhone) : "-"}
-            </p>
-            <p>
-              <span className="font-semibold text-stone-900">원산지</span> {storeConfig.origin || "-"}
-            </p>
+          <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm shadow-amber-900/5">
+            <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-amber-700">사업자 정보</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div className="rounded-xl bg-amber-50 px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">판매자</p>
+                <p className="mt-1 text-sm font-semibold text-stone-900">{storeConfig.sellerName || "-"}</p>
+              </div>
+              <div className="rounded-xl bg-lime-50 px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-lime-800">연락처</p>
+                <p className="mt-1 text-sm font-semibold text-stone-900">
+                  {storeConfig.sellerPhone ? formatPhone(storeConfig.sellerPhone) : "-"}
+                </p>
+              </div>
+              <div className="rounded-xl bg-stone-100 px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-stone-700">원산지</p>
+                <p className="mt-1 text-sm font-semibold text-stone-900">{storeConfig.origin || "-"}</p>
+              </div>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
-            <Link href="/privacy" className="rounded-full border border-stone-300 bg-white px-3 py-1.5">
+            {storeConfig.termsUrl && (
+              <Link href="/terms" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 font-semibold hover:bg-stone-100">
+                이용약관
+              </Link>
+            )}
+            <Link href="/privacy" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 font-semibold hover:bg-stone-100">
               개인정보처리방침
             </Link>
           </div>
@@ -1899,6 +1952,15 @@ export default function Home() {
               >
                 문의하기
               </button>
+              {storeConfig.termsUrl && (
+                <Link
+                  href="/terms"
+                  onClick={() => setShowMenuDrawer(false)}
+                  className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+                >
+                  이용약관
+                </Link>
+              )}
               <Link
                 href="/policy"
                 onClick={() => setShowMenuDrawer(false)}
@@ -1964,6 +2026,43 @@ export default function Home() {
               >
                 확인
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTermsUpdateModal && storeConfig.termsUrl && (
+        <div
+          className="fixed inset-0 z-[72] flex items-center justify-center bg-black/50 p-4"
+          onClick={closeTermsUpdateModal}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl border border-lime-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="text-xs font-bold uppercase tracking-wide text-lime-700">약관 변경 안내</p>
+            <h3 className="mt-2 text-xl font-bold text-stone-900">이용약관이 업데이트되었습니다</h3>
+            {storeConfig.termsUpdatedAt && (
+              <p className="mt-1 text-xs text-stone-500">
+                변경 시각: {new Date(storeConfig.termsUpdatedAt).toLocaleString("ko-KR")}
+              </p>
+            )}
+            <p className="mt-3 text-sm text-stone-700">서비스 이용 전 최신 이용약관을 확인해주세요.</p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={closeTermsUpdateModal}
+                className="flex-1 rounded-xl border border-stone-300 px-4 py-2 text-sm font-bold text-stone-700"
+              >
+                나중에 보기
+              </button>
+              <Link
+                href="/terms"
+                onClick={closeTermsUpdateModal}
+                className="flex-1 rounded-xl bg-lime-600 px-4 py-2 text-center text-sm font-bold text-white"
+              >
+                약관 보기
+              </Link>
             </div>
           </div>
         </div>

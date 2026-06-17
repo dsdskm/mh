@@ -82,6 +82,7 @@ export type AdminPageState = {
   transferNote: string;
   detailDescription: string;
   videoUrl: string;
+  termsUrl: string;
   paymentDueDays: string;
   deliveryFee: string;
   chargeDeliveryFee: boolean;
@@ -108,6 +109,7 @@ export type AdminPageState = {
   setTransferNote: (value: string) => void;
   setDetailDescription: (value: string) => void;
   setVideoUrl: (value: string) => void;
+  setTermsUrl: (value: string) => void;
   setPaymentDueDays: (value: string) => void;
   setDeliveryFee: (value: string) => void;
   setChargeDeliveryFee: (value: boolean) => void;
@@ -142,7 +144,10 @@ export type AdminPageState = {
   deleteProduct: (id: number) => Promise<void>;
   saveConfig: (
     event: FormEvent<HTMLFormElement>,
-    overrides?: Partial<Pick<StoreConfig, "videoUrl">>,
+    overrides?: Partial<Pick<StoreConfig, "videoUrl" | "termsUrl">>,
+  ) => Promise<boolean>;
+  saveConfigDirect: (
+    overrides?: Partial<Pick<StoreConfig, "videoUrl" | "termsUrl">>,
   ) => Promise<boolean>;
   createAccount: (payload: AdminUserCreatePayload) => Promise<void>;
   updateAccount: (id: number, payload: AdminUserUpdatePayload) => Promise<void>;
@@ -198,6 +203,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   const [transferNote, setTransferNote] = useState("");
   const [detailDescription, setDetailDescription] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
+  const [termsUrl, setTermsUrl] = useState("");
   const [paymentDueDays, setPaymentDueDays] = useState("0");
   const [deliveryFee, setDeliveryFee] = useState("0");
   const [chargeDeliveryFee, setChargeDeliveryFee] = useState(false);
@@ -250,6 +256,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         setTransferNote(data.config.transferNote ?? "");
         setDetailDescription(data.config.detailDescription ?? "");
         setVideoUrl(data.config.videoUrl ?? "");
+        setTermsUrl(data.config.termsUrl ?? "");
         setPaymentDueDays(String(data.config.paymentDueDays ?? 0));
         setDeliveryFee(String(data.config.deliveryFee ?? 0));
         setChargeDeliveryFee(Boolean(data.config.chargeDeliveryFee));
@@ -476,9 +483,16 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
 
   async function saveConfig(
     event: FormEvent<HTMLFormElement>,
-    overrides?: Partial<Pick<StoreConfig, "videoUrl">>,
+    overrides?: Partial<Pick<StoreConfig, "videoUrl" | "termsUrl">>,
   ): Promise<boolean> {
     event.preventDefault();
+
+    return saveConfigDirect(overrides);
+  }
+
+  async function saveConfigDirect(
+    overrides?: Partial<Pick<StoreConfig, "videoUrl" | "termsUrl">>,
+  ): Promise<boolean> {
 
     if (!config) {
       return false;
@@ -497,6 +511,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         transferNote,
         detailDescription,
         videoUrl: overrides?.videoUrl ?? videoUrl,
+        termsUrl: overrides?.termsUrl ?? termsUrl,
         paymentDueDays: Math.max(0, Math.floor(Number(paymentDueDays) || 0)),
         deliveryFee: Math.max(0, Math.floor(Number(deliveryFee) || 0)),
         chargeDeliveryFee,
@@ -505,6 +520,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
       });
 
       setConfig(saved);
+      setTermsUrl(saved.termsUrl ?? "");
       setPaymentDueDays(String(saved.paymentDueDays ?? 0));
       setDeliveryFee(String(saved.deliveryFee ?? 0));
       setChargeDeliveryFee(Boolean(saved.chargeDeliveryFee));
@@ -672,6 +688,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     transferNote,
     detailDescription,
     videoUrl,
+    termsUrl,
     paymentDueDays,
     deliveryFee,
     chargeDeliveryFee,
@@ -707,6 +724,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setTransferNote,
     setDetailDescription,
     setVideoUrl,
+    setTermsUrl,
     setPaymentDueDays,
     setDeliveryFee,
     setChargeDeliveryFee,
@@ -722,6 +740,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     updateProduct,
     deleteProduct,
     saveConfig,
+    saveConfigDirect,
     createAccount,
     updateAccount,
     deleteAccount,

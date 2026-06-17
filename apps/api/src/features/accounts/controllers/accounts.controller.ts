@@ -40,8 +40,10 @@ export class AccountsController {
     @Body('productId') productId?: string,
   ) {
     const target = (targetRaw ?? '').trim().toLowerCase();
-    if (target !== 'products' && target !== 'videos') {
-      throw new BadRequestException('target은 products 또는 videos 여야 합니다.');
+    if (target !== 'products' && target !== 'videos' && target !== 'terms' && target !== 'recipes') {
+      throw new BadRequestException(
+        'target은 products, videos, terms 또는 recipes 여야 합니다.',
+      );
     }
 
     const url = await this.uploadService.uploadAsset(file, target, productId);

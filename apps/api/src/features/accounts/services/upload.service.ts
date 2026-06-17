@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getStorage, Storage } from 'firebase-admin/storage';
 
-type UploadTarget = 'products' | 'videos';
+type UploadTarget = 'products' | 'videos' | 'terms' | 'recipes';
 
 type UploadedAssetFile = {
   buffer: Buffer;
@@ -66,7 +66,11 @@ export class UploadService {
     const objectPath =
       target === 'videos'
         ? `info/video/${timestamp}.${extension}`
-        : `product/${this.normalizeProductId(productId)}/${timestamp}.${extension}`;
+        : target === 'terms'
+          ? `info/terms/${timestamp}.${extension}`
+          : target === 'recipes'
+            ? `info/recipes/${timestamp}.${extension}`
+            : `product/${this.normalizeProductId(productId)}/${timestamp}.${extension}`;
     const bucket = storage.bucket(bucketName);
     const uploaded = bucket.file(objectPath);
 

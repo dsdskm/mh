@@ -8,6 +8,7 @@ import {
   StoreConfig,
   StoreRecipe,
   StoreStoryImage,
+  StoreTermsHistoryItem,
 } from '../../../shared/store.types';
 
 @Injectable()
@@ -50,6 +51,19 @@ export class ConfigService implements OnModuleInit {
     const base = existing
       ? existing
       : this.configRepository.create(this.buildInitialSetting());
+    const nextTermsUrl =
+      typeof input.termsUrl === 'string'
+        ? this.normalizeTermsUrl(input.termsUrl)
+        : this.normalizeTermsUrl(base.termsUrl ?? '');
+    const termsChanged = nextTermsUrl !== (base.termsUrl ?? '');
+    const now = termsChanged ? new Date() : null;
+    const nextTermsHistory = termsChanged
+      ? this.buildTermsHistory(
+          base.termsHistory,
+          nextTermsUrl,
+          now,
+        )
+      : (base.termsHistory ?? []);
 
     const merged = this.configRepository.merge(base, {
       shopName: input.shopName ?? base.shopName,
@@ -63,6 +77,12 @@ export class ConfigService implements OnModuleInit {
       detailDescription: input.detailDescription ?? base.detailDescription,
       storyImages: input.storyImages ?? base.storyImages,
       videoUrl: input.videoUrl ?? base.videoUrl,
+      termsUrl: nextTermsUrl,
+      termsVersion: termsChanged
+        ? (now ? this.formatTermsVersion(now) : base.termsVersion ?? '')
+        : (base.termsVersion ?? ''),
+      termsUpdatedAt: termsChanged ? now : (base.termsUpdatedAt ?? null),
+      termsHistory: nextTermsHistory,
       recipes: input.recipes ?? base.recipes,
       paymentDueDays:
         input.paymentDueDays === undefined
@@ -121,6 +141,10 @@ export class ConfigService implements OnModuleInit {
       detailDescription: process.env.DETAIL_DESCRIPTION ?? '',
       storyImages: this.parseJsonEnv<StoreStoryImage[]>('STORY_IMAGES', []),
       videoUrl: process.env.PRODUCT_VIDEO_URL ?? '',
+      termsUrl: this.normalizeTermsUrl(process.env.TERMS_URL ?? ''),
+      termsVersion: process.env.TERMS_VERSION ?? '',
+      termsUpdatedAt: null,
+      termsHistory: [],
       recipes: this.parseJsonEnv<StoreRecipe[]>('RECIPES', []),
       paymentDueDays: Number(process.env.PAYMENT_DUE_DAYS ?? 0) || 0,
       deliveryFee: Number(process.env.DELIVERY_FEE ?? 0) || 0,
@@ -144,6 +168,12 @@ export class ConfigService implements OnModuleInit {
       detailDescription: setting.detailDescription,
       storyImages: setting.storyImages as StoreStoryImage[],
       videoUrl: setting.videoUrl,
+      termsUrl: this.normalizeTermsUrl(setting.termsUrl ?? ''),
+      termsVersion: setting.termsVersion ?? '',
+      termsUpdatedAt: setting.termsUpdatedAt
+        ? setting.termsUpdatedAt.toISOString()
+        : null,
+      termsHistory: this.mapTermsHistory(setting.termsHistory),
       recipes: setting.recipes as StoreRecipe[],
       paymentDueDays: setting.paymentDueDays ?? 0,
       deliveryFee: setting.deliveryFee ?? 0,
@@ -165,5 +195,97 @@ export class ConfigService implements OnModuleInit {
     } catch {
       return fallback;
     }
+  }
+
+  private mapTermsHistory(
+    history: unknown,
+  ): StoreTermsHistoryItem[] {
+    if (!Array.isArray(history)) {
+      return [];
+    }
+
+    return history
+      .map((item) => {
+        if (!item || typeof item !== 'object') {
+          return null;
+        }
+
+        const entry = item as Record<string, unknown>;
+        const termsUrl =
+          typeof entry.termsUrl === 'string'
+            ? this.normalizeTermsUrl(entry.termsUrl)
+            : '';
+        const termsVersion =
+          typeof entry.termsVersion === 'string' ? entry.termsVersion : '';
+        const termsUpdatedAt =
+          typeof entry.termsUpdatedAt === 'string' ? entry.termsUpdatedAt : '';
+
+        if (!termsUrl || !termsVersion || !termsUpdatedAt) {
+          return null;
+        }
+
+        return {
+          termsUrl,
+          termsVersion,
+          termsUpdatedAt,
+        } as StoreTermsHistoryItem;
+      })
+      .filter((item): item is StoreTermsHistoryItem => item !== null)
+      .slice(0, 100);
+  }
+
+  private buildTermsHistory(
+    current: unknown,
+    nextTermsUrl: string,
+    changedAt: Date | null,
+  ): StoreTermsHistoryItem[] {
+    if (!nextTermsUrl || !changedAt) {
+      return this.mapTermsHistory(current);
+    }
+
+    const prev = this.mapTermsHistory(current);
+    const nextVersion = this.formatTermsVersion(changedAt);
+
+    const nextEntry: StoreTermsHistoryItem = {
+      termsUrl: nextTermsUrl,
+      termsVersion: nextVersion,
+      termsUpdatedAt: changedAt.toISOString(),
+    };
+
+    const deduped = prev.filter(
+      (item) =>
+        item.termsVersion !== nextVersion &&
+        !(item.termsUrl === nextEntry.termsUrl &&
+          item.termsVersion === nextEntry.termsVersion),
+    );
+
+    return [nextEntry, ...deduped].slice(0, 100);
+  }
+
+  private normalizeTermsUrl(raw: string): string {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return '';
+    }
+
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return '';
+      }
+
+      return parsed.toString();
+    } catch {
+      return '';
+    }
+  }
+
+  private formatTermsVersion(value: Date): string {
+    const year = value.getFullYear().toString();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    const hour = String(value.getHours()).padStart(2, '0');
+    const minute = String(value.getMinutes()).padStart(2, '0');
+    return `${year}${month}${day}${hour}${minute}`;
   }
 }

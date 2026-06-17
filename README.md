@@ -92,6 +92,17 @@ pnpm dev:api
 - 플랫폼 Web: `http://localhost:9001`
 - Redirect URI: `http://localhost:9001/api/auth/callback/kakao`
 
+## Cloud Run 배포
+
+Cloud Run으로 `api/web/admin` 3개 서비스를 한 번에 배포할 수 있습니다.
+
+```bash
+chmod +x deploy/cloudrun/deploy.sh
+PROJECT_ID=YOUR_PROJECT_ID REGION=asia-northeast3 ./deploy/cloudrun/deploy.sh
+```
+
+자세한 사전 준비(Secret Manager, 권한, 옵션)는 [deploy/cloudrun/README.md](deploy/cloudrun/README.md)를 참고하세요.
+
 ## 검증 명령어
 
 ```bash

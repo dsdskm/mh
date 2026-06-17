@@ -7,8 +7,12 @@ export class ConfigController {
   constructor(private readonly configService: ConfigService) {}
 
   @Get('config')
-  getConfig() {
-    return this.configService.getStoreConfig();
+  async getConfig() {
+    const config = await this.configService.getStoreConfig();
+    return {
+      ...config,
+      termsHistory: [],
+    };
   }
 
   @Get('backoffice/config')

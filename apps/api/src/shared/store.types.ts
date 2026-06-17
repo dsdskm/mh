@@ -172,10 +172,21 @@ export type StoreStoryImage = {
   imageUrl: string;
 };
 
+export type StoreRecipeStep = {
+  description: string;
+  imageUrl: string;
+};
+
 export type StoreRecipe = {
   title: string;
   ingredients: string[];
-  steps: string[];
+  steps: StoreRecipeStep[];
+};
+
+export type StoreTermsHistoryItem = {
+  termsUrl: string;
+  termsVersion: string;
+  termsUpdatedAt: string;
 };
 
 export type StoreConfig = {
@@ -190,6 +201,10 @@ export type StoreConfig = {
   detailDescription: string;
   storyImages: StoreStoryImage[];
   videoUrl: string;
+  termsUrl: string;
+  termsVersion: string;
+  termsUpdatedAt: string | null;
+  termsHistory: StoreTermsHistoryItem[];
   recipes: StoreRecipe[];
   // 주문 후 입금 기한(일). 0 이하이면 기한 없음(자동 취소 안 함).
   paymentDueDays: number;
