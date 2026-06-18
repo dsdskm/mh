@@ -1,13 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import type { AdminPageState } from "../../_hooks/use-admin-page";
 import { formatCurrency } from "../../_lib/constants";
 import type {
   AdminUser,
   CouponDiscountType,
+  CouponTemplate,
   MileageSummary,
 } from "../../_lib/types";
+import { PaginationControls } from "../../_components/pagination-controls";
+import { usePersistedPagination } from "../../_hooks/use-persisted-pagination";
 
 type Props = {
   state: AdminPageState;
@@ -31,7 +34,7 @@ function accountLabel(account: AdminUser): string {
 }
 
 export function RewardsTab({ state }: Props) {
-  const { accounts, coupons } = state;
+  const { accounts, coupons, couponTemplates } = state;
 
   // 관리자(MASTER) 계정 제외
   const memberAccounts = useMemo(
@@ -39,17 +42,55 @@ export function RewardsTab({ state }: Props) {
     [accounts],
   );
 
-  // ----- 쿠폰 지급 폼 -----
-  const [couponName, setCouponName] = useState("");
-  const [discountType, setDiscountType] = useState<CouponDiscountType>("fixed");
-  const [discountValue, setDiscountValue] = useState("3000");
-  const [minOrderAmount, setMinOrderAmount] = useState("0");
-  const [maxDiscountAmount, setMaxDiscountAmount] = useState("");
-  const [validUntil, setValidUntil] = useState("");
+  // ----- 생성된 쿠폰(템플릿) 페이지네이션 -----
+  const couponTemplatePagination = usePersistedPagination({
+    storageKey: "admin:pagination:coupon-templates",
+    totalItems: couponTemplates.length,
+    pageSizeOptions: [10, 20, 50],
+    initialPageSize: 20,
+  });
+
+  const paginatedCouponTemplates = useMemo(() => {
+    const { startIndex, endIndex } = couponTemplatePagination;
+    return couponTemplates.slice(startIndex, endIndex);
+  }, [couponTemplates, couponTemplatePagination]);
+
+  // ----- 발급된 쿠폰 페이지네이션 -----
+  const couponPagination = usePersistedPagination({
+    storageKey: "admin:pagination:coupons",
+    totalItems: coupons.length,
+    pageSizeOptions: [10, 20, 50],
+    initialPageSize: 20,
+  });
+
+  const paginatedCoupons = useMemo(() => {
+    const { startIndex, endIndex } = couponPagination;
+    return coupons.slice(startIndex, endIndex);
+  }, [coupons, couponPagination]);
+
+  // ----- 쿠폰 생성 팝업 -----
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [templateDiscountType, setTemplateDiscountType] =
+    useState<CouponDiscountType>("fixed");
+  const [templateDiscountValue, setTemplateDiscountValue] = useState("3000");
+  const [templateMaxDiscountAmount, setTemplateMaxDiscountAmount] = useState("");
+  const [templateValidUntil, setTemplateValidUntil] = useState("");
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+
+  // ----- 쿠폰 발급 폼 -----
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | "">("");
   const [targetMode, setTargetMode] = useState<"all" | "select">("select");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [memberSearch, setMemberSearch] = useState("");
   const [issuing, setIssuing] = useState(false);
+
+  const selectedTemplate = useMemo<CouponTemplate | null>(() => {
+    if (selectedTemplateId === "") {
+      return null;
+    }
+    return couponTemplates.find((template) => template.id === selectedTemplateId) ?? null;
+  }, [couponTemplates, selectedTemplateId]);
 
   const filteredMembers = useMemo(() => {
     const q = memberSearch.trim().toLowerCase();
@@ -67,14 +108,51 @@ export function RewardsTab({ state }: Props) {
     );
   }
 
-  async function handleIssue() {
-    if (!couponName.trim()) {
+  async function handleCreateTemplate() {
+    if (!templateName.trim()) {
       window.alert("쿠폰 이름을 입력해주세요.");
       return;
     }
-    const value = Math.floor(Number(discountValue) || 0);
+    const value = Math.floor(Number(templateDiscountValue) || 0);
     if (value <= 0) {
       window.alert("할인 값을 입력해주세요.");
+      return;
+    }
+
+    setCreatingTemplate(true);
+    try {
+      const ok = await state.createCouponTemplate({
+        name: templateName.trim(),
+        discountType: templateDiscountType,
+        discountValue: value,
+        minOrderAmount: 0,
+        maxDiscountAmount:
+          templateDiscountType === "percent" && templateMaxDiscountAmount.trim()
+            ? Math.max(0, Math.floor(Number(templateMaxDiscountAmount) || 0))
+            : null,
+        validUntil: templateValidUntil ? new Date(templateValidUntil).toISOString() : null,
+      });
+      if (ok) {
+        setTemplateName("");
+        setTemplateDiscountType("fixed");
+        setTemplateDiscountValue("3000");
+        setTemplateMaxDiscountAmount("");
+        setTemplateValidUntil("");
+        setShowCreateModal(false);
+      }
+    } finally {
+      setCreatingTemplate(false);
+    }
+  }
+
+  function submitCreateTemplate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void handleCreateTemplate();
+  }
+
+  async function handleIssueByTemplate() {
+    if (selectedTemplateId === "") {
+      window.alert("발급할 쿠폰을 선택해주세요.");
       return;
     }
     if (targetMode === "select" && selectedIds.length === 0) {
@@ -84,20 +162,11 @@ export function RewardsTab({ state }: Props) {
 
     setIssuing(true);
     try {
-      const ok = await state.issueCoupon({
+      const ok = await state.issueCouponByTemplate({
+        couponTemplateId: selectedTemplateId,
         accountIds: targetMode === "all" ? "all" : selectedIds,
-        name: couponName.trim(),
-        discountType,
-        discountValue: value,
-        minOrderAmount: Math.max(0, Math.floor(Number(minOrderAmount) || 0)),
-        maxDiscountAmount:
-          discountType === "percent" && maxDiscountAmount.trim()
-            ? Math.max(0, Math.floor(Number(maxDiscountAmount) || 0))
-            : null,
-        validUntil: validUntil ? new Date(validUntil).toISOString() : null,
       });
       if (ok) {
-        setCouponName("");
         setSelectedIds([]);
       }
     } finally {
@@ -105,14 +174,36 @@ export function RewardsTab({ state }: Props) {
     }
   }
 
+  function couponDiscountLabel(coupon: {
+    discountType: CouponDiscountType;
+    discountValue: number;
+    maxDiscountAmount?: number | null;
+  }): string {
+    if (coupon.discountType === "percent") {
+      return `${coupon.discountValue}%${coupon.maxDiscountAmount ? ` (최대 ${formatCurrency(coupon.maxDiscountAmount)})` : ""}`;
+    }
+    return formatCurrency(coupon.discountValue);
+  }
+
   // ----- 적립금 관리 -----
   const [mileageAccountId, setMileageAccountId] = useState<number | "">("");
   const [mileageSummary, setMileageSummary] = useState<MileageSummary | null>(
     null,
   );
-  const [mileageAmount, setMileageAmount] = useState("");
-  const [mileageReason, setMileageReason] = useState("");
   const [mileageLoading, setMileageLoading] = useState(false);
+
+  // ----- 적립금 거래 내역 페이지네이션 -----
+  const mileageTxPagination = usePersistedPagination({
+    storageKey: "admin:pagination:mileage-tx",
+    totalItems: mileageSummary?.transactions.length ?? 0,
+    pageSizeOptions: [10, 20, 50],
+    initialPageSize: 20,
+  });
+
+  const paginatedMileageTx = useMemo(() => {
+    const { startIndex, endIndex } = mileageTxPagination;
+    return (mileageSummary?.transactions ?? []).slice(startIndex, endIndex);
+  }, [mileageSummary, mileageTxPagination]);
 
   async function loadMileage(accountId: number) {
     setMileageLoading(true);
@@ -121,103 +212,122 @@ export function RewardsTab({ state }: Props) {
     setMileageLoading(false);
   }
 
-  async function handleAdjust(sign: 1 | -1) {
-    if (mileageAccountId === "") {
-      window.alert("회원을 선택해주세요.");
-      return;
-    }
-    const amount = Math.floor(Number(mileageAmount) || 0);
-    if (amount <= 0) {
-      window.alert("변동 금액을 입력해주세요.");
-      return;
-    }
-    const summary = await state.adjustMileage(
-      mileageAccountId,
-      sign * amount,
-      mileageReason.trim() || undefined,
-    );
-    if (summary) {
-      setMileageSummary(summary);
-      setMileageAmount("");
-      setMileageReason("");
-    }
-  }
-
   return (
     <div className="space-y-8 p-4">
-      {/* 쿠폰 지급 */}
+      {/* 쿠폰 생성 */}
       <section className="rounded-2xl border border-stone-200 bg-white p-4">
-        <h2 className="text-lg font-bold text-stone-800">쿠폰 지급</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-bold text-stone-800">쿠폰 생성</h2>
+            <p className="mt-1 text-xs text-stone-500">
+              쿠폰 정책을 먼저 생성한 뒤, 발급 단계에서 대상 회원에게 지급합니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCreateModal(true)}
+            className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white"
+          >
+            쿠폰 등록
+          </button>
+        </div>
+      </section>
+
+      {/* 생성된 쿠폰 목록 */}
+      <section className="rounded-2xl border border-stone-200 bg-white p-4">
+        <h2 className="text-lg font-bold text-stone-800">생성된 쿠폰 목록 ({couponTemplates.length})</h2>
+
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="text-xs text-stone-500">
+              <tr className="border-b border-stone-200">
+                <th className="py-2">이름</th>
+                <th className="py-2">할인</th>
+                <th className="py-2">유효기한</th>
+                <th className="py-2">생성일</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedCouponTemplates.map((template) => (
+                <tr key={template.id} className="border-b border-stone-100">
+                  <td className="py-2">{template.name}</td>
+                  <td className="py-2">{couponDiscountLabel(template)}</td>
+                  <td className="py-2">
+                    {template.validUntil
+                      ? new Date(template.validUntil).toLocaleDateString("ko-KR")
+                      : "무기한"}
+                  </td>
+                  <td className="py-2">{new Date(template.createdAt).toLocaleString("ko-KR")}</td>
+                </tr>
+              ))}
+              {paginatedCouponTemplates.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-4 text-center text-xs text-stone-400">
+                    생성된 쿠폰이 없습니다.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {couponTemplates.length > 0 && (
+          <div className="mt-4 border-t border-stone-200 pt-4">
+            <PaginationControls
+              currentPage={couponTemplatePagination.currentPage}
+              totalPages={couponTemplatePagination.totalPages}
+              totalItems={couponTemplates.length}
+              pageSize={couponTemplatePagination.pageSize}
+              pageSizeOptions={couponTemplatePagination.pageSizeOptions}
+              onPageChange={couponTemplatePagination.setCurrentPage}
+              onPageSizeChange={couponTemplatePagination.setPageSize}
+            />
+          </div>
+        )}
+      </section>
+
+      {/* 쿠폰 발급 */}
+      <section className="rounded-2xl border border-stone-200 bg-white p-4">
+        <h2 className="text-lg font-bold text-stone-800">쿠폰 발급</h2>
         <p className="mt-1 text-xs text-stone-500">
-          회원에게 쿠폰을 지급합니다. 회원은 주문 시 보유 쿠폰을 선택해 사용할 수 있습니다.
+          생성된 쿠폰을 선택해 회원에게 발급합니다.
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">쿠폰 이름</span>
-            <input
-              value={couponName}
-              onChange={(e) => setCouponName(e.target.value)}
-              placeholder="예: 신규가입 감사 쿠폰"
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">할인 유형</span>
+            <span className="text-xs font-semibold text-stone-600">발급 쿠폰</span>
             <select
-              value={discountType}
-              onChange={(e) => setDiscountType(e.target.value as CouponDiscountType)}
+              value={selectedTemplateId}
+              onChange={(e) =>
+                setSelectedTemplateId(e.target.value ? Number(e.target.value) : "")
+              }
               className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
             >
-              <option value="fixed">정액 (원)</option>
-              <option value="percent">정률 (%)</option>
+              <option value="">쿠폰 선택</option>
+              {couponTemplates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
             </select>
           </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">
-              할인 값 {discountType === "percent" ? "(%)" : "(원)"}
-            </span>
-            <input
-              type="number"
-              min={0}
-              value={discountValue}
-              onChange={(e) => setDiscountValue(e.target.value)}
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">최소 주문금액 (원)</span>
-            <input
-              type="number"
-              min={0}
-              value={minOrderAmount}
-              onChange={(e) => setMinOrderAmount(e.target.value)}
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            />
-          </label>
-          {discountType === "percent" && (
-            <label className="space-y-1">
-              <span className="text-xs font-semibold text-stone-600">최대 할인액 (원, 선택)</span>
-              <input
-                type="number"
-                min={0}
-                value={maxDiscountAmount}
-                onChange={(e) => setMaxDiscountAmount(e.target.value)}
-                placeholder="비우면 상한 없음"
-                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-              />
-            </label>
-          )}
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">유효기한 (선택)</span>
-            <input
-              type="date"
-              value={validUntil}
-              onChange={(e) => setValidUntil(e.target.value)}
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            />
-          </label>
         </div>
+
+        {selectedTemplate && (
+          <div className="mt-3 rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs text-stone-600">
+            <p>
+              할인: <span className="font-semibold text-stone-800">{couponDiscountLabel(selectedTemplate)}</span>
+            </p>
+            <p>
+              유효기한:
+              <span className="font-semibold text-stone-800">
+                {selectedTemplate.validUntil
+                  ? ` ${new Date(selectedTemplate.validUntil).toLocaleDateString("ko-KR")}`
+                  : " 무기한"}
+              </span>
+            </p>
+          </div>
+        )}
 
         <div className="mt-4 space-y-2">
           <div className="flex items-center gap-4 text-sm">
@@ -274,11 +384,11 @@ export function RewardsTab({ state }: Props) {
 
           <button
             type="button"
-            onClick={handleIssue}
+            onClick={handleIssueByTemplate}
             disabled={issuing}
             className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
           >
-            {issuing ? "지급 중..." : "쿠폰 지급"}
+            {issuing ? "발급 중..." : "쿠폰 발급"}
           </button>
         </div>
       </section>
@@ -293,14 +403,13 @@ export function RewardsTab({ state }: Props) {
                 <th className="py-2">이름</th>
                 <th className="py-2">대상</th>
                 <th className="py-2">할인</th>
-                <th className="py-2">최소주문</th>
                 <th className="py-2">유효기한</th>
                 <th className="py-2">상태</th>
                 <th className="py-2"></th>
               </tr>
             </thead>
             <tbody>
-              {coupons.map((coupon) => {
+              {paginatedCoupons.map((coupon) => {
                 const statusLabel =
                   coupon.status === "used"
                     ? "사용됨"
@@ -314,11 +423,8 @@ export function RewardsTab({ state }: Props) {
                     <td className="py-2">{coupon.name}</td>
                     <td className="py-2">{coupon.accountName ?? `#${coupon.accountId}`}</td>
                     <td className="py-2">
-                      {coupon.discountType === "percent"
-                        ? `${coupon.discountValue}%${coupon.maxDiscountAmount ? ` (최대 ${formatCurrency(coupon.maxDiscountAmount)})` : ""}`
-                        : formatCurrency(coupon.discountValue)}
+                      {couponDiscountLabel(coupon)}
                     </td>
-                    <td className="py-2">{formatCurrency(coupon.minOrderAmount)}</td>
                     <td className="py-2">
                       {coupon.validUntil
                         ? new Date(coupon.validUntil).toLocaleDateString("ko-KR")
@@ -343,9 +449,9 @@ export function RewardsTab({ state }: Props) {
                   </tr>
                 );
               })}
-              {coupons.length === 0 && (
+              {paginatedCoupons.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-4 text-center text-xs text-stone-400">
+                  <td colSpan={6} className="py-4 text-center text-xs text-stone-400">
                     발급된 쿠폰이 없습니다.
                   </td>
                 </tr>
@@ -353,13 +459,28 @@ export function RewardsTab({ state }: Props) {
             </tbody>
           </table>
         </div>
+
+        {/* 쿠폰 페이지네이션 */}
+        {coupons.length > 0 && (
+          <div className="mt-4 border-t border-stone-200 pt-4">
+            <PaginationControls
+              currentPage={couponPagination.currentPage}
+              totalPages={couponPagination.totalPages}
+              totalItems={coupons.length}
+              pageSize={couponPagination.pageSize}
+              pageSizeOptions={couponPagination.pageSizeOptions}
+              onPageChange={couponPagination.setCurrentPage}
+              onPageSizeChange={couponPagination.setPageSize}
+            />
+          </div>
+        )}
       </section>
 
       {/* 적립금 관리 */}
       <section className="rounded-2xl border border-stone-200 bg-white p-4">
         <h2 className="text-lg font-bold text-stone-800">적립금 관리</h2>
         <p className="mt-1 text-xs text-stone-500">
-          회원을 선택해 적립금 잔액과 내역을 확인하고, 수동으로 지급/차감할 수 있습니다.
+          회원을 선택해 적립금 잔액과 내역을 확인할 수 있습니다.
         </p>
 
         <div className="mt-4 flex flex-wrap items-end gap-2">
@@ -398,42 +519,6 @@ export function RewardsTab({ state }: Props) {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-stone-600">금액 (원)</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={mileageAmount}
-                  onChange={(e) => setMileageAmount(e.target.value)}
-                  className="w-32 rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                />
-              </label>
-              <label className="space-y-1 flex-1">
-                <span className="text-xs font-semibold text-stone-600">사유 (선택)</span>
-                <input
-                  value={mileageReason}
-                  onChange={(e) => setMileageReason(e.target.value)}
-                  placeholder="예: 이벤트 보상"
-                  className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => handleAdjust(1)}
-                className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white"
-              >
-                지급
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAdjust(-1)}
-                className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-bold text-stone-700"
-              >
-                차감
-              </button>
-            </div>
-
             <div className="overflow-x-auto">
               <table className="w-full min-w-[480px] text-left text-sm">
                 <thead className="text-xs text-stone-500">
@@ -446,7 +531,7 @@ export function RewardsTab({ state }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {(mileageSummary?.transactions ?? []).map((tx) => (
+                  {paginatedMileageTx.map((tx) => (
                     <tr key={tx.id} className="border-b border-stone-100">
                       <td className="py-2">
                         {new Date(tx.createdAt).toLocaleString("ko-KR")}
@@ -462,7 +547,7 @@ export function RewardsTab({ state }: Props) {
                       </td>
                     </tr>
                   ))}
-                  {(mileageSummary?.transactions ?? []).length === 0 && !mileageLoading && (
+                  {paginatedMileageTx.length === 0 && !mileageLoading && (
                     <tr>
                       <td colSpan={5} className="py-4 text-center text-xs text-stone-400">
                         적립금 내역이 없습니다.
@@ -472,9 +557,121 @@ export function RewardsTab({ state }: Props) {
                 </tbody>
               </table>
             </div>
+
+            {/* 적립금 거래 내역 페이지네이션 */}
+            {(mileageSummary?.transactions ?? []).length > 0 && (
+              <div className="border-t border-stone-200 pt-4">
+                <PaginationControls
+                  currentPage={mileageTxPagination.currentPage}
+                  totalPages={mileageTxPagination.totalPages}
+                  totalItems={mileageSummary?.transactions.length ?? 0}
+                  pageSize={mileageTxPagination.pageSize}
+                  pageSizeOptions={mileageTxPagination.pageSizeOptions}
+                  onPageChange={mileageTxPagination.setCurrentPage}
+                  onPageSizeChange={mileageTxPagination.setPageSize}
+                />
+              </div>
+            )}
           </div>
         )}
       </section>
+
+      {showCreateModal && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => !creatingTemplate && setShowCreateModal(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold text-stone-900">쿠폰 생성</h3>
+            <p className="mt-1 text-xs text-stone-500">
+              생성된 쿠폰은 발급 단계에서 회원에게 배포할 수 있습니다.
+            </p>
+
+            <form onSubmit={submitCreateTemplate} className="mt-4 space-y-3">
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold text-stone-600">쿠폰 이름</span>
+                <input
+                  value={templateName}
+                  onChange={(event) => setTemplateName(event.target.value)}
+                  placeholder="예: 신규가입 감사 쿠폰"
+                  className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  required
+                />
+              </label>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-stone-600">할인 유형</span>
+                  <select
+                    value={templateDiscountType}
+                    onChange={(event) => setTemplateDiscountType(event.target.value as CouponDiscountType)}
+                    className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  >
+                    <option value="fixed">정액 (원)</option>
+                    <option value="percent">정률 (%)</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-stone-600">
+                    할인 값 {templateDiscountType === "percent" ? "(%)" : "(원)"}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={templateDiscountValue}
+                    onChange={(event) => setTemplateDiscountValue(event.target.value)}
+                    className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-stone-600">유효기한 (선택)</span>
+                  <input
+                    type="date"
+                    value={templateValidUntil}
+                    onChange={(event) => setTemplateValidUntil(event.target.value)}
+                    className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+
+              {templateDiscountType === "percent" && (
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold text-stone-600">최대 할인액 (원, 선택)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={templateMaxDiscountAmount}
+                    onChange={(event) => setTemplateMaxDiscountAmount(event.target.value)}
+                    placeholder="비우면 상한 없음"
+                    className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  />
+                </label>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  disabled={creatingTemplate}
+                  className="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-700 disabled:opacity-60"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingTemplate}
+                  className="flex-1 rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+                >
+                  {creatingTemplate ? "생성 중..." : "생성하기"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

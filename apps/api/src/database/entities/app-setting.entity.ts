@@ -1,5 +1,9 @@
 import { Column, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
-import { StoreRecipe, StoreStoryImage } from '../../shared/store.types';
+import {
+  StoreRecipe,
+  StoreStoryImage,
+  StoreTermsHistoryItem,
+} from '../../shared/store.types';
 
 @Entity({ name: 'app_settings' })
 export class AppSettingEntity {
@@ -41,6 +45,18 @@ export class AppSettingEntity {
 
   @Column({ type: 'jsonb' })
   recipes!: StoreRecipe[];
+
+  @Column({ type: 'varchar', default: '' })
+  termsUrl!: string;
+
+  @Column({ type: 'varchar', default: '' })
+  termsVersion!: string;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  termsUpdatedAt!: Date | null;
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  termsHistory!: StoreTermsHistoryItem[];
 
   @Column({ type: 'int', default: 0 })
   paymentDueDays!: number;

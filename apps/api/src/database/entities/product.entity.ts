@@ -36,6 +36,9 @@ export class ProductEntity {
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  deletedAt?: Date;
+
   @OneToMany(() => OrderItemEntity, (orderItem) => orderItem.product)
   orderItems!: OrderItemEntity[];
 }

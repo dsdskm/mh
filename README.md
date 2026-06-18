@@ -20,6 +20,59 @@ cloud-sql-proxy corn-fbaae:asia-northeast3:corn-db-instance --port 5432
 Artifact Registry 저장소(`asia-northeast3-docker.pkg.dev/corn-fbaae/corn-repo`)에 들어간다.
 
 ## 배포 명령
+### 관리자 웹 (`apps/admin`)
+
+- `x-admin-key` 기반 접근
+- 대시보드(주문/매출/입금대기/출고준비)
+- 주문 상태 변경
+- 상품 등록
+
+### API (`apps/api`)
+
+- `GET /api/health`
+- `GET /api/config`
+- `GET /api/products`
+- `GET /api/products/:id`
+- `POST /api/orders`
+- `GET /api/orders?phone=...`
+- `GET /api/admin/dashboard` (관리자)
+- `GET /api/admin/orders` (관리자)
+- `PATCH /api/admin/orders/:id/status` (관리자)
+- `GET /api/admin/products` (관리자)
+- `POST /api/admin/products` (관리자)
+- `PATCH /api/admin/products/:id` (관리자)
+
+## 환경 변수
+
+`.env.example` 참고:
+
+- `PORT`: API 포트
+- `SHOP_NAME`, `SELLER_NAME`, `SELLER_PHONE`, `SELLER_ORIGIN`: 상단 스토어/판매자 정보
+- `BANK_NAME`, `BANK_ACCOUNT`, `BANK_HOLDER`, `TRANSFER_NOTE`: 계좌이체 정보
+- `DETAIL_DESCRIPTION`, `STORY_IMAGES`, `PRODUCT_VIDEO_URL`, `RECIPES`: 상품 상세/영상/레시피 데이터
+- `ADMIN_KEY`: 관리자 API 키
+- `NEXT_PUBLIC_API_BASE_URL`: 웹/관리자에서 호출할 API 주소
+- `NEXTAUTH_URL`: 웹 앱 주소(로컬 개발은 `http://localhost:9001`)
+- `NEXTAUTH_SECRET`: NextAuth 세션 암호화 시크릿
+- `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET`: 카카오 로그인 앱 키
+
+카카오 디벨로퍼 설정:
+
+- 플랫폼 Web: `http://localhost:9001`
+- Redirect URI: `http://localhost:9001/api/auth/callback/kakao`
+
+## Cloud Run 배포
+
+Cloud Run으로 `api/web/admin` 3개 서비스를 한 번에 배포할 수 있습니다.
+
+```bash
+chmod +x deploy/cloudrun/deploy.sh
+PROJECT_ID=YOUR_PROJECT_ID REGION=asia-northeast3 ./deploy/cloudrun/deploy.sh
+```
+
+자세한 사전 준비(Secret Manager, 권한, 옵션)는 [deploy/cloudrun/README.md](deploy/cloudrun/README.md)를 참고하세요.
+
+## 검증 명령어
 
 ```bash
 # 전체 배포

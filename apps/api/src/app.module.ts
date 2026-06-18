@@ -44,6 +44,7 @@ import { ReviewEntity } from './database/entities/review.entity';
 import { AccountShippingAddressEntity } from './database/entities/account-shipping-address.entity';
 import { NotificationEntity } from './database/entities/notification.entity';
 import { CouponEntity } from './database/entities/coupon.entity';
+import { CouponTemplateEntity } from './database/entities/coupon-template.entity';
 import { MileageTransactionEntity } from './database/entities/mileage-transaction.entity';
 import { FirestoreTriggerService } from './shared/firestore-trigger.service';
 
@@ -88,6 +89,7 @@ const databaseUrl =
         ReviewCommentEntity,
         NotificationEntity,
         CouponEntity,
+        CouponTemplateEntity,
         MileageTransactionEntity,
       ],
     }),
@@ -105,6 +107,7 @@ const databaseUrl =
       ReviewCommentEntity,
       NotificationEntity,
       CouponEntity,
+      CouponTemplateEntity,
       MileageTransactionEntity,
     ]),
   ],

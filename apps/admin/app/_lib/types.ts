@@ -7,12 +7,26 @@ import type {
 } from "@repo/shared-types/user";
 import type { OrderStatus } from "@repo/shared-types/order";
 import type { Notice } from "@repo/shared-types/notice";
-import type { Coupon, CouponDiscountType, IssueCouponInput } from "@repo/shared-types/coupon";
+import type {
+  Coupon,
+  CouponDiscountType,
+  CouponTemplate,
+  CreateCouponTemplateInput,
+  IssueCouponByTemplateInput,
+  IssueCouponInput,
+} from "@repo/shared-types/coupon";
 import type { MileageTransaction, MileageSummary } from "@repo/shared-types/mileage";
 
 export type { OrderStatus };
 export type { Notice };
-export type { Coupon, CouponDiscountType, IssueCouponInput };
+export type {
+  Coupon,
+  CouponDiscountType,
+  CouponTemplate,
+  CreateCouponTemplateInput,
+  IssueCouponByTemplateInput,
+  IssueCouponInput,
+};
 export type { MileageTransaction, MileageSummary };
 
 export type AdminUser = SharedUser;
@@ -136,6 +150,17 @@ export type AdminNotification = {
   url: string;
 };
 
+export type StoreRecipeStep = {
+  description: string;
+  imageUrl: string;
+};
+
+export type StoreRecipe = {
+  title: string;
+  ingredients: string[];
+  steps: StoreRecipeStep[];
+};
+
 export type StoreConfig = {
   shopName: string;
   sellerName: string;
@@ -148,7 +173,15 @@ export type StoreConfig = {
   detailDescription: string;
   storyImages: Array<{ title: string; imageUrl: string }>;
   videoUrl: string;
-  recipes: Array<{ title: string; ingredients: string[]; steps: string[] }>;
+  termsUrl: string;
+  termsVersion: string;
+  termsUpdatedAt: string | null;
+  termsHistory: Array<{
+    termsUrl: string;
+    termsVersion: string;
+    termsUpdatedAt: string;
+  }>;
+  recipes: StoreRecipe[];
   paymentDueDays: number;
   deliveryFee: number;
   chargeDeliveryFee: boolean;
@@ -163,6 +196,7 @@ export type AdminTab =
   | "공지사항"
   | "매출 상세"
   | "기본정보"
+  | "약관관리"
   | "상품관리"
   | "문의내역"
   | "후기"

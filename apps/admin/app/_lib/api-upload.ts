@@ -1,7 +1,7 @@
 import { API_BASE } from "./constants";
 import { parseJsonOrThrow } from "./api-common";
 
-export type AdminUploadTarget = "products" | "videos";
+export type AdminUploadTarget = "products" | "videos" | "terms" | "recipes";
 
 export async function uploadAdminAssetApi(
   file: File,

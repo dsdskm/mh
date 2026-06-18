@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import { ProductEntity } from '../../../database/entities/product.entity';
 import { CreateProductInput, Product, UpdateProductInput } from '../../../shared/store.types';
 
@@ -13,7 +13,7 @@ export class ProductsService {
 
   async getProducts(): Promise<Product[]> {
     const products = await this.productRepository.find({
-      where: { active: true },
+      where: { active: true, deletedAt: IsNull() },
       order: { createdAt: 'DESC' },
     });
 
@@ -22,7 +22,7 @@ export class ProductsService {
 
   async getProductById(id: number): Promise<Product> {
     const product = await this.productRepository.findOne({
-      where: { id, active: true },
+      where: { id, active: true, deletedAt: IsNull() },
     });
 
     if (!product) {
@@ -34,6 +34,7 @@ export class ProductsService {
 
   async getAdminProducts(): Promise<Product[]> {
     const products = await this.productRepository.find({
+      where: { deletedAt: IsNull() },
       order: { createdAt: 'DESC' },
     });
 
@@ -58,7 +59,7 @@ export class ProductsService {
   }
 
   async updateProduct(id: number, input: UpdateProductInput): Promise<Product> {
-    const product = await this.productRepository.findOne({ where: { id } });
+    const product = await this.productRepository.findOne({ where: { id, deletedAt: IsNull() } });
     if (!product) {
       throw new NotFoundException('수정할 상품을 찾을 수 없습니다.');
     }
@@ -79,8 +80,13 @@ export class ProductsService {
   }
 
   async deleteProduct(id: number): Promise<boolean> {
-    const result = await this.productRepository.delete({ id });
-    return (result.affected ?? 0) > 0;
+    const product = await this.productRepository.findOne({ where: { id, deletedAt: IsNull() } });
+    if (!product) {
+      throw new NotFoundException('삭제할 상품을 찾을 수 없습니다.');
+    }
+
+    await this.productRepository.update({ id }, { deletedAt: new Date() });
+    return true;
   }
 
   private toProduct(product: ProductEntity): Product {

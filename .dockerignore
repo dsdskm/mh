@@ -11,3 +11,31 @@
 **/.env.*
 **/*.md
 coverage
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs
+.next
+dist
+**/dist
+coverage
+**/coverage
+
+# VCS / editor
+.git
+.gitignore
+.vscode
+
+# Env files
+.env
+**/.env
+**/.env.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store

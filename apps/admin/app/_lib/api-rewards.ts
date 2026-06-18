@@ -1,6 +1,34 @@
 import { API_BASE } from "./constants";
 import { parseJsonOrThrow } from "./api-common";
-import type { Coupon, IssueCouponInput, MileageSummary } from "./types";
+import type {
+  Coupon,
+  CouponTemplate,
+  CreateCouponTemplateInput,
+  IssueCouponByTemplateInput,
+  IssueCouponInput,
+  MileageSummary,
+} from "./types";
+
+export async function listCouponTemplatesApi(): Promise<CouponTemplate[]> {
+  const response = await fetch(`${API_BASE}/api/backoffice/coupon-templates`, {
+    cache: "no-store",
+  });
+  return parseJsonOrThrow<CouponTemplate[]>(
+    response,
+    "생성된 쿠폰 목록을 불러오지 못했습니다.",
+  );
+}
+
+export async function createCouponTemplateApi(
+  input: CreateCouponTemplateInput,
+): Promise<CouponTemplate> {
+  const response = await fetch(`${API_BASE}/api/backoffice/coupon-templates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJsonOrThrow<CouponTemplate>(response, "쿠폰 생성에 실패했습니다.");
+}
 
 export async function listCouponsApi(): Promise<Coupon[]> {
   const response = await fetch(`${API_BASE}/api/backoffice/coupons`, {
@@ -18,6 +46,17 @@ export async function issueCouponApi(
     body: JSON.stringify(input),
   });
   return parseJsonOrThrow<{ issued: number }>(response, "쿠폰 지급에 실패했습니다.");
+}
+
+export async function issueCouponByTemplateApi(
+  input: IssueCouponByTemplateInput,
+): Promise<{ issued: number }> {
+  const response = await fetch(`${API_BASE}/api/backoffice/coupons/issue`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJsonOrThrow<{ issued: number }>(response, "쿠폰 발급에 실패했습니다.");
 }
 
 export async function revokeCouponApi(id: number): Promise<void> {
@@ -38,20 +77,4 @@ export async function getAccountMileageApi(
     response,
     "적립금 정보를 불러오지 못했습니다.",
   );
-}
-
-export async function adjustAccountMileageApi(
-  accountId: number,
-  amount: number,
-  reason?: string,
-): Promise<MileageSummary> {
-  const response = await fetch(
-    `${API_BASE}/api/backoffice/accounts/${accountId}/mileage`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount, reason }),
-    },
-  );
-  return parseJsonOrThrow<MileageSummary>(response, "적립금 조정에 실패했습니다.");
 }
