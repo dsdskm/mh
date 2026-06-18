@@ -1,0 +1,13 @@
+# 빌드 컨텍스트에서 제외 (이미지 내부에서 새로 install/build 함)
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+.turbo
+.pnpm-store
+.git
+.gitignore
+**/.env
+**/.env.*
+**/*.md
+coverage

@@ -1,0 +1,36 @@
+# 서비스별로 재사용하는 빌드 설정. deploy.sh 가 substitutions 를 주입한다.
+# Cloud Build 는 linux/amd64 로 빌드하므로 Apple Silicon 플랫폼 문제 없음.
+# NEXT_PUBLIC_* 는 빌드 타임 인라인 값이라 --build-arg 로 전달한다.
+# (api 는 이 build-arg 들을 선언하지 않으므로 무시됨 — 경고만 뜨고 정상 빌드)
+substitutions:
+  _SERVICE: ""
+  _IMAGE: ""
+  _API_BASE_URL: ""
+  _FB_API_KEY: ""
+  _FB_AUTH_DOMAIN: ""
+  _FB_PROJECT_ID: ""
+  _FB_STORAGE_BUCKET: ""
+  _FB_MESSAGING_SENDER_ID: ""
+  _FB_APP_ID: ""
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - apps/${_SERVICE}/Dockerfile
+      - --build-arg=NEXT_PUBLIC_API_BASE_URL=${_API_BASE_URL}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_API_KEY=${_FB_API_KEY}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${_FB_AUTH_DOMAIN}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_PROJECT_ID=${_FB_PROJECT_ID}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${_FB_STORAGE_BUCKET}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${_FB_MESSAGING_SENDER_ID}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_APP_ID=${_FB_APP_ID}
+      - -t
+      - ${_IMAGE}
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "${_IMAGE}"]
+images:
+  - "${_IMAGE}"
+# 기본 머신(e2-medium) 사용 = 하루 120 빌드분 무료 티어 적용.
+# 빌드를 더 빠르게 하려면 options.machineType 을 키울 수 있으나 무료 티어에서 제외된다.

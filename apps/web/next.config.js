@@ -1,5 +1,16 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+	// Cloud Run 용 단독 실행 서버 번들 (.next/standalone)
+	output: "standalone",
+	// 모노레포 루트 기준으로 의존성 트레이싱
+	outputFileTracingRoot: path.join(__dirname, "../../"),
+	// 워크스페이스 소스 패키지를 빌드 시 트랜스파일
+	transpilePackages: ["@repo/ui", "@repo/shared-types"],
 	images: {
 		remotePatterns: [
 			{
