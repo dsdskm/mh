@@ -1,5 +1,5 @@
 import { API_BASE } from "./constants";
-import { parseJsonOrThrow } from "./api-common";
+import { adminFetch, parseJsonOrThrow } from "./api-common";
 import { AdminUser, AdminUserCreatePayload, AdminUserUpdatePayload } from "./types";
 
 export type AdminShippingAddress = {
@@ -10,10 +10,18 @@ export type AdminShippingAddress = {
   isDefault: boolean;
 };
 
+export async function listAdminAccountsApi(): Promise<AdminUser[]> {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/accounts`, {
+    cache: "no-store",
+  });
+
+  return parseJsonOrThrow<AdminUser[]>(response, "계정 목록을 불러오지 못했습니다.");
+}
+
 export async function createAdminAccountApi(
   payload: AdminUserCreatePayload,
 ): Promise<AdminUser> {
-  const response = await fetch(`${API_BASE}/api/backoffice/accounts`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/accounts`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -28,7 +36,7 @@ export async function updateAdminAccountApi(
   id: number,
   payload: AdminUserUpdatePayload,
 ): Promise<AdminUser> {
-  const response = await fetch(`${API_BASE}/api/backoffice/accounts/${id}`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/accounts/${id}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -40,7 +48,7 @@ export async function updateAdminAccountApi(
 }
 
 export async function deleteAdminAccountApi(id: number): Promise<void> {
-  const response = await fetch(`${API_BASE}/api/backoffice/accounts/${id}`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/accounts/${id}`, {
     method: "DELETE",
   });
 
@@ -50,7 +58,7 @@ export async function deleteAdminAccountApi(id: number): Promise<void> {
 export async function getAdminAccountShippingAddressesApi(
   accountId: number,
 ): Promise<AdminShippingAddress[]> {
-  const response = await fetch(`${API_BASE}/api/backoffice/accounts/${accountId}/shipping-addresses`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/accounts/${accountId}/shipping-addresses`, {
     cache: "no-store",
   });
 

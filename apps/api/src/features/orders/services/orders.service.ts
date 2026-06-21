@@ -14,7 +14,12 @@ import { ProductEntity } from '../../../database/entities/product.entity';
 import { AccountEntity } from '../../../database/entities/account.entity';
 import { CouponEntity } from '../../../database/entities/coupon.entity';
 import { MileageTransactionEntity } from '../../../database/entities/mileage-transaction.entity';
-import { CreateOrderInput, Order, OrderStatus } from '../../../shared/store.types';
+import {
+  CreateOrderInput,
+  Order,
+  OrderStatus,
+  StoreConfig,
+} from '../../../shared/store.types';
 import { ORDER_STATUS } from '@repo/shared-types/order';
 import {
   computeCouponDiscount,
@@ -24,6 +29,7 @@ import {
 import { randomBytes, randomInt } from 'node:crypto';
 import { FirestoreTriggerService } from '../../../shared/firestore-trigger.service';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { PopbillSmsClient } from '../../messages/services/popbill-sms.client';
 
 type PhoneCodeState = {
   code: string;
@@ -62,6 +68,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly firestoreTrigger: FirestoreTriggerService,
     private readonly notificationsService: NotificationsService,
+    private readonly popbillSmsClient: PopbillSmsClient,
   ) {}
 
   onModuleInit(): void {
@@ -156,6 +163,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
     // 입금 기한: 기본정보의 paymentDueDays(일)를 주문 시점 기준으로 고정 저장합니다.
     const storeConfig = await this.configService.getStoreConfig();
+      this.assertStoreOpenForOrder(storeConfig);
     const paymentDueAt =
       storeConfig.paymentDueDays > 0
         ? new Date(Date.now() + storeConfig.paymentDueDays * 24 * 60 * 60 * 1000)
@@ -686,13 +694,11 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       attempts: 0,
     });
 
-    const isProduction = process.env.NODE_ENV === 'production';
-    await this.sendPhoneCode(phone, code, isProduction);
+    await this.sendPhoneCode(phone, code);
 
     return {
       ok: true,
       expiresAt: new Date(expiresAt).toISOString(),
-      devCode: isProduction ? undefined : code,
     };
   }
 
@@ -803,18 +809,39 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   private async sendPhoneCode(
     phone: string,
     code: string,
-    isProduction: boolean,
   ): Promise<void> {
+    const storeConfig = await this.configService.getStoreConfig();
+    const shopName = storeConfig.shopName.trim() || '상점';
+    const popbillConfig = this.getPopbillConfig();
+    const message = `[${shopName}] 주문조회 인증번호 [${code}]를 입력해주세요.`;
+
+    if (popbillConfig) {
+      try {
+        await this.popbillSmsClient.checkSenderNumber({
+          corpNum: popbillConfig.corpNum,
+          sender: popbillConfig.sender,
+          userID: popbillConfig.userID,
+        });
+
+        await this.popbillSmsClient.sendSms({
+          corpNum: popbillConfig.corpNum,
+          sender: popbillConfig.sender,
+          senderName: popbillConfig.senderName,
+          receiver: phone,
+          content: message,
+          userID: popbillConfig.userID,
+        });
+        return;
+      } catch (error) {
+        const smsErrorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+        throw new BadRequestException(`문자 발송에 실패했습니다. ${smsErrorMessage}`);
+      }
+    }
+
     const webhookUrl = process.env.SMS_WEBHOOK_URL?.trim();
-    const message = `[옥수수마켓] 주문조회 인증번호 ${code} 를 입력해주세요.`;
 
     if (!webhookUrl) {
-      if (isProduction) {
-        throw new BadRequestException('문자 발송 설정이 누락되었습니다. 관리자에게 문의해주세요.');
-      }
-
-      console.info(`[DEV_SMS_LOOKUP] to=${phone}, code=${code}`);
-      return;
+      throw new BadRequestException('문자 발송 설정이 누락되었습니다. 관리자에게 문의해주세요.');
     }
 
     const response = await fetch(webhookUrl, {
@@ -831,6 +858,37 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     if (!response.ok) {
       throw new BadRequestException('문자 발송에 실패했습니다. 잠시 후 다시 시도해주세요.');
     }
+  }
+
+  private getPopbillConfig(): {
+    corpNum: string;
+    sender: string;
+    senderName?: string;
+    userID?: string;
+  } | null {
+    const corpNum = (process.env.POPBILL_CORP_NUM ?? '').trim();
+    const sender = (process.env.POPBILL_SENDER ?? '').replace(/\D/g, '');
+    const senderName = (process.env.POPBILL_SENDER_NAME ?? '').trim();
+    const userID = (process.env.POPBILL_USER_ID ?? '').trim();
+
+    if (!corpNum || !sender) {
+      return null;
+    }
+
+    if (!/^\d{10}$/.test(corpNum)) {
+      throw new BadRequestException('서버 설정 오류: POPBILL_CORP_NUM(숫자 10자리) 값을 확인해주세요.');
+    }
+
+    if (!/^\d{8,20}$/.test(sender)) {
+      throw new BadRequestException('서버 설정 오류: POPBILL_SENDER(숫자 8~20자리) 값을 확인해주세요.');
+    }
+
+    return {
+      corpNum,
+      sender,
+      senderName: senderName || undefined,
+      userID: userID || undefined,
+    };
   }
 
   private getKstDatePrefix(): string {
@@ -1030,5 +1088,23 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         await couponRepository.save(coupon);
       }
     }
+  }
+
+  private assertStoreOpenForOrder(config: StoreConfig): void {
+    if (config.businessStatus === 'open') {
+      return;
+    }
+
+    if (config.businessStatus === 'standby') {
+      throw new BadRequestException(
+        config.businessStatusStandbyText ||
+          '현재 영업 준비 중입니다. 잠시 후 다시 주문해주세요.',
+      );
+    }
+
+    throw new BadRequestException(
+      config.businessStatusClosedText ||
+        '현재 영업이 종료되어 주문이 불가능합니다.',
+    );
   }
 }

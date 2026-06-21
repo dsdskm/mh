@@ -11,6 +11,7 @@ import {
   checkAdminUserIdApi,
   getAdminAccountShippingAddressesApi,
 } from "../../_lib/api";
+import { sendAdminSmsApi } from "../../_lib/api-messages";
 import { formatPhone } from "../../_lib/constants";
 import { PaginationControls } from "../../_components/pagination-controls";
 import { usePersistedPagination } from "../../_hooks/use-persisted-pagination";
@@ -69,6 +70,9 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
   // ── SMS popup state ────────────────────────────────────────────────────────
   const [smsTargets, setSmsTargets] = useState<AdminUser[] | null>(null);
   const [smsMessage, setSmsMessage] = useState("");
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsError, setSmsError] = useState<string | null>(null);
+  const [smsConfirmOpen, setSmsConfirmOpen] = useState(false);
 
   // ── 단체 문자용 선택 상태 ──────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -91,11 +95,90 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
     }
     setSmsTargets(targets);
     setSmsMessage("");
+    setSmsError(null);
+    setSmsConfirmOpen(false);
+  }
+
+  function closeSmsModal() {
+    setSmsTargets(null);
+    setSmsConfirmOpen(false);
   }
 
   function submitSms(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // TODO: 문자 전송 이벤트 구현 예정 (단건/단체 공통)
+
+    if (!smsTargets || smsTargets.length === 0) {
+      return;
+    }
+
+    const content = smsMessage.trim();
+    if (!content) {
+      setSmsError("메시지를 입력해주세요.");
+      return;
+    }
+
+    const validTargets = smsTargets.filter((target) => Boolean(target.phone));
+    if (validTargets.length === 0) {
+      setSmsError("문자를 보낼 수 있는 전화번호가 없습니다.");
+      return;
+    }
+
+    setSmsConfirmOpen(true);
+  }
+
+  async function confirmSmsSend() {
+    if (!smsTargets || smsTargets.length === 0) {
+      return;
+    }
+
+    const content = smsMessage.trim();
+    if (!content) {
+      setSmsError("메시지를 입력해주세요.");
+      setSmsConfirmOpen(false);
+      return;
+    }
+
+    const validTargets = smsTargets.filter((target) => Boolean(target.phone));
+    if (validTargets.length === 0) {
+      setSmsError("문자를 보낼 수 있는 전화번호가 없습니다.");
+      setSmsConfirmOpen(false);
+      return;
+    }
+
+    setSmsSending(true);
+    setSmsError(null);
+    try {
+      const results = await Promise.allSettled(
+        validTargets.map((target) =>
+          sendAdminSmsApi({
+            receiver: target.phone!,
+            receiverName: target.displayName ?? target.userId ?? undefined,
+            content,
+          }),
+        ),
+      );
+
+      const successCount = results.filter((result) => result.status === "fulfilled").length;
+      const failedResults = results.filter(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+
+      if (failedResults.length > 0) {
+        const firstFailed = failedResults[0];
+        const firstMessage =
+          firstFailed && firstFailed.reason instanceof Error
+            ? firstFailed.reason.message
+            : "문자 전송 중 오류가 발생했습니다.";
+        setSmsError(`성공 ${successCount}건 / 실패 ${failedResults.length}건 - ${firstMessage}`);
+        setSmsConfirmOpen(false);
+        return;
+      }
+
+      closeSmsModal();
+      setSmsMessage("");
+    } finally {
+      setSmsSending(false);
+    }
   }
 
   async function openDetail(acc: AdminUser) {
@@ -496,7 +579,11 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
       {smsTargets && (
         <div
           className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => setSmsTargets(null)}
+          onClick={() => {
+            if (!smsSending) {
+              closeSmsModal();
+            }
+          }}
         >
           <div
             className="w-full max-w-md rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
@@ -532,22 +619,75 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
                   className="h-32 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
                 />
               </div>
+              {smsError && (
+                <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{smsError}</p>
+              )}
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setSmsTargets(null)}
+                  onClick={() => {
+                    if (!smsSending) {
+                      closeSmsModal();
+                    }
+                  }}
+                  disabled={smsSending}
                   className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700"
                 >
                   취소
                 </button>
                 <button
                   type="submit"
+                  disabled={smsSending}
                   className="flex-1 rounded-xl bg-sky-600 px-3 py-2 text-sm font-bold text-white"
                 >
                   전송
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {smsTargets && smsConfirmOpen && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => {
+            if (!smsSending) {
+              setSmsConfirmOpen(false);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-stone-900">문자 전송 확인</h3>
+            <p className="mt-2 text-sm text-stone-700">
+              {smsTargets.length === 1
+                ? `${smsTargets[0]?.displayName ?? smsTargets[0]?.userId ?? "대상"} 님에게 문자를 전송할까요?`
+                : `${smsTargets.length}명에게 문자를 전송할까요?`}
+            </p>
+            <p className="mt-2 line-clamp-4 rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
+              {smsMessage.trim()}
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSmsConfirmOpen(false)}
+                disabled={smsSending}
+                className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700 disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmSmsSend()}
+                disabled={smsSending}
+                className="flex-1 rounded-xl bg-sky-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {smsSending ? "전송 중..." : "확인"}
+              </button>
+            </div>
           </div>
         </div>
       )}

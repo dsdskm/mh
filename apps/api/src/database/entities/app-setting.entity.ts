@@ -2,7 +2,6 @@ import { Column, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeor
 import {
   StoreRecipe,
   StoreStoryImage,
-  StoreTermsHistoryItem,
 } from '../../shared/store.types';
 
 @Entity({ name: 'app_settings' })
@@ -18,6 +17,18 @@ export class AppSettingEntity {
 
   @Column({ type: 'varchar' })
   sellerPhone!: string;
+
+  @Column({ type: 'varchar', default: '' })
+  trusteeBusinessName!: string;
+
+  @Column({ type: 'varchar', default: '' })
+  trusteeBusinessNumber!: string;
+
+  @Column({ type: 'varchar', default: '' })
+  trusteeRepresentative!: string;
+
+  @Column({ type: 'varchar', default: '' })
+  trusteePhone!: string;
 
   @Column({ type: 'varchar' })
   origin!: string;
@@ -46,18 +57,6 @@ export class AppSettingEntity {
   @Column({ type: 'jsonb' })
   recipes!: StoreRecipe[];
 
-  @Column({ type: 'varchar', default: '' })
-  termsUrl!: string;
-
-  @Column({ type: 'varchar', default: '' })
-  termsVersion!: string;
-
-  @Column({ type: 'timestamptz', nullable: true })
-  termsUpdatedAt!: Date | null;
-
-  @Column({ type: 'jsonb', default: () => "'[]'" })
-  termsHistory!: StoreTermsHistoryItem[];
-
   @Column({ type: 'int', default: 0 })
   paymentDueDays!: number;
 
@@ -74,6 +73,18 @@ export class AppSettingEntity {
   // 마일리지 적립률(%). 0이면 자동 적립 안 함. 주문 배송완료 시 결제액 × 비율로 적립
   @Column({ type: 'int', default: 0 })
   mileageEarnRate!: number;
+
+  @Column({ type: 'varchar', default: 'open' })
+  businessStatus!: 'open' | 'standby' | 'closed';
+
+  @Column({ type: 'text', default: '현재 정상 영업 중입니다.' })
+  businessStatusOpenText!: string;
+
+  @Column({ type: 'text', default: '영업 준비 중입니다. 잠시 후 다시 방문해주세요.' })
+  businessStatusStandbyText!: string;
+
+  @Column({ type: 'text', default: '영업이 종료되었습니다. 다음 영업 시간에 주문 가능합니다.' })
+  businessStatusClosedText!: string;
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;

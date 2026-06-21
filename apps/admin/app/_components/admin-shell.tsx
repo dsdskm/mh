@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useMemo, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AdminLogin } from "./admin-login";
 import { AdminSidebar } from "./admin-sidebar";
 import { AdminAlertContext } from "../_lib/admin-alert-context";
@@ -93,6 +93,26 @@ function getAlertCardStyle(alert: AlertItem): string {
   return "border-lime-300 bg-lime-50/80 shadow-sm shadow-lime-100 animate-[pulse_2.2s_ease-in-out_infinite] hover:bg-lime-100/80";
 }
 
+function getBusinessStatusLabel(status: "open" | "standby" | "closed"): string {
+  if (status === "open") {
+    return "영업중";
+  }
+  if (status === "standby") {
+    return "영업 대기";
+  }
+  return "영업 종료";
+}
+
+function getBusinessStatusBadgeClass(status: "open" | "standby" | "closed"): string {
+  if (status === "open") {
+    return "border-lime-300 bg-lime-50 text-lime-700";
+  }
+  if (status === "standby") {
+    return "border-amber-300 bg-amber-50 text-amber-700";
+  }
+  return "border-rose-300 bg-rose-50 text-rose-700";
+}
+
 function toAlertKind(type: AdminNotificationType): AlertKind {
   if (type === "order") {
     return "ORDER";
@@ -117,6 +137,23 @@ type Props = {
 
 export function AdminShell({ activeTab, state, children }: Props) {
   const [readAlertIds, setReadAlertIds] = useState<Set<string>>(new Set());
+  const [showBusinessTextModal, setShowBusinessTextModal] = useState(false);
+  const [showBusinessStatusConfirmModal, setShowBusinessStatusConfirmModal] = useState(false);
+  const [pendingBusinessStatus, setPendingBusinessStatus] = useState<"open" | "standby" | "closed" | null>(null);
+  const [savingBusinessStatus, setSavingBusinessStatus] = useState(false);
+  const [openTextDraft, setOpenTextDraft] = useState("");
+  const [standbyTextDraft, setStandbyTextDraft] = useState("");
+  const [closedTextDraft, setClosedTextDraft] = useState("");
+
+  useEffect(() => {
+    if (!state.config) {
+      return;
+    }
+
+    setOpenTextDraft(state.config.businessStatusOpenText ?? "");
+    setStandbyTextDraft(state.config.businessStatusStandbyText ?? "");
+    setClosedTextDraft(state.config.businessStatusClosedText ?? "");
+  }, [state.config]);
 
   const markAlertAsRead = useCallback(async (alertId: string) => {
     const notificationId = parseInt(alertId, 10);
@@ -169,34 +206,94 @@ export function AdminShell({ activeTab, state, children }: Props) {
         url: notification.url,
       }));
 
-    // 주문 접수·취소 요청은 실제 주문내역(state.orders)의 값을 그대로 사용해
-    // 알림 레코드 유무와 관계없이 누락되지 않게 표시합니다.
-    const orderRecordAlerts: AlertItem[] = state.orders
-      .filter((order) =>
-        order.status === ORDER_STATUS.RECEIVED ||
-        order.status === ORDER_STATUS.CANCEL_REQUESTED,
-      )
-      .filter((order) => !notificationAlerts.some(
+    // 주문 접수·취소 요청은 최신 순서대로 12건만 수집해 알림 레코드 유무와 관계없이 표시합니다.
+    const orderRecordAlerts: AlertItem[] = [];
+    for (const order of state.orders) {
+      if (orderRecordAlerts.length >= 12) {
+        break;
+      }
+
+      if (
+        order.status !== ORDER_STATUS.RECEIVED &&
+        order.status !== ORDER_STATUS.CANCEL_REQUESTED
+      ) {
+        continue;
+      }
+
+      if (notificationAlerts.some(
         (alert) => alert.kind === "ORDER" && alert.preview.includes(String(order.id)),
-      ))
-      .map((order) => {
-        const isCancel = order.status === ORDER_STATUS.CANCEL_REQUESTED;
-        return {
-          id: `${isCancel ? "order-cancel-" : "order-received-"}${order.id}`,
-          kind: "ORDER" as const,
-          text: isCancel
-            ? "주문 취소 요청이 접수되었습니다."
-            : "신규 주문이 접수되었습니다.",
-          preview: `${order.customerName} 님 주문 ${order.id}`,
-          createdAt: order.createdAt,
-          url: `/orders#orders:${order.id}`,
-        };
+      )) {
+        continue;
+      }
+
+      const isCancel = order.status === ORDER_STATUS.CANCEL_REQUESTED;
+      orderRecordAlerts.push({
+        id: `${isCancel ? "order-cancel-" : "order-received-"}${order.id}`,
+        kind: "ORDER" as const,
+        text: isCancel
+          ? "주문 취소 요청이 접수되었습니다."
+          : "신규 주문이 접수되었습니다.",
+        preview: `${order.customerName} 님 주문 ${order.id}`,
+        createdAt: order.createdAt,
+        url: `/orders#orders:${order.id}`,
       });
+    }
 
     return [...notificationAlerts, ...orderRecordAlerts]
       .sort((a, b) => toTime(b.createdAt) - toTime(a.createdAt))
       .slice(0, 12);
   }, [state.notifications, state.orders, readAlertIds]);
+
+  async function updateBusinessStatus(nextStatus: "open" | "standby" | "closed") {
+    if (!state.config || savingBusinessStatus) {
+      return;
+    }
+
+    if (state.config.businessStatus === nextStatus) {
+      return;
+    }
+
+    setPendingBusinessStatus(nextStatus);
+    setShowBusinessStatusConfirmModal(true);
+  }
+
+  async function confirmBusinessStatusChange() {
+    if (!state.config || savingBusinessStatus || !pendingBusinessStatus) {
+      return;
+    }
+
+    setSavingBusinessStatus(true);
+    try {
+      await state.saveConfigDirect({
+        businessStatus: pendingBusinessStatus,
+      });
+      setShowBusinessStatusConfirmModal(false);
+      setPendingBusinessStatus(null);
+    } finally {
+      setSavingBusinessStatus(false);
+    }
+  }
+
+  async function saveBusinessStatusTexts() {
+    if (!state.config || savingBusinessStatus) {
+      return;
+    }
+
+    setSavingBusinessStatus(true);
+    try {
+      const ok = await state.saveConfigDirect({
+        businessStatusOpenText: openTextDraft.trim(),
+        businessStatusStandbyText: standbyTextDraft.trim(),
+        businessStatusClosedText: closedTextDraft.trim(),
+      });
+
+      if (ok) {
+        setShowBusinessTextModal(false);
+      }
+    } finally {
+      setSavingBusinessStatus(false);
+    }
+  }
 
   if (!state.isAuthed) {
     return (
@@ -221,8 +318,57 @@ export function AdminShell({ activeTab, state, children }: Props) {
       </aside>
 
       {/* 중앙 화면 - 스크롤 가능 */}
-      <main className="ml-60 flex-1 overflow-auto pb-10 pt-4 pr-80">
-        <div className="px-3 sm:px-4 lg:px-6">
+      <main className="ml-60 flex-1 overflow-auto pb-10 pr-80">
+        <div className="fixed left-60 right-80 top-0 z-30 border-b border-lime-200 bg-white/90 px-3 py-3 backdrop-blur sm:px-4 lg:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-extrabold text-stone-900">운영 상태</p>
+              <span
+                className={`rounded-full border px-2 py-0.5 text-xs font-bold ${getBusinessStatusBadgeClass(
+                  state.config?.businessStatus ?? "open",
+                )}`}
+              >
+                {getBusinessStatusLabel(state.config?.businessStatus ?? "open")}
+              </span>
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">
+                알림 {commonAlerts.length}건
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={state.config?.businessStatus ?? "open"}
+                onChange={(event) =>
+                  void updateBusinessStatus(event.target.value as "open" | "standby" | "closed")
+                }
+                disabled={!state.config || savingBusinessStatus}
+                className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-800 disabled:opacity-60"
+              >
+                <option value="open">영업중</option>
+                <option value="standby">영업 대기</option>
+                <option value="closed">영업 종료</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => setShowBusinessTextModal(true)}
+                disabled={!state.config || savingBusinessStatus}
+                className="rounded-lg border border-lime-300 bg-lime-50 px-3 py-2 text-sm font-bold text-lime-800 disabled:opacity-60"
+              >
+                상태 문구 편집
+              </button>
+            </div>
+          </div>
+          {state.config && (
+            <p className="mt-2 line-clamp-1 text-xs text-stone-600">
+              현재 노출 문구: {state.config.businessStatus === "open"
+                ? state.config.businessStatusOpenText
+                : state.config.businessStatus === "standby"
+                  ? state.config.businessStatusStandbyText
+                  : state.config.businessStatusClosedText}
+            </p>
+          )}
+        </div>
+
+        <div className="px-3 pt-28 sm:px-4 lg:px-6">
           {state.loading && <p className="text-sm text-stone-600">데이터 불러오는 중...</p>}
           {state.error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
           {state.notice && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{state.notice}</p>}
@@ -269,6 +415,118 @@ export function AdminShell({ activeTab, state, children }: Props) {
           </div>
         </div>
       </aside>
+
+      {showBusinessTextModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => {
+            if (!savingBusinessStatus) {
+              setShowBusinessTextModal(false);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-xl rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="text-lg font-extrabold text-stone-900">영업 상태 문구 설정</h2>
+            <p className="mt-1 text-sm text-stone-600">웹 주문 화면에 상태별로 표시할 문구를 입력하세요.</p>
+
+            <div className="mt-4 space-y-3">
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-lime-700">영업중 문구</span>
+                <textarea
+                  value={openTextDraft}
+                  onChange={(event) => setOpenTextDraft(event.target.value)}
+                  className="h-20 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm"
+                  placeholder="예) 현재 정상 영업 중입니다."
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-amber-700">영업 대기 문구</span>
+                <textarea
+                  value={standbyTextDraft}
+                  onChange={(event) => setStandbyTextDraft(event.target.value)}
+                  className="h-20 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm"
+                  placeholder="예) 영업 준비 중입니다. 잠시 후 다시 방문해주세요."
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-bold text-rose-700">영업 종료 문구</span>
+                <textarea
+                  value={closedTextDraft}
+                  onChange={(event) => setClosedTextDraft(event.target.value)}
+                  className="h-20 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm"
+                  placeholder="예) 오늘 영업이 종료되었습니다."
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowBusinessTextModal(false)}
+                disabled={savingBusinessStatus}
+                className="flex-1 rounded-lg border border-stone-300 px-4 py-2 text-sm font-bold text-stone-700 disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveBusinessStatusTexts()}
+                disabled={savingBusinessStatus}
+                className="flex-1 rounded-lg bg-lime-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {savingBusinessStatus ? "저장 중..." : "저장"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBusinessStatusConfirmModal && pendingBusinessStatus && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => {
+            if (!savingBusinessStatus) {
+              setShowBusinessStatusConfirmModal(false);
+              setPendingBusinessStatus(null);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="text-lg font-extrabold text-stone-900">상태 변경 확인</h2>
+            <p className="mt-2 text-sm text-stone-700">
+              영업 상태를 <span className="font-bold">{getBusinessStatusLabel(pendingBusinessStatus)}</span>(으)로 변경할까요?
+            </p>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBusinessStatusConfirmModal(false);
+                  setPendingBusinessStatus(null);
+                }}
+                disabled={savingBusinessStatus}
+                className="flex-1 rounded-lg border border-stone-300 px-4 py-2 text-sm font-bold text-stone-700 disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmBusinessStatusChange()}
+                disabled={savingBusinessStatus}
+                className="flex-1 rounded-lg bg-lime-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {savingBusinessStatus ? "변경 중..." : "변경"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

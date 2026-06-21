@@ -96,6 +96,9 @@ importers:
       pg:
         specifier: ^8.21.0
         version: 8.21.0
+      popbill:
+        specifier: ^1.64.2
+        version: 1.64.2(ts-node@10.9.2(@types/node@24.12.4)(typescript@5.9.2))
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -1967,6 +1970,9 @@ packages:
   anynum@1.0.0:
     resolution: {integrity: sha512-xjR9/zBVnUOP6ztMIIgShjsxui80nQUQH+5xJnvrYLs+90bF25/KJqaAi8mk+B4RDtX1Nspi6fmp4YTEts8SfA==}
 
+  api@file:apps/api:
+    resolution: {directory: apps/api, type: directory}
+
   append-field@1.0.0:
     resolution: {integrity: sha512-klpgFSWLW1ZEs8svjfb7g4qWY0YS5imI82dTg+QahUvJ8YqAY0P10Uk8tTyh9ZGuYEZEMaeJYCF5BFuX552hsw==}
 
@@ -3464,6 +3470,10 @@ packages:
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
 
+  linkhub@1.8.2:
+    resolution: {integrity: sha512-7f5uedgRpdacfZpg+R+A9iNpmDvwL9qn97GAiuG6rUGPKMykDjyDPIF7gyG2mzt3+ey+iXQtzYWzRNfTp4WIGQ==}
+    engines: {node: '>= 0.10.0'}
+
   load-esm@1.0.3:
     resolution: {integrity: sha512-v5xlu8eHD1+6r8EHTg6hfmO97LN8ugKtiXcy5e6oN72iD2r6u0RPfLl6fxM+7Wnh2ZRq15o0russMst44WauPA==}
     engines: {node: '>=13.2.0'}
@@ -3950,6 +3960,10 @@ packages:
   pluralize@8.0.0:
     resolution: {integrity: sha512-Nc3IT5yHzflTfbjgqWcCPpo7DaKy4FnpB0l/zCAW0Tc7jxAiuqSxHasntB3D7887LSrA93kDJ9IXovxJYxyLCA==}
     engines: {node: '>=4'}
+
+  popbill@1.64.2:
+    resolution: {integrity: sha512-ciZg1YZKwLHioldIamydM2OQUkYnqMwBu+CittdvjnATuZftF7w+u127Rk/0WR4aAdcvRW/WzfrqEc78BEiNDg==}
+    engines: {node: '>= 0.10.0'}
 
   possible-typed-array-names@1.1.0:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
@@ -4921,6 +4935,10 @@ packages:
   xml-naming@0.1.0:
     resolution: {integrity: sha512-k8KO9hrMyNk6tUWqUfkTEZbezRRpONVOzUTnc97VnCvyj6Tf9lyUR9EDAIeiVLv56jsMcoXEwjW8Kv5yPY52lw==}
     engines: {node: '>=16.0.0'}
+
+  xmlhttprequest@1.8.0:
+    resolution: {integrity: sha512-58Im/U0mlVBLM38NdZjHyhuMtCqa61469k2YP/AaPbvCoV9aQGUpbJBj1QRm2ytRiVQBD/fsw7L2bJGDVQswBA==}
+    engines: {node: '>=0.4.0'}
 
   xtend@4.0.2:
     resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
@@ -6908,6 +6926,42 @@ snapshots:
 
   anynum@1.0.0:
     optional: true
+
+  api@file:apps/api(ts-node@10.9.2(@types/node@24.12.4)(typescript@5.9.2)):
+    dependencies:
+      '@nestjs/common': 11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core': 11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.1.24)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/platform-express': 11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24)
+      '@nestjs/typeorm': 11.0.1(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24)(reflect-metadata@0.2.2)(rxjs@7.8.2)(typeorm@1.0.0(pg@8.21.0)(ts-node@10.9.2(@types/node@24.12.4)(typescript@5.9.2)))
+      '@repo/shared-types': link:packages/shared-types
+      dotenv: 17.4.2
+      firebase-admin: 14.0.0
+      pg: 8.21.0
+      reflect-metadata: 0.2.2
+      rxjs: 7.8.2
+      typeorm: 1.0.0(pg@8.21.0)(ts-node@10.9.2(@types/node@24.12.4)(typescript@5.9.2))
+    transitivePeerDependencies:
+      - '@google-cloud/spanner'
+      - '@nestjs/microservices'
+      - '@nestjs/websockets'
+      - '@sap/hana-client'
+      - babel-plugin-macros
+      - better-sqlite3
+      - class-transformer
+      - class-validator
+      - encoding
+      - ioredis
+      - mongodb
+      - mssql
+      - mysql2
+      - oracledb
+      - pg-native
+      - pg-query-stream
+      - redis
+      - sql.js
+      - supports-color
+      - ts-node
+      - typeorm-aurora-data-api-driver
 
   append-field@1.0.0: {}
 
@@ -8917,6 +8971,10 @@ snapshots:
 
   lines-and-columns@1.2.4: {}
 
+  linkhub@1.8.2:
+    dependencies:
+      xmlhttprequest: 1.8.0
+
   load-esm@1.0.3: {}
 
   loader-runner@4.3.2: {}
@@ -9354,6 +9412,33 @@ snapshots:
       find-up: 4.1.0
 
   pluralize@8.0.0: {}
+
+  popbill@1.64.2(ts-node@10.9.2(@types/node@24.12.4)(typescript@5.9.2)):
+    dependencies:
+      linkhub: 1.8.2
+      popbill: api@file:apps/api(ts-node@10.9.2(@types/node@24.12.4)(typescript@5.9.2))
+    transitivePeerDependencies:
+      - '@google-cloud/spanner'
+      - '@nestjs/microservices'
+      - '@nestjs/websockets'
+      - '@sap/hana-client'
+      - babel-plugin-macros
+      - better-sqlite3
+      - class-transformer
+      - class-validator
+      - encoding
+      - ioredis
+      - mongodb
+      - mssql
+      - mysql2
+      - oracledb
+      - pg-native
+      - pg-query-stream
+      - redis
+      - sql.js
+      - supports-color
+      - ts-node
+      - typeorm-aurora-data-api-driver
 
   possible-typed-array-names@1.1.0: {}
 
@@ -10506,6 +10591,8 @@ snapshots:
 
   xml-naming@0.1.0:
     optional: true
+
+  xmlhttprequest@1.8.0: {}
 
   xtend@4.0.2: {}
 

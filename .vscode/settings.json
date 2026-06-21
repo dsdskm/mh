@@ -1,0 +1,27 @@
+{
+  "js/ts.tsserver.maxMemory": 4096,
+  "js/ts.tsserver.automaticTypeAcquisition.enabled": false,
+  "files.watcherExclude": {
+    "**/.next/**": true,
+    "**/.next/dev/**": true,
+    "**/.next/cache/**": true,
+    "**/.turbo/**": true,
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "**/build/**": true,
+    "**/logs/**": true,
+    "**/reports/**": true,
+    "**/.pnpm-store/**": true
+  },
+  "search.exclude": {
+    "**/.next": true,
+    "**/.next/dev": true,
+    "**/.next/cache": true,
+    "**/.turbo": true,
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/logs": true,
+    "**/reports": true
+  }
+}

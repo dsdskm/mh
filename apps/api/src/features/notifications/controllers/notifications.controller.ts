@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Param, Patch } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Patch, Query } from '@nestjs/common';
 import { NotificationsService } from '../services/notifications.service';
 
 @Controller('api/backoffice/notifications')
@@ -6,8 +6,11 @@ export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @Get()
-  async getAdminNotifications() {
-    const notifications = await this.notificationsService.getAdminNotifications();
+  async getAdminNotifications(@Query('limit') limitRaw?: string) {
+    const limit = Number(limitRaw);
+    const notifications = await this.notificationsService.getAdminNotifications(
+      Number.isInteger(limit) && limit > 0 ? limit : 12,
+    );
     return { notifications };
   }
 

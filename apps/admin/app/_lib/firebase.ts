@@ -3,18 +3,22 @@ import { getFirestore, type Firestore } from "firebase/firestore";
 
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
+let hasWarnedMissingConfig = false;
+const shouldWarnMissingFirebaseConfig =
+  process.env.NEXT_PUBLIC_WARN_MISSING_FIREBASE_CONFIG === "true";
 
 export function getFirestoreClient(): Firestore | null {
-  console.log(`getFirestoreClient`)
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-  console.log(`[Firestore] API Key: ${apiKey ? "****" : "Not Set"}, Project ID: ${projectId ?? "Not Set"}`);
+
   if (!apiKey || !projectId) {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined" && shouldWarnMissingFirebaseConfig && !hasWarnedMissingConfig) {
+      hasWarnedMissingConfig = true;
       console.warn(
-        '[Firestore] NEXT_PUBLIC_FIREBASE_API_KEY 또는 NEXT_PUBLIC_FIREBASE_PROJECT_ID 가 설정되지 않아 실시간 알림이 비활성화됩니다.',
+        "[Firestore] Firebase 환경변수가 없어 실시간 알림 기능을 비활성화합니다.",
       );
     }
+
     return null;
   }
 

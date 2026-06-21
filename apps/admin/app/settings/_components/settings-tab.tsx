@@ -1,30 +1,9 @@
-import { ChangeEvent, FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { AdminPageState } from "../../_hooks/use-admin-page";
-import { uploadAdminAssetApi } from "../../_lib/api";
-import { StoreRecipe, StoreRecipeStep } from "../../_lib/types";
+import { saveConfigApi, uploadAdminAssetApi } from "../../_lib/api";
 
 type Props = {
   state: AdminPageState;
-};
-
-type RecipeFormData = {
-  title: string;
-  ingredients: string[];
-  steps: Array<{
-    description: string;
-    imageUrl: string;
-  }>;
-};
-
-const INITIAL_RECIPE_FORM: RecipeFormData = {
-  title: "",
-  ingredients: [""],
-  steps: [
-    { description: "", imageUrl: "" },
-    { description: "", imageUrl: "" },
-    { description: "", imageUrl: "" },
-    { description: "", imageUrl: "" },
-  ],
 };
 
 function normalizeUrl(value: string): string | null {
@@ -74,11 +53,19 @@ export function SettingsTab({ state }: Props) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
 
-  // 레시피 폼 상태
-  const [recipeForm, setRecipeForm] = useState<RecipeFormData>(INITIAL_RECIPE_FORM);
-  const [selectedRecipeStepImages, setSelectedRecipeStepImages] = useState<Array<File | null>>([null, null, null, null]);
-  const [uploadingRecipe, setUploadingRecipe] = useState(false);
-  const [recipeError, setRecipeError] = useState<string | null>(null);
+  useEffect(() => {
+    console.log("[admin/settings] uploadingVideo changed", {
+      uploadingVideo,
+      at: new Date().toISOString(),
+    });
+  }, [uploadingVideo]);
+
+  useEffect(() => {
+    console.log("[admin/settings] configSaved changed", {
+      configSaved: state.configSaved,
+      at: new Date().toISOString(),
+    });
+  }, [state.configSaved]);
 
   const videoPreview = useMemo(() => {
     const normalized = normalizeUrl(state.videoUrl);
@@ -109,152 +96,85 @@ export function SettingsTab({ state }: Props) {
     const file = event.target.files?.[0];
     setUploadError(null);
     setSelectedVideoFile(file ?? null);
-  }
-
-  function handleRecipeIngredientChange(index: number, value: string) {
-    const nextIngredients = [...recipeForm.ingredients];
-    nextIngredients[index] = value;
-    setRecipeForm({ ...recipeForm, ingredients: nextIngredients });
-  }
-
-  function addRecipeIngredient() {
-    setRecipeForm({
-      ...recipeForm,
-      ingredients: [...recipeForm.ingredients, ""],
+    console.log("[admin/settings] video file selected", {
+      hasFile: Boolean(file),
+      name: file?.name,
+      size: file?.size,
+      type: file?.type,
+      at: new Date().toISOString(),
     });
-  }
-
-  function removeRecipeIngredient(index: number) {
-    setRecipeForm({
-      ...recipeForm,
-      ingredients: recipeForm.ingredients.filter((_, i) => i !== index),
-    });
-  }
-
-  function handleRecipeStepDescriptionChange(index: number, value: string) {
-    const nextSteps = recipeForm.steps.map((step) => ({ ...step }));
-    if (nextSteps[index]) {
-      nextSteps[index].description = value;
-    }
-    setRecipeForm({ ...recipeForm, steps: nextSteps });
-  }
-
-  function handleRecipeStepImageSelect(index: number, event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null;
-    const nextImages = [...selectedRecipeStepImages];
-    nextImages[index] = file;
-    setSelectedRecipeStepImages(nextImages);
-  }
-
-  async function handleRecipeSave(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setRecipeError(null);
-
-    if (!recipeForm.title.trim()) {
-      setRecipeError("레시피 이름을 입력하세요.");
-      return;
-    }
-
-    if (recipeForm.ingredients.some((ing) => !ing.trim())) {
-      setRecipeError("비어있는 재료가 있습니다.");
-      return;
-    }
-
-    if (recipeForm.steps.some((step) => !step.description.trim())) {
-      setRecipeError("비어있는 단계 설명이 있습니다.");
-      return;
-    }
-
-    setUploadingRecipe(true);
-    try {
-      // 선택된 이미지 업로드
-      const nextSteps: StoreRecipeStep[] = recipeForm.steps.map((step) => ({ ...step }));
-      for (let i = 0; i < selectedRecipeStepImages.length; i++) {
-        const file = selectedRecipeStepImages[i];
-        const step = nextSteps[i];
-        if (file && step) {
-          const { url } = await uploadAdminAssetApi(file, "recipes");
-          step.imageUrl = url;
-        }
-      }
-
-      // 새 레시피 추가
-      const newRecipe: StoreRecipe = {
-        title: recipeForm.title,
-        ingredients: recipeForm.ingredients,
-        steps: nextSteps,
-      };
-
-      const recipes = [...(state.config?.recipes ?? []), newRecipe];
-
-      // 설정 저장 (현재는 config 저장만 필요)
-      // 임시로 직접 API 호출
-      await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/backoffice/config`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipes }),
-      });
-
-      setRecipeForm(INITIAL_RECIPE_FORM);
-      setSelectedRecipeStepImages([null, null, null, null]);
-      state.setConfigSaved(true);
-      window.location.reload();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "레시피 저장에 실패했습니다.";
-      setRecipeError(message);
-    } finally {
-      setUploadingRecipe(false);
-    }
-  }
-
-  async function handleRecipeDelete(index: number) {
-    if (!state.config?.recipes || !state.config.recipes[index]) return;
-    if (!confirm(`"${state.config.recipes[index]?.title}" 레시피를 삭제하시겠습니까?`)) {
-      return;
-    }
-
-    try {
-      const recipes = state.config.recipes.filter((_, i) => i !== index);
-      await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/backoffice/config`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipes }),
-      });
-
-      state.setConfigSaved(true);
-      window.location.reload();
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "레시피 삭제에 실패했습니다.");
-    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setUploadError(null);
+    const startedAt = Date.now();
+    console.log("[admin/settings] handleSubmit start", {
+      hasSelectedVideoFile: Boolean(selectedVideoFile),
+      selectedVideoFileName: selectedVideoFile?.name,
+      selectedVideoFileSize: selectedVideoFile?.size,
+      currentVideoUrl: state.videoUrl,
+      at: new Date().toISOString(),
+    });
 
     if (!selectedVideoFile) {
-      await state.saveConfig(event, { videoUrl: state.videoUrl });
+      console.log("[admin/settings] saveConfig only (no video upload)", {
+        videoUrl: state.videoUrl,
+      });
+      state.setConfigSaved(false);
+      const saved = await state.saveConfig(event, { videoUrl: state.videoUrl });
+      console.log("[admin/settings] saveConfig only result", {
+        saved,
+        elapsedMs: Date.now() - startedAt,
+      });
       return;
     }
 
     let nextVideoUrl = state.videoUrl;
     setUploadingVideo(Boolean(selectedVideoFile));
+    console.log("[admin/settings] setUploadingVideo(true)", {
+      fileName: selectedVideoFile.name,
+      fileSize: selectedVideoFile.size,
+      fileType: selectedVideoFile.type,
+    });
     try {
       if (selectedVideoFile) {
+        console.log("[admin/settings] uploadAdminAssetApi start", {
+          fileName: selectedVideoFile.name,
+          fileSize: selectedVideoFile.size,
+          fileType: selectedVideoFile.type,
+        });
         const { url } = await uploadAdminAssetApi(selectedVideoFile, "videos");
         nextVideoUrl = url;
         state.setVideoUrl(url);
+        console.log("[admin/settings] uploadAdminAssetApi success", {
+          uploadedUrl: url,
+        });
       }
 
-      await state.saveConfig(event, { videoUrl: nextVideoUrl });
+      state.setConfigSaved(false);
+      console.log("[admin/settings] saveConfig with uploaded url start", {
+        nextVideoUrl,
+      });
+      const saved = await state.saveConfig(event, { videoUrl: nextVideoUrl });
+      console.log("[admin/settings] saveConfig with uploaded url result", {
+        saved,
+      });
       setSelectedVideoFile(null);
-      window.location.reload();
     } catch (error) {
       const message = error instanceof Error ? error.message : "파일 업로드에 실패했습니다.";
       setUploadError(message);
+      console.error("[admin/settings] handleSubmit error", {
+        message,
+        rawError: error,
+      });
       event.preventDefault();
     } finally {
       setUploadingVideo(false);
+      console.log("[admin/settings] setUploadingVideo(false)", {
+        elapsedMs: Date.now() - startedAt,
+        at: new Date().toISOString(),
+      });
     }
   }
 
@@ -262,68 +182,141 @@ export function SettingsTab({ state }: Props) {
     <>
       <h2 className="font-display text-3xl text-lime-800">기본정보</h2>
       <form onSubmit={(event) => void handleSubmit(event)} className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">상점명</span>
-            <input value={state.shopName} onChange={(e) => state.setShopName(e.target.value)} placeholder="상점명" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">판매자명</span>
-            <input value={state.sellerName} onChange={(e) => state.setSellerName(e.target.value)} placeholder="판매자명" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">연락처</span>
-            <input value={state.sellerPhone} onChange={(e) => state.setSellerPhone(e.target.value)} placeholder="연락처" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">원산지</span>
-            <input value={state.origin} onChange={(e) => state.setOrigin(e.target.value)} placeholder="원산지" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">은행명</span>
-            <input value={state.bankName} onChange={(e) => state.setBankName(e.target.value)} placeholder="은행명" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">계좌번호</span>
-            <input value={state.accountNumber} onChange={(e) => state.setAccountNumber(e.target.value)} placeholder="계좌번호" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">예금주</span>
-            <input value={state.accountHolder} onChange={(e) => state.setAccountHolder(e.target.value)} placeholder="예금주" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">입금 기한 (일)</span>
-            <input
-              type="number"
-              min={0}
-              value={state.paymentDueDays}
-              onChange={(e) => state.setPaymentDueDays(e.target.value)}
-              placeholder="예: 3 (0이면 기한 없음)"
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            />
-            <span className="block text-[11px] text-stone-500">주문 후 이 일수가 지나도록 미입금이면 자동으로 취소됩니다. 0이면 자동 취소하지 않습니다.</span>
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">배송료 (원)</span>
-            <input
-              type="number"
-              min={0}
-              value={state.deliveryFee}
-              onChange={(e) => state.setDeliveryFee(e.target.value)}
-              placeholder="예: 3000"
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            />
-            <span className="flex items-center gap-2 pt-1">
+        <section className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-bold text-stone-900">판매자 기본 정보</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">상점명</span>
+              <input value={state.shopName} onChange={(e) => state.setShopName(e.target.value)} placeholder="상점명" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">판매자명</span>
+              <input value={state.sellerName} onChange={(e) => state.setSellerName(e.target.value)} placeholder="판매자명" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">연락처</span>
+              <input value={state.sellerPhone} onChange={(e) => state.setSellerPhone(e.target.value)} placeholder="연락처" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">원산지</span>
+              <input value={state.origin} onChange={(e) => state.setOrigin(e.target.value)} placeholder="원산지" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+            </label>
+          </div>
+        </section>
+
+        <section className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-bold text-stone-900">위탁 사업자 정보</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">위탁 사업자명</span>
               <input
-                type="checkbox"
-                checked={state.chargeDeliveryFee}
-                onChange={(e) => state.setChargeDeliveryFee(e.target.checked)}
-                className="h-4 w-4 cursor-pointer accent-lime-600"
+                value={state.trusteeBusinessName}
+                onChange={(e) => state.setTrusteeBusinessName(e.target.value)}
+                placeholder="위탁 사업자명"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               />
-              <span className="text-[11px] text-stone-600">배송료 청구 (체크 시 주문 금액에 배송료가 더해집니다)</span>
-            </span>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">위탁 사업자등록번호</span>
+              <input
+                value={state.trusteeBusinessNumber}
+                onChange={(e) => state.setTrusteeBusinessNumber(e.target.value)}
+                placeholder="위탁 사업자등록번호"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">위탁 사업자 대표</span>
+              <input
+                value={state.trusteeRepresentative}
+                onChange={(e) => state.setTrusteeRepresentative(e.target.value)}
+                placeholder="위탁 사업자 대표"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">위탁 사업자 연락처</span>
+              <input
+                value={state.trusteePhone}
+                onChange={(e) => state.setTrusteePhone(e.target.value)}
+                placeholder="위탁 사업자 연락처"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+        </section>
+
+        <section className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-bold text-stone-900">정산 및 배송 정보</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">은행명</span>
+              <input value={state.bankName} onChange={(e) => state.setBankName(e.target.value)} placeholder="은행명" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">계좌번호</span>
+              <input value={state.accountNumber} onChange={(e) => state.setAccountNumber(e.target.value)} placeholder="계좌번호" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">예금주</span>
+              <input value={state.accountHolder} onChange={(e) => state.setAccountHolder(e.target.value)} placeholder="예금주" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">배송료 (원)</span>
+              <input
+                type="number"
+                min={0}
+                value={state.deliveryFee}
+                onChange={(e) => state.setDeliveryFee(e.target.value)}
+                placeholder="예: 3000"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
+              <span className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  checked={state.chargeDeliveryFee}
+                  onChange={(e) => state.setChargeDeliveryFee(e.target.checked)}
+                  className="h-4 w-4 cursor-pointer accent-lime-600"
+                />
+                <span className="text-[11px] text-stone-600">배송료 청구 (체크 시 주문 금액에 배송료가 더해집니다)</span>
+              </span>
+            </label>
+          </div>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold text-stone-600">입금 안내</span>
+            <textarea value={state.transferNote} onChange={(e) => state.setTransferNote(e.target.value)} placeholder="입금 안내" className="h-20 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
           </label>
-          <label className="space-y-1">
+        </section>
+
+        <section className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-bold text-stone-900">주문 및 혜택 설정</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">입금 기한 (일)</span>
+              <input
+                type="number"
+                min={0}
+                value={state.paymentDueDays}
+                onChange={(e) => state.setPaymentDueDays(e.target.value)}
+                placeholder="예: 3 (0이면 기한 없음)"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
+              <span className="block text-[11px] text-stone-500">주문 후 이 일수가 지나도록 미입금이면 자동으로 취소됩니다. 0이면 자동 취소하지 않습니다.</span>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-semibold text-stone-600">적립금 적립률 (%)</span>
+              <input
+                type="number"
+                min={0}
+                value={state.mileageEarnRate}
+                onChange={(e) => state.setMileageEarnRate(e.target.value)}
+                placeholder="예: 5 (0이면 적립 안 함)"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
+              <span className="block text-[11px] text-stone-500">회원 주문이 배송완료되면 결제 금액의 이 비율만큼 적립금이 자동 적립됩니다. 0이면 자동 적립하지 않습니다.</span>
+            </label>
+          </div>
+          <label className="block space-y-1">
             <span className="text-xs font-semibold text-stone-600">회원 주문 포함 상품 (무료 사은품)</span>
             <select
               value={state.memberBonusProductId ?? ""}
@@ -339,19 +332,11 @@ export function SettingsTab({ state }: Props) {
             </select>
             <span className="block text-[11px] text-stone-500">회원(로그인) 주문 시 선택한 상품이 0원 사은품으로 함께 발송됩니다. 재고는 차감되지 않으며, 매장에 노출하고 싶지 않으면 상품관리에서 비노출(숨김) 상태로 등록해도 사은품으로 사용할 수 있습니다.</span>
           </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-stone-600">적립금 적립률 (%)</span>
-            <input
-              type="number"
-              min={0}
-              value={state.mileageEarnRate}
-              onChange={(e) => state.setMileageEarnRate(e.target.value)}
-              placeholder="예: 5 (0이면 적립 안 함)"
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            />
-            <span className="block text-[11px] text-stone-500">회원 주문이 배송완료되면 결제 금액의 이 비율만큼 적립금이 자동 적립됩니다. 0이면 자동 적립하지 않습니다.</span>
-          </label>
-          <label className="space-y-1">
+        </section>
+
+        <section className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-bold text-stone-900">콘텐츠</h3>
+          <label className="block space-y-1">
             <span className="text-xs font-semibold text-stone-600">영상 URL</span>
             <input value={state.videoUrl} onChange={(e) => state.setVideoUrl(e.target.value)} placeholder="영상 URL" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
             <input
@@ -395,135 +380,13 @@ export function SettingsTab({ state }: Props) {
               </div>
             )}
           </label>
-        </div>
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold text-stone-600">입금 안내</span>
-          <textarea value={state.transferNote} onChange={(e) => state.setTransferNote(e.target.value)} placeholder="입금 안내" className="h-20 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold text-stone-600">상품 상세 설명</span>
-          <textarea value={state.detailDescription} onChange={(e) => state.setDetailDescription(e.target.value)} placeholder="상품 상세 설명" className="h-28 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
-        </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold text-stone-600">상품 상세 설명</span>
+            <textarea value={state.detailDescription} onChange={(e) => state.setDetailDescription(e.target.value)} placeholder="상품 상세 설명" className="h-28 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+          </label>
+        </section>
         <button type="submit" disabled={uploadingVideo} className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">기본정보 저장</button>
       </form>
-
-      {/* 레시피 입력 섹션 */}
-      <div className="mt-8 space-y-4 border-t border-stone-300 pt-8">
-        <h2 className="font-display text-3xl text-lime-800">레시피</h2>
-
-        {/* 기존 레시피 목록 */}
-        {state.config?.recipes && state.config.recipes.length > 0 && (
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-stone-700">저장된 레시피</h3>
-            <div className="space-y-2">
-              {state.config.recipes.map((recipe, idx) => (
-                <div key={idx} className="flex items-center justify-between rounded-lg border border-stone-200 bg-stone-50 p-3">
-                  <div>
-                    <p className="text-sm font-semibold text-stone-800">{recipe.title}</p>
-                    <p className="text-xs text-stone-600">{recipe.steps.length}단계 · {recipe.ingredients.length}개 재료</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRecipeDelete(idx)}
-                    className="rounded-lg bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-200"
-                  >
-                    삭제
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 레시피 입력 폼 */}
-        <form onSubmit={(event) => void handleRecipeSave(event)} className="space-y-4 rounded-lg border border-stone-200 bg-stone-50 p-4">
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold text-stone-600">레시피 이름</span>
-            <input
-              type="text"
-              value={recipeForm.title}
-              onChange={(e) => setRecipeForm({ ...recipeForm, title: e.target.value })}
-              placeholder="예: 무순 초절임"
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            />
-          </label>
-
-          {/* 재료 입력 */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-stone-600">재료</span>
-              <button
-                type="button"
-                onClick={addRecipeIngredient}
-                className="text-xs font-semibold text-lime-600 hover:text-lime-700"
-              >
-                + 추가
-              </button>
-            </div>
-            {recipeForm.ingredients.map((ingredient, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={ingredient}
-                  onChange={(e) => handleRecipeIngredientChange(idx, e.target.value)}
-                  placeholder={`재료 ${idx + 1}`}
-                  className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                />
-                {recipeForm.ingredients.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeRecipeIngredient(idx)}
-                    className="rounded-lg bg-red-100 px-2 py-2 text-xs text-red-700 hover:bg-red-200"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* 4단계 입력 */}
-          <div className="space-y-3">
-            <span className="block text-xs font-semibold text-stone-600">조리 단계 (4단계)</span>
-            {recipeForm.steps.map((step, idx) => (
-              <div key={idx} className="space-y-2 rounded-lg border border-stone-300 bg-white p-3">
-                <span className="block text-xs font-semibold text-stone-700">{idx + 1}단계</span>
-                <textarea
-                  value={step.description}
-                  onChange={(e) => handleRecipeStepDescriptionChange(idx, e.target.value)}
-                  placeholder={`${idx + 1}단계 설명`}
-                  className="h-16 w-full rounded-lg border border-stone-300 px-3 py-2 text-xs"
-                />
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-stone-600">이미지</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleRecipeStepImageSelect(idx, e)}
-                    disabled={uploadingRecipe}
-                    className="block w-full text-xs text-stone-600 file:mr-2 file:rounded-lg file:border-0 file:bg-lime-600 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white disabled:opacity-60"
-                  />
-                  {selectedRecipeStepImages[idx] && (
-                    <p className="text-[11px] text-stone-500">선택됨: {selectedRecipeStepImages[idx]!.name}</p>
-                  )}
-                  {step.imageUrl && !selectedRecipeStepImages[idx] && (
-                    <p className="text-[11px] text-lime-600">이미지 저장됨 ✓</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {recipeError && <p className="text-xs text-red-600">{recipeError}</p>}
-          <button
-            type="submit"
-            disabled={uploadingRecipe}
-            className="w-full rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
-          >
-            {uploadingRecipe ? "레시피 저장 중..." : "레시피 저장"}
-          </button>
-        </form>
-      </div>
 
       {uploadingVideo && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4">

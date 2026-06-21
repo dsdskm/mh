@@ -5,6 +5,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AccountEntity } from '../../../database/entities/account.entity';
 import { AccountShippingAddressEntity } from '../../../database/entities/account-shipping-address.entity';
+import { PopbillSmsClient } from '../../messages/services/popbill-sms.client';
+import { ConfigService } from '../../config/services/config.service';
 import {
   CreateLocalAccountInput,
   LocalAccountProfile,
@@ -39,6 +41,8 @@ export class AuthService {
     private readonly accountRepository: Repository<AccountEntity>,
     @InjectRepository(AccountShippingAddressEntity)
     private readonly shippingAddressRepository: Repository<AccountShippingAddressEntity>,
+    private readonly configService: ConfigService,
+    private readonly popbillSmsClient: PopbillSmsClient,
   ) {}
 
   async checkUserIdAvailability(rawUserId: string) {
@@ -102,13 +106,11 @@ export class AuthService {
       attempts: 0,
     });
 
-    const isProduction = process.env.NODE_ENV === 'production';
-    await this.sendPhoneCode(phone, code, isProduction);
+    await this.sendPhoneCode(phone, code);
 
     return {
       ok: true,
       expiresAt: new Date(expiresAt).toISOString(),
-      devCode: isProduction ? undefined : code,
     };
   }
 
@@ -289,19 +291,39 @@ export class AuthService {
   private async sendPhoneCode(
     phone: string,
     code: string,
-    isProduction: boolean,
   ): Promise<void> {
+    const popbillConfig = this.getPopbillConfig();
+    const storeConfig = await this.configService.getStoreConfig();
+    const shopName = storeConfig.shopName.trim() || '상점';
+    const message = `[${shopName}] 인증번호 [${code}]를 입력해주세요.`;
+
+    if (popbillConfig) {
+      try {
+        await this.popbillSmsClient.checkSenderNumber({
+          corpNum: popbillConfig.corpNum,
+          sender: popbillConfig.sender,
+          userID: popbillConfig.userID,
+        });
+
+        await this.popbillSmsClient.sendSms({
+          corpNum: popbillConfig.corpNum,
+          sender: popbillConfig.sender,
+          senderName: popbillConfig.senderName,
+          receiver: phone,
+          content: message,
+          userID: popbillConfig.userID,
+        });
+        return;
+      } catch (error) {
+        const smsErrorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+        throw new BadRequestException(`문자 발송에 실패했습니다. ${smsErrorMessage}`);
+      }
+    }
+
     const webhookUrl = process.env.SMS_WEBHOOK_URL?.trim();
-    const message = `[옥수수마켓] 인증번호 ${code} 를 입력해주세요.`;
 
     if (!webhookUrl) {
-      if (isProduction) {
-        throw new BadRequestException('문자 발송 설정이 누락되었습니다. 관리자에게 문의해주세요.');
-      }
-
-      // Dev fallback: print code for local testing when SMS gateway is not configured.
-      console.info(`[DEV_SMS] to=${phone}, code=${code}`);
-      return;
+      throw new BadRequestException('문자 발송 설정이 누락되었습니다. 관리자에게 문의해주세요.');
     }
 
     const response = await fetch(webhookUrl, {
@@ -318,6 +340,37 @@ export class AuthService {
     if (!response.ok) {
       throw new BadRequestException('문자 발송에 실패했습니다. 잠시 후 다시 시도해주세요.');
     }
+  }
+
+  private getPopbillConfig(): {
+    corpNum: string;
+    sender: string;
+    senderName?: string;
+    userID?: string;
+  } | null {
+    const corpNum = (process.env.POPBILL_CORP_NUM ?? '').trim();
+    const sender = (process.env.POPBILL_SENDER ?? '').replace(/\D/g, '');
+    const senderName = (process.env.POPBILL_SENDER_NAME ?? '').trim();
+    const userID = (process.env.POPBILL_USER_ID ?? '').trim();
+
+    if (!corpNum || !sender) {
+      return null;
+    }
+
+    if (!/^\d{10}$/.test(corpNum)) {
+      throw new BadRequestException('서버 설정 오류: POPBILL_CORP_NUM(숫자 10자리) 값을 확인해주세요.');
+    }
+
+    if (!/^\d{8,20}$/.test(sender)) {
+      throw new BadRequestException('서버 설정 오류: POPBILL_SENDER(숫자 8~20자리) 값을 확인해주세요.');
+    }
+
+    return {
+      corpNum,
+      sender,
+      senderName: senderName || undefined,
+      userID: userID || undefined,
+    };
   }
 
   async login(userId: string, password: string): Promise<{ account: LocalAccountProfile }> {

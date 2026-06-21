@@ -1,0 +1,148 @@
+
+> mh@ dev /Users/kkh/workspace/kkh/mh/app
+> turbo run dev
+
+• turbo 2.9.16
+
+   • Packages in scope: @repo/eslint-config, @repo/shared-types, @repo/typescript-config, @repo/ui, admin, api, web
+   • Running dev in 7 packages
+   • Remote caching disabled
+
+@repo/shared-types:build: cache hit, replaying logs 9c353bcca2f95d71
+@repo/shared-types:build: 
+@repo/shared-types:build: 
+@repo/shared-types:build: > @repo/shared-types@0.0.0 build /Users/kkh/workspace/kkh/mh/app/packages/shared-types
+@repo/shared-types:build: > tsc -p tsconfig.build.json
+@repo/shared-types:build: 
+api:dev: cache bypass, force executing 12a7d28307dfac63
+admin:dev: cache bypass, force executing dda3a43261a5aa07
+web:dev: cache bypass, force executing 3f7105d23d6403c0
+api:dev: 
+api:dev: > api@0.0.1 dev /Users/kkh/workspace/kkh/mh/app/apps/api
+api:dev: > nest start --watch --tsc
+api:dev: 
+web:dev: 
+web:dev: > web@0.1.0 dev /Users/kkh/workspace/kkh/mh/app/apps/web
+web:dev: > next dev --port 9001
+web:dev: 
+admin:dev: 
+admin:dev: > admin@0.1.0 dev /Users/kkh/workspace/kkh/mh/app/apps/admin
+admin:dev: > next dev --port 9002
+admin:dev: 
+admin:dev: ▲ Next.js 16.2.0 (Turbopack)
+admin:dev: - Local:         http://localhost:9002
+admin:dev: - Network:       http://172.30.1.39:9002
+admin:dev: ✓ Ready in 286ms
+web:dev: ▲ Next.js 16.2.0 (Turbopack)
+web:dev: - Local:         http://localhost:9001
+web:dev: - Network:       http://172.30.1.39:9001
+web:dev: - Environments: .env
+web:dev: ✓ Ready in 287ms
+api:dev: [2J[3J[H[[90m오전 9:01:06[0m] Starting compilation in watch mode...
+api:dev: 
+admin:dev: 
+api:dev: [[90m오전 9:01:08[0m] Found 0 errors. Watching for file changes.
+api:dev: 
+api:dev: ◇ injected env (9) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+api:dev: ◇ injected env (0) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+api:dev: ◇ injected env (7) from ../../.env // tip: ⌘ override existing { override: true }
+api:dev: ◇ injected env (0) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+api:dev: ◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
+api:dev: ◇ injected env (0) from ../../.env // tip: ◈ secrets for agents [www.dotenvx.com]
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:08 [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:08 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTypeOrmModule dependencies initialized[39m[38;5;3m +18ms[39m
+web:dev: 
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTypeOrmCoreModule dependencies initialized[39m[38;5;3m +864ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTypeOrmModule dependencies initialized[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mHealthController {/api}:[39m[38;5;3m +2ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/health, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuthController {/api/auth}:[39m[38;5;3m +1ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/check-user-id, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/check-phone, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/login, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/profile, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/profile/update, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/withdraw, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/find-user-id, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/reset-password, POST} route[39m[38;5;3m +1ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/shipping-addresses, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/shipping-addresses/save, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/phone/request, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/phone/verify, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/signup, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mConfigController {/api}:[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/config, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/config, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/config, PATCH} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mProductsController {/api}:[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/:id, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/products, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/products, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/products/:id, PATCH} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/products/:id, DELETE} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mOrdersController {/api}:[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders, POST} route[39m[38;5;3m +1ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders/lookup/request, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders/lookup/verify, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders/guest, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders/:id, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/orders/:id/cancel, PATCH} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/orders, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/orders, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/orders/:id, PATCH} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/orders/:id/status, PATCH} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mInquiriesController {/api}:[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/inquiries/latest, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/inquiries/:id, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/inquiries, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/inquiries/:id/comments, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/inquiries/:id, DELETE} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/inquiries, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/inquiries/:id/comments, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mNoticesController {/api}:[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/notices, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/notices/popup, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/notices, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/notices, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/notices/:id, PATCH} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/notices/:id, DELETE} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mReviewsController {/api}:[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/reviews, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/reviews, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/reviews/:id/comments, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/reviews, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/reviews/:id/comments, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mNotificationsController {/api/backoffice/notifications}:[39m[38;5;3m +1ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/notifications, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/notifications/:id/read, PATCH} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAccountsController {/api/backoffice}:[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/uploads, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/login, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/accounts, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/accounts, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/accounts/:id, PATCH} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/accounts/:id/shipping-addresses, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/accounts/:id, DELETE} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mCouponsController {/api}:[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/coupons, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/coupons, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/coupon-templates, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/coupon-templates, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/coupons/issue, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/coupons, POST} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/coupons/:id, DELETE} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mMileageController {/api}:[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/mileage, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/backoffice/accounts/:id/mileage, GET} route[39m[38;5;3m +0ms[39m
+api:dev: [32m[Nest] 20749  - [39m2026. 06. 19. 오전 9:01:09 [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +113ms[39m
+^C - Shutting down Turborepo tasks...
+admin:dev: [?25h
+web:dev: [?25h
+
+ Tasks:    1 successful, 4 total
+Cached:    1 cached, 4 total
+  Time:    2m0.273s 
+

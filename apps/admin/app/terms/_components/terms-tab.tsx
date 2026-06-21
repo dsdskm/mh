@@ -10,23 +10,33 @@ type Props = {
 
 export function TermsTab({ state }: Props) {
   const [termsUrlInput, setTermsUrlInput] = useState(state.termsUrl);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [privacyUrlInput, setPrivacyUrlInput] = useState(state.privacyUrl);
+  const [selectedTermsFile, setSelectedTermsFile] = useState<File | null>(null);
+  const [selectedPrivacyFile, setSelectedPrivacyFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const termsFileInputRef = useRef<HTMLInputElement | null>(null);
+  const privacyFileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setTermsUrlInput(state.termsUrl);
-  }, [state.termsUrl]);
+    setPrivacyUrlInput(state.privacyUrl);
+  }, [state.termsUrl, state.privacyUrl]);
 
   const history = useMemo(
     () => [...(state.config?.termsHistory ?? [])].sort((a, b) => new Date(b.termsUpdatedAt).getTime() - new Date(a.termsUpdatedAt).getTime()),
     [state.config?.termsHistory],
   );
 
-  function handleFileSelect(event: ChangeEvent<HTMLInputElement>) {
+  function handleTermsFileSelect(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    setSelectedFile(file ?? null);
+    setSelectedTermsFile(file ?? null);
+    setSaveError(null);
+  }
+
+  function handlePrivacyFileSelect(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    setSelectedPrivacyFile(file ?? null);
     setSaveError(null);
   }
 
@@ -37,33 +47,52 @@ export function TermsTab({ state }: Props) {
 
     try {
       let nextTermsUrl = termsUrlInput.trim();
+      let nextPrivacyUrl = privacyUrlInput.trim();
 
-      if (selectedFile) {
-        const { url } = await uploadAdminAssetApi(selectedFile, "terms");
+      if (selectedTermsFile) {
+        const { url } = await uploadAdminAssetApi(selectedTermsFile, "terms");
         nextTermsUrl = url;
         setTermsUrlInput(url);
       }
 
+      if (selectedPrivacyFile) {
+        const { url } = await uploadAdminAssetApi(selectedPrivacyFile, "terms");
+        nextPrivacyUrl = url;
+        setPrivacyUrlInput(url);
+      }
+
       state.setTermsUrl(nextTermsUrl);
-      const ok = await state.saveConfigDirect({ termsUrl: nextTermsUrl });
+      state.setPrivacyUrl(nextPrivacyUrl);
+      const ok = await state.saveConfigDirect({
+        termsUrl: nextTermsUrl,
+        privacyUrl: nextPrivacyUrl,
+      });
       if (!ok) {
-        setSaveError("약관 저장에 실패했습니다.");
+        setSaveError("문서 저장에 실패했습니다.");
         return;
       }
 
-      setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+      setSelectedTermsFile(null);
+      setSelectedPrivacyFile(null);
+      if (termsFileInputRef.current) {
+        termsFileInputRef.current.value = "";
+      }
+      if (privacyFileInputRef.current) {
+        privacyFileInputRef.current.value = "";
       }
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "약관 저장에 실패했습니다.");
+      setSaveError(error instanceof Error ? error.message : "문서 저장에 실패했습니다.");
     } finally {
       setUploading(false);
     }
   }
 
-  async function restoreHistory(url: string) {
-    if (!window.confirm("선택한 약관 버전으로 복원할까요?")) {
+  async function restoreHistory(item: {
+    documentType: "terms" | "privacy";
+    documentUrl: string;
+  }) {
+    const label = item.documentType === "terms" ? "이용약관" : "개인정보처리방침";
+    if (!window.confirm(`선택한 ${label} 버전으로 복원할까요?`)) {
       return;
     }
 
@@ -71,20 +100,30 @@ export function TermsTab({ state }: Props) {
     setUploading(true);
 
     try {
-      setTermsUrlInput(url);
-      state.setTermsUrl(url);
-      const ok = await state.saveConfigDirect({ termsUrl: url });
+      if (item.documentType === "terms") {
+        setTermsUrlInput(item.documentUrl);
+        state.setTermsUrl(item.documentUrl);
+      } else {
+        setPrivacyUrlInput(item.documentUrl);
+        state.setPrivacyUrl(item.documentUrl);
+      }
+
+      const ok = await state.saveConfigDirect(
+        item.documentType === "terms"
+          ? { termsUrl: item.documentUrl }
+          : { privacyUrl: item.documentUrl },
+      );
       if (!ok) {
-        setSaveError("약관 복원에 실패했습니다.");
+        setSaveError(`${label} 복원에 실패했습니다.`);
         return;
       }
 
-      setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+      setSelectedTermsFile(null);
+      if (termsFileInputRef.current) {
+        termsFileInputRef.current.value = "";
       }
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "약관 복원에 실패했습니다.");
+      setSaveError(error instanceof Error ? error.message : `${label} 복원에 실패했습니다.`);
     } finally {
       setUploading(false);
     }
@@ -94,38 +133,73 @@ export function TermsTab({ state }: Props) {
     <section className="space-y-4">
       <div>
         <h2 className="font-display text-3xl text-lime-800">약관관리</h2>
-        <p className="mt-1 text-xs text-stone-500">약관 파일 업로드, 현재 버전 확인, 변경 내역(히스토리) 복원을 관리합니다.</p>
+        <p className="mt-1 text-xs text-stone-500">이용약관/개인정보처리방침 URL 및 파일 업로드를 관리합니다. 약관은 버전 히스토리 복원이 가능합니다.</p>
       </div>
 
       <form onSubmit={(event) => void handleSubmit(event)} className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4">
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold text-stone-600">약관 파일 URL</span>
-          <input
-            value={termsUrlInput}
-            onChange={(event) => setTermsUrlInput(event.target.value)}
-            placeholder="약관 파일 URL"
-            className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-          />
-        </label>
+        <section className="space-y-3 rounded-xl border border-stone-200 p-3">
+          <h3 className="text-sm font-bold text-stone-800">이용약관</h3>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold text-stone-600">약관 파일 URL</span>
+            <input
+              value={termsUrlInput}
+              onChange={(event) => setTermsUrlInput(event.target.value)}
+              placeholder="약관 파일 URL"
+              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            />
+          </label>
 
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold text-stone-600">약관 파일 업로드</span>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".html,.htm,.txt,.md,.pdf"
-            onChange={handleFileSelect}
-            disabled={uploading}
-            className="block w-full text-xs text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-amber-600 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white disabled:opacity-60"
-          />
-          <p className="text-[11px] text-stone-500">
-            {uploading
-              ? "업로드/저장 중..."
-              : selectedFile
-                ? `선택됨: ${selectedFile.name} (저장 시 업로드)`
-                : "파일을 선택하지 않으면 URL 값으로 저장됩니다."}
-          </p>
-        </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold text-stone-600">약관 파일 업로드</span>
+            <input
+              ref={termsFileInputRef}
+              type="file"
+              accept=".html,.htm,.txt,.md,.pdf"
+              onChange={handleTermsFileSelect}
+              disabled={uploading}
+              className="block w-full text-xs text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-amber-600 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white disabled:opacity-60"
+            />
+            <p className="text-[11px] text-stone-500">
+              {uploading
+                ? "업로드/저장 중..."
+                : selectedTermsFile
+                  ? `선택됨: ${selectedTermsFile.name} (저장 시 업로드)`
+                  : "파일을 선택하지 않으면 URL 값으로 저장됩니다."}
+            </p>
+          </label>
+        </section>
+
+        <section className="space-y-3 rounded-xl border border-stone-200 p-3">
+          <h3 className="text-sm font-bold text-stone-800">개인정보처리방침</h3>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold text-stone-600">개인정보처리방침 파일 URL</span>
+            <input
+              value={privacyUrlInput}
+              onChange={(event) => setPrivacyUrlInput(event.target.value)}
+              placeholder="개인정보처리방침 파일 URL"
+              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold text-stone-600">개인정보처리방침 파일 업로드</span>
+            <input
+              ref={privacyFileInputRef}
+              type="file"
+              accept=".html,.htm,.txt,.md,.pdf"
+              onChange={handlePrivacyFileSelect}
+              disabled={uploading}
+              className="block w-full text-xs text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-amber-600 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white disabled:opacity-60"
+            />
+            <p className="text-[11px] text-stone-500">
+              {uploading
+                ? "업로드/저장 중..."
+                : selectedPrivacyFile
+                  ? `선택됨: ${selectedPrivacyFile.name} (저장 시 업로드)`
+                  : "파일을 선택하지 않으면 URL 값으로 저장됩니다."}
+            </p>
+          </label>
+        </section>
 
         <div className="rounded-xl bg-stone-50 px-3 py-2 text-xs text-stone-600">
           <p>현재 버전: {state.config?.termsVersion || "-"}</p>
@@ -142,7 +216,7 @@ export function TermsTab({ state }: Props) {
             disabled={uploading}
             className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
           >
-            {uploading ? "저장 중..." : "약관 저장"}
+            {uploading ? "저장 중..." : "문서 저장"}
           </button>
           {termsUrlInput && (
             <a
@@ -154,12 +228,22 @@ export function TermsTab({ state }: Props) {
               약관 파일 열기
             </a>
           )}
+          {privacyUrlInput && (
+            <a
+              href={privacyUrlInput}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700"
+            >
+              개인정보처리방침 파일 열기
+            </a>
+          )}
         </div>
       </form>
 
       <section className="rounded-2xl border border-stone-200 bg-white p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-stone-800">약관 변경 내역</h3>
+          <h3 className="text-sm font-bold text-stone-800">app_settings_terms_history</h3>
           <span className="text-xs text-stone-500">총 {history.length}건</span>
         </div>
 
@@ -168,20 +252,24 @@ export function TermsTab({ state }: Props) {
         ) : (
           <div className="space-y-2">
             {history.map((item) => {
-              const isCurrent = item.termsVersion === state.config?.termsVersion;
+              const isCurrent =
+                item.documentType === "terms"
+                  ? item.documentUrl === state.termsUrl
+                  : item.documentUrl === state.privacyUrl;
+              const typeLabel = item.documentType === "terms" ? "이용약관" : "개인정보처리방침";
               return (
-                <div key={item.termsVersion} className="rounded-xl border border-stone-200 p-3">
+                <div key={`${item.documentType}:${item.termsVersion}:${item.documentUrl}`} className="rounded-xl border border-stone-200 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs font-semibold text-stone-700">
-                      버전: {item.termsVersion}
+                      {typeLabel} · 버전: {item.termsVersion}
                       {isCurrent ? " (현재)" : ""}
                     </p>
                     <p className="text-xs text-stone-500">{new Date(item.termsUpdatedAt).toLocaleString("ko-KR")}</p>
                   </div>
-                  <p className="mt-1 break-all text-xs text-stone-500">{item.termsUrl}</p>
+                  <p className="mt-1 break-all text-xs text-stone-500">{item.documentUrl}</p>
                   <div className="mt-2 flex gap-2">
                     <a
-                      href={item.termsUrl}
+                      href={item.documentUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="rounded-lg border border-stone-300 px-2 py-1 text-xs font-semibold text-stone-700"
@@ -190,7 +278,7 @@ export function TermsTab({ state }: Props) {
                     </a>
                     <button
                       type="button"
-                      onClick={() => void restoreHistory(item.termsUrl)}
+                      onClick={() => void restoreHistory(item)}
                       disabled={uploading || isCurrent}
                       className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 disabled:opacity-50"
                     >

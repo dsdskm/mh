@@ -1,4 +1,5 @@
 import { API_BASE } from "./constants";
+import { adminFetch } from "./api-common";
 import {
   AdminUser,
   Inquiry,
@@ -17,12 +18,12 @@ export async function loadAdminInitialDataApi(): Promise<{
   accounts: AdminUser[];
 }> {
   const [configRes, productsRes, ordersRes, inquiriesRes, reviewsRes, accountsRes] = await Promise.all([
-    fetch(`${API_BASE}/api/backoffice/config`, { cache: "no-store" }),
-    fetch(`${API_BASE}/api/backoffice/products`, { cache: "no-store" }),
-    fetch(`${API_BASE}/api/backoffice/orders`, { cache: "no-store" }),
-    fetch(`${API_BASE}/api/backoffice/inquiries`, { cache: "no-store" }),
-    fetch(`${API_BASE}/api/backoffice/reviews`, { cache: "no-store" }),
-    fetch(`${API_BASE}/api/backoffice/accounts`, { cache: "no-store" }),
+    adminFetch(`${API_BASE}/api/backoffice/config`, { cache: "no-store" }),
+    adminFetch(`${API_BASE}/api/backoffice/products`, { cache: "no-store" }),
+    adminFetch(`${API_BASE}/api/backoffice/orders`, { cache: "no-store" }),
+    adminFetch(`${API_BASE}/api/backoffice/inquiries`, { cache: "no-store" }),
+    adminFetch(`${API_BASE}/api/backoffice/reviews`, { cache: "no-store" }),
+    adminFetch(`${API_BASE}/api/backoffice/accounts`, { cache: "no-store" }),
   ]);
 
   if (
@@ -70,13 +71,13 @@ export async function loadAdminInitialDataApi(): Promise<{
 }
 
 export async function fetchAdminOrdersApi(): Promise<Order[]> {
-  const res = await fetch(`${API_BASE}/api/backoffice/orders`, { cache: "no-store" });
+  const res = await adminFetch(`${API_BASE}/api/backoffice/orders`, { cache: "no-store" });
   if (!res.ok) throw new Error("주문 데이터를 불러오지 못했습니다.");
   return res.json() as Promise<Order[]>;
 }
 
 export async function fetchAdminInquiriesApi(): Promise<Inquiry[]> {
-  const res = await fetch(`${API_BASE}/api/backoffice/inquiries`, { cache: "no-store" });
+  const res = await adminFetch(`${API_BASE}/api/backoffice/inquiries`, { cache: "no-store" });
   if (!res.ok) throw new Error("문의 데이터를 불러오지 못했습니다.");
   const inquiries = await res.json() as Inquiry[];
   return inquiries.map((inquiry) => ({
@@ -88,7 +89,7 @@ export async function fetchAdminInquiriesApi(): Promise<Inquiry[]> {
 }
 
 export async function fetchAdminReviewsApi(): Promise<Review[]> {
-  const res = await fetch(`${API_BASE}/api/backoffice/reviews`, { cache: "no-store" });
+  const res = await adminFetch(`${API_BASE}/api/backoffice/reviews`, { cache: "no-store" });
   if (!res.ok) throw new Error("후기 데이터를 불러오지 못했습니다.");
   const reviews = await res.json() as Review[];
   return reviews.map((review) => ({

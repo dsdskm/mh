@@ -119,7 +119,6 @@ export default function OrdersPage() {
   const [guestVerifying, setGuestVerifying] = useState(false);
   const [guestError, setGuestError] = useState<string | null>(null);
   const [guestSuccess, setGuestSuccess] = useState<string | null>(null);
-  const [guestDevCodeHint, setGuestDevCodeHint] = useState<string | null>(null);
 
   const [memberOrders, setMemberOrders] = useState<Order[]>([]);
   const [memberLoading, setMemberLoading] = useState(false);
@@ -259,9 +258,8 @@ export default function OrdersPage() {
         throw new Error(body.message ?? "인증번호 요청에 실패했습니다.");
       }
 
-      const data = (await response.json()) as { devCode?: string };
+      await response.json();
       setGuestCodeSent(true);
-      setGuestDevCodeHint(data.devCode ?? null);
       setGuestSuccess("인증번호를 전송했습니다. 휴대폰 문자를 확인해주세요.");
     } catch (fetchError) {
       setGuestError(fetchError instanceof Error ? fetchError.message : "인증번호 요청 실패");
@@ -451,12 +449,6 @@ export default function OrdersPage() {
                   {guestVerifying ? "확인 중..." : "인증하고 주문내역 보기"}
                 </button>
               </form>
-            )}
-
-            {guestDevCodeHint && (
-              <p className="mt-3 rounded-xl bg-stone-100 p-3 text-xs text-stone-700">
-                개발환경 테스트용 인증번호: {guestDevCodeHint}
-              </p>
             )}
 
             {guestError && <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{guestError}</p>}

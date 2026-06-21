@@ -52,8 +52,8 @@ export function resetPasswordApi(payload: {
 
 export function requestRecoverPhoneVerificationApi(payload: {
   phone: string;
-}): Promise<{ ok: boolean; expiresAt: string; devCode?: string }> {
-  return postJson<{ ok: boolean; expiresAt: string; devCode?: string }>(
+}): Promise<{ ok: boolean; expiresAt: string }> {
+  return postJson<{ ok: boolean; expiresAt: string }>(
     "/api/auth/phone/request",
     {
       phone: payload.phone,

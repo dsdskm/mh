@@ -18,6 +18,11 @@ const body = Noto_Sans_KR({
 export const metadata: Metadata = {
   title: "Corn",
   description: "모바일/PC 최적화 옥수수 쇼핑몰",
+  icons: {
+    icon: "/icon.png",
+    shortcut: "/icon.png",
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({

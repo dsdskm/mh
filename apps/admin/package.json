@@ -4,7 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "predev": "pnpm -w sync:icon",
     "dev": "next dev --port 9002",
+    "prebuild": "pnpm -w sync:icon",
     "build": "next build",
     "start": "next start --port 9002",
     "lint": "eslint --max-warnings 0",

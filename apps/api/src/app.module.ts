@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import { existsSync } from 'node:fs';
 import * as dotenv from 'dotenv';
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AccountsController } from './features/accounts/controllers/accounts.controller';
 import { AccountsService } from './features/accounts/services/accounts.service';
@@ -30,6 +31,9 @@ import { CouponsController } from './features/coupons/controllers/coupons.contro
 import { CouponsService } from './features/coupons/services/coupons.service';
 import { MileageController } from './features/mileage/controllers/mileage.controller';
 import { MileageService } from './features/mileage/services/mileage.service';
+import { MessagesController } from './features/messages/controllers/messages.controller';
+import { MessagesService } from './features/messages/services/messages.service';
+import { PopbillSmsClient } from './features/messages/services/popbill-sms.client';
 
 import { AccountEntity } from './database/entities/account.entity';
 import { AppSettingEntity } from './database/entities/app-setting.entity';
@@ -46,7 +50,11 @@ import { NotificationEntity } from './database/entities/notification.entity';
 import { CouponEntity } from './database/entities/coupon.entity';
 import { CouponTemplateEntity } from './database/entities/coupon-template.entity';
 import { MileageTransactionEntity } from './database/entities/mileage-transaction.entity';
+import { AdminSmsHistoryEntity } from './database/entities/admin-sms-history.entity';
+import { TermsHistoryEntity } from './database/entities/terms-history.entity';
 import { FirestoreTriggerService } from './shared/firestore-trigger.service';
+import { AdminAuthService } from './shared/auth/admin-auth.service';
+import { BackofficeAuthGuard } from './shared/auth/backoffice-auth.guard';
 
 function loadEnvFiles() {
   const candidates = [
@@ -91,6 +99,8 @@ const databaseUrl =
         CouponEntity,
         CouponTemplateEntity,
         MileageTransactionEntity,
+        AdminSmsHistoryEntity,
+        TermsHistoryEntity,
       ],
     }),
     TypeOrmModule.forFeature([
@@ -109,6 +119,8 @@ const databaseUrl =
       CouponEntity,
       CouponTemplateEntity,
       MileageTransactionEntity,
+      AdminSmsHistoryEntity,
+      TermsHistoryEntity,
     ]),
   ],
   controllers: [
@@ -124,6 +136,7 @@ const databaseUrl =
     AccountsController,
     CouponsController,
     MileageController,
+    MessagesController,
   ],
   providers: [
     HealthService,
@@ -141,7 +154,14 @@ const databaseUrl =
     UploadService,
     CouponsService,
     MileageService,
+    MessagesService,
+    PopbillSmsClient,
     FirestoreTriggerService,
+    AdminAuthService,
+    {
+      provide: APP_GUARD,
+      useClass: BackofficeAuthGuard,
+    },
   ],
 })
 export class AppModule {}

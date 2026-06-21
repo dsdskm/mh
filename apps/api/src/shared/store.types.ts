@@ -184,15 +184,22 @@ export type StoreRecipe = {
 };
 
 export type StoreTermsHistoryItem = {
-  termsUrl: string;
+  documentType: 'terms' | 'privacy';
+  documentUrl: string;
   termsVersion: string;
   termsUpdatedAt: string;
 };
+
+export type StoreBusinessStatus = 'open' | 'standby' | 'closed';
 
 export type StoreConfig = {
   shopName: string;
   sellerName: string;
   sellerPhone: string;
+  trusteeBusinessName: string;
+  trusteeBusinessNumber: string;
+  trusteeRepresentative: string;
+  trusteePhone: string;
   origin: string;
   bankName: string;
   accountNumber: string;
@@ -202,6 +209,7 @@ export type StoreConfig = {
   storyImages: StoreStoryImage[];
   videoUrl: string;
   termsUrl: string;
+  privacyUrl: string;
   termsVersion: string;
   termsUpdatedAt: string | null;
   termsHistory: StoreTermsHistoryItem[];
@@ -217,6 +225,11 @@ export type StoreConfig = {
   memberBonusProductName: string | null;
   // 마일리지 적립률(%). 0이면 자동 적립 안 함
   mileageEarnRate: number;
+  // 영업 상태 및 상태별 안내 문구
+  businessStatus: StoreBusinessStatus;
+  businessStatusOpenText: string;
+  businessStatusStandbyText: string;
+  businessStatusClosedText: string;
 };
 
 export type RequestPhoneVerificationInput = {

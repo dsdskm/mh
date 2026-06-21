@@ -1,11 +1,31 @@
 import { AdminTab, OrderStatus } from "./types";
 import { ORDER_STATUS_LABELS_KO, ORDER_STATUS_OPTIONS, getOrderStatusLabelKo } from "@repo/shared-types/order";
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:9000";
+const ENV_API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "";
+
+function resolveApiBase(): string {
+  if (ENV_API_BASE) {
+    return ENV_API_BASE.replace(/\/+$/, "");
+  }
+
+  if (typeof window !== "undefined") {
+    const { protocol, hostname } = window.location;
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return `${protocol}//${hostname}:9000`;
+    }
+  }
+
+  // For non-local environments without explicit config, fall back to same-origin.
+  return "";
+}
+
+export const API_BASE = resolveApiBase();
 
 export const TABS: AdminTab[] = [
   "주문내역",
+  "문자전송",
   "기본정보",
+  "레시피관리",
   "약관관리",
   "공지사항",
   "매출 상세",
@@ -19,9 +39,11 @@ export const TABS: AdminTab[] = [
 
 export const TAB_QUERY_KEY_BY_LABEL: Record<AdminTab, string> = {
   주문내역: "orders",
+  문자전송: "messages",
   공지사항: "notices",
   "매출 상세": "sales-detail",
   기본정보: "settings",
+  레시피관리: "recipes",
   약관관리: "terms",
   상품관리: "products",
   문의내역: "inquiries",
@@ -32,9 +54,11 @@ export const TAB_QUERY_KEY_BY_LABEL: Record<AdminTab, string> = {
 
 export const TAB_ROUTE_BY_LABEL: Record<AdminTab, string> = {
   주문내역: "/orders",
+  문자전송: "/messages",
   공지사항: "/notices",
   "매출 상세": "/sales-detail",
   기본정보: "/settings",
+  레시피관리: "/recipes",
   약관관리: "/terms",
   상품관리: "/products",
   문의내역: "/inquiries",

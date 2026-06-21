@@ -52,8 +52,8 @@ export default function SignupPage() {
   const [smsCode, setSmsCode] = useState("");
   const [verificationToken, setVerificationToken] = useState<string | null>(null);
   const [codeSent, setCodeSent] = useState(false);
-  const [devCodeHint, setDevCodeHint] = useState<string | null>(null);
   const [termsUrl, setTermsUrl] = useState<string>("");
+  const [privacyUrl, setPrivacyUrl] = useState<string>("");
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
@@ -61,7 +61,6 @@ export default function SignupPage() {
   const [postcodeReady, setPostcodeReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [isLocalhost, setIsLocalhost] = useState(false);
 
   const normalizedPhone = useMemo(() => phone.replace(/\D/g, ""), [phone]);
   const passwordChecks = useMemo(() => {
@@ -103,11 +102,7 @@ export default function SignupPage() {
   }, []);
 
   useEffect(() => {
-    setIsLocalhost(window.location.hostname === "localhost");
-  }, []);
-
-  useEffect(() => {
-    async function loadTermsUrl() {
+    async function loadPolicyUrls() {
       try {
         const response = await fetch(`${API_BASE}/api/config`, {
           cache: "no-store",
@@ -115,17 +110,23 @@ export default function SignupPage() {
 
         if (!response.ok) {
           setTermsUrl("");
+          setPrivacyUrl("");
           return;
         }
 
-        const data = (await response.json()) as { termsUrl?: string };
+        const data = (await response.json()) as {
+          termsUrl?: string;
+          privacyUrl?: string;
+        };
         setTermsUrl(data.termsUrl?.trim() ?? "");
+        setPrivacyUrl(data.privacyUrl?.trim() ?? "");
       } catch {
         setTermsUrl("");
+        setPrivacyUrl("");
       }
     }
 
-    void loadTermsUrl();
+    void loadPolicyUrls();
   }, []);
 
   function searchAddress() {
@@ -195,7 +196,6 @@ export default function SignupPage() {
 
       const data = await requestPhoneVerificationApi(normalizedPhone);
       setCodeSent(true);
-      setDevCodeHint(data.devCode ?? null);
       setSuccess("인증번호를 전송했습니다. 휴대폰 문자를 확인해주세요.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "인증번호 발송 실패");
@@ -291,7 +291,6 @@ export default function SignupPage() {
       setSmsCode("");
       setVerificationToken(null);
       setCodeSent(false);
-      setDevCodeHint(null);
       setTermsAgreed(false);
       setIsPhoneAvailable(null);
       setPhoneMessage(null);
@@ -459,12 +458,6 @@ export default function SignupPage() {
             </div>
           )}
 
-          {devCodeHint && isLocalhost && (
-            <p className="rounded-xl bg-stone-100 p-3 text-xs text-stone-700">
-              개발환경 테스트용 인증번호: {devCodeHint}
-            </p>
-          )}
-
           {verificationToken && (
             <p className="rounded-xl bg-lime-50 p-3 text-sm text-lime-800">전화번호 인증 완료</p>
           )}
@@ -503,6 +496,17 @@ export default function SignupPage() {
               <iframe
                 src={termsUrl}
                 title="이용약관"
+                className="h-[26rem] w-full rounded-lg border border-stone-200 sm:h-72"
+              />
+            </div>
+          )}
+
+          {privacyUrl && (
+            <div className="rounded-xl border border-stone-200 bg-white p-2 sm:p-3">
+              <p className="px-2 pb-2 text-xs font-semibold text-stone-700">개인정보처리방침 (필수)</p>
+              <iframe
+                src={privacyUrl}
+                title="개인정보처리방침"
                 className="h-[26rem] w-full rounded-lg border border-stone-200 sm:h-72"
               />
             </div>

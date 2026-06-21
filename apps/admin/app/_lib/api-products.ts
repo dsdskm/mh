@@ -1,5 +1,5 @@
 import { API_BASE } from "./constants";
-import { parseJsonOrThrow } from "./api-common";
+import { adminFetch, parseJsonOrThrow } from "./api-common";
 import { Product } from "./types";
 
 export type ProductPayload = {
@@ -13,8 +13,16 @@ export type ProductPayload = {
   active: boolean;
 };
 
+export async function listProductsApi(): Promise<Product[]> {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/products`, {
+    cache: "no-store",
+  });
+
+  return parseJsonOrThrow<Product[]>(response, "상품 목록을 불러오지 못했습니다.");
+}
+
 export async function createProductApi(payload: ProductPayload): Promise<Product> {
-  const response = await fetch(`${API_BASE}/api/backoffice/products`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/products`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -26,7 +34,7 @@ export async function createProductApi(payload: ProductPayload): Promise<Product
 }
 
 export async function updateProductApi(id: number, payload: ProductPayload): Promise<Product> {
-  const response = await fetch(`${API_BASE}/api/backoffice/products/${id}`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/products/${id}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -38,7 +46,7 @@ export async function updateProductApi(id: number, payload: ProductPayload): Pro
 }
 
 export async function deleteProductApi(id: number): Promise<void> {
-  const response = await fetch(`${API_BASE}/api/backoffice/products/${id}`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/products/${id}`, {
     method: "DELETE",
   });
 

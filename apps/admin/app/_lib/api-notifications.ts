@@ -1,9 +1,9 @@
 import { API_BASE } from "./constants";
-import { parseJsonOrThrow } from "./api-common";
+import { adminFetch, parseJsonOrThrow } from "./api-common";
 import { AdminNotification } from "./types";
 
 export async function fetchAdminNotificationsApi(): Promise<AdminNotification[]> {
-  const response = await fetch(`${API_BASE}/api/backoffice/notifications`, { cache: "no-store" });
+  const response = await adminFetch(`${API_BASE}/api/backoffice/notifications?limit=12`, { cache: "no-store" });
   const data = await parseJsonOrThrow<{ notifications: AdminNotification[] }>(
     response,
     "알림 목록을 불러오지 못했습니다.",
@@ -12,7 +12,7 @@ export async function fetchAdminNotificationsApi(): Promise<AdminNotification[]>
 }
 
 export async function markAdminNotificationAsReadApi(notificationId: number): Promise<void> {
-  const response = await fetch(`${API_BASE}/api/backoffice/notifications/${notificationId}/read`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/notifications/${notificationId}/read`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",

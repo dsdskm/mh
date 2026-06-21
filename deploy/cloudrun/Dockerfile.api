@@ -1,5 +1,8 @@
 FROM node:20-alpine AS builder
 
+ARG APP_ENV=dev
+ENV APP_ENV=$APP_ENV
+
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable
@@ -11,21 +14,25 @@ COPY apps/api ./apps/api
 COPY packages ./packages
 
 RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @repo/shared-types build
 RUN pnpm --filter api build
 
 FROM node:20-alpine AS runner
 
+ARG APP_ENV=dev
+
 ENV NODE_ENV=production
-ENV PNPM_HOME=/pnpm
-ENV PATH=$PNPM_HOME:$PATH
-RUN corepack enable
+ENV APP_ENV=$APP_ENV
+ENV PORT=8080
 
 WORKDIR /app
 
-COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/turbo.json ./
-COPY --from=builder /app/apps/api ./apps/api
-COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --from=builder /app/packages/shared-types/package.json ./packages/shared-types/package.json
+COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 
 EXPOSE 8080
 CMD ["node", "apps/api/dist/main.js"]

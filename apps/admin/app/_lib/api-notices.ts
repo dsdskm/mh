@@ -1,5 +1,5 @@
 import { API_BASE } from "./constants";
-import { parseJsonOrThrow } from "./api-common";
+import { adminFetch, parseJsonOrThrow } from "./api-common";
 import { Notice } from "./types";
 
 export type NoticePayload = {
@@ -12,12 +12,12 @@ export type NoticePayload = {
 };
 
 export async function getAdminNoticesApi(): Promise<Notice[]> {
-  const response = await fetch(`${API_BASE}/api/backoffice/notices`, { cache: "no-store" });
+  const response = await adminFetch(`${API_BASE}/api/backoffice/notices`, { cache: "no-store" });
   return parseJsonOrThrow<Notice[]>(response, "공지사항 목록을 불러오지 못했습니다.");
 }
 
 export async function createAdminNoticeApi(payload: NoticePayload): Promise<Notice> {
-  const response = await fetch(`${API_BASE}/api/backoffice/notices`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/notices`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -29,7 +29,7 @@ export async function createAdminNoticeApi(payload: NoticePayload): Promise<Noti
 }
 
 export async function updateAdminNoticeApi(id: number, payload: Partial<NoticePayload>): Promise<Notice> {
-  const response = await fetch(`${API_BASE}/api/backoffice/notices/${id}`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/notices/${id}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -41,7 +41,7 @@ export async function updateAdminNoticeApi(id: number, payload: Partial<NoticePa
 }
 
 export async function deleteAdminNoticeApi(id: number): Promise<void> {
-  const response = await fetch(`${API_BASE}/api/backoffice/notices/${id}`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/notices/${id}`, {
     method: "DELETE",
   });
 

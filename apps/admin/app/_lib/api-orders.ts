@@ -1,9 +1,9 @@
 import { API_BASE } from "./constants";
-import { parseJsonOrThrow } from "./api-common";
+import { adminFetch, parseJsonOrThrow } from "./api-common";
 import { AdminOrderCreatePayload, AdminOrderUpdatePayload, Order, OrderStatus } from "./types";
 
 export async function updateOrderStatusApi(orderId: number, status: OrderStatus): Promise<void> {
-  const response = await fetch(`${API_BASE}/api/backoffice/orders/${orderId}/status`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/orders/${orderId}/status`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -15,7 +15,7 @@ export async function updateOrderStatusApi(orderId: number, status: OrderStatus)
 }
 
 export async function createBackofficeOrderApi(payload: AdminOrderCreatePayload): Promise<Order> {
-  const response = await fetch(`${API_BASE}/api/backoffice/orders`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/orders`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -27,7 +27,7 @@ export async function createBackofficeOrderApi(payload: AdminOrderCreatePayload)
 }
 
 export async function updateBackofficeOrderApi(orderId: number, payload: AdminOrderUpdatePayload): Promise<Order> {
-  const response = await fetch(`${API_BASE}/api/backoffice/orders/${orderId}`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/orders/${orderId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",

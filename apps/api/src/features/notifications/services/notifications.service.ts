@@ -31,9 +31,10 @@ export class NotificationsService {
     return this.toAdminNotification(saved);
   }
 
-  async getAdminNotifications(): Promise<AdminNotification[]> {
+  async getAdminNotifications(limit = 12): Promise<AdminNotification[]> {
     const notifications = await this.notificationRepository.find({
       order: { createdAt: 'DESC' },
+      take: limit,
     });
 
     return notifications.map((item) => this.toAdminNotification(item));

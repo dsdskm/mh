@@ -2,34 +2,71 @@
 set -euo pipefail
 
 # Usage:
-#   PROJECT_ID=my-gcp-project REGION=asia-northeast3 ENV=dev ./deploy/cloudrun/deploy.sh
-#   PROJECT_ID=my-gcp-project REGION=asia-northeast3 ENV=prod ./deploy/cloudrun/deploy.sh
-#
-# Required:
-#   PROJECT_ID: GCP project ID
-#   REGION: Cloud Run region (e.g., asia-northeast3)
-#   ENV: dev or prod (default: dev)
+#   ./deploy/cloudrun/deploy.sh
+#   ENV=prod ./deploy/cloudrun/deploy.sh
+#   PROJECT_ID=my-gcp-project REGION=asia-northeast3 ./deploy/cloudrun/deploy.sh
+#   ./deploy/cloudrun/deploy.sh api
+#   ./deploy/cloudrun/deploy.sh web
+#   ./deploy/cloudrun/deploy.sh admin
+#   ./deploy/cloudrun/deploy.sh api web
 #
 # Optional:
+#   PROJECT_ID: GCP project ID (default: current gcloud project)
+#   REGION: Cloud Run region (default: asia-northeast3)
+#   ENV: dev or prod (default: prod)
+#   ROOT_ENV_FILE / API_ENV_FILE / WEB_ENV_FILE / ADMIN_ENV_FILE: override env file paths
+#   API_BASE_URL: web/admin 단독 배포 시 사용할 API URL (default: 기존 API 서비스 URL 조회)
+#   DATABASE_URL: API 런타임 DB 연결 문자열
+#   NEXTAUTH_SECRET: web 런타임 NextAuth 시크릿
+#   KAKAO_CLIENT_ID: web 런타임 카카오 클라이언트 ID
+#   KAKAO_CLIENT_SECRET: web 런타임 카카오 클라이언트 시크릿
 #   REPOSITORY: Artifact Registry name (default: mh)
 #   For custom service names/resources, set individual vars
 
-PROJECT_ID=${PROJECT_ID:?PROJECT_ID is required}
-REGION=${REGION:?REGION is required}
-ENV=${ENV:-dev}
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+ENV_DELIM="|||"
+
+ENV=${ENV:-prod}
+PROJECT_ID=${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}
+REGION=${REGION:-asia-northeast3}
 REPOSITORY=${REPOSITORY:-mh}
+
+if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
+  echo "Error: PROJECT_ID is not set."
+  echo "- Run: gcloud config set project <YOUR_PROJECT_ID>"
+  echo "- Or:  PROJECT_ID=<YOUR_PROJECT_ID> ./deploy/cloudrun/deploy.sh"
+  exit 1
+fi
 
 if [[ "$ENV" != "dev" && "$ENV" != "prod" ]]; then
   echo "Error: ENV must be 'dev' or 'prod', got '$ENV'"
   exit 1
 fi
 
+if [[ "$ENV" == "prod" ]]; then
+  ROOT_ENV_FILE=${ROOT_ENV_FILE:-$ROOT_DIR/.env.prd}
+  API_ENV_FILE=${API_ENV_FILE:-$ROOT_DIR/apps/api/.env.prd}
+  WEB_ENV_FILE=${WEB_ENV_FILE:-$ROOT_DIR/apps/web/.env.prd}
+  ADMIN_ENV_FILE=${ADMIN_ENV_FILE:-$ROOT_DIR/.env.prd}
+else
+  ROOT_ENV_FILE=${ROOT_ENV_FILE:-$ROOT_DIR/.env}
+  API_ENV_FILE=${API_ENV_FILE:-$ROOT_DIR/apps/api/.env}
+  WEB_ENV_FILE=${WEB_ENV_FILE:-$ROOT_DIR/apps/web/.env}
+  ADMIN_ENV_FILE=${ADMIN_ENV_FILE:-$ROOT_DIR/.env}
+fi
+
+if [[ ! -f "$ROOT_ENV_FILE" ]]; then
+  echo "Error: env file not found: $ROOT_ENV_FILE"
+  exit 1
+fi
+
 echo "=== Deploying to environment: $ENV ==="
 
 if [[ "$ENV" == "prod" ]]; then
-  API_SERVICE=${API_SERVICE:-mh-api-prod}
-  WEB_SERVICE=${WEB_SERVICE:-mh-web-prod}
-  ADMIN_SERVICE=${ADMIN_SERVICE:-mh-admin-prod}
+  API_SERVICE=${API_SERVICE:-api}
+  WEB_SERVICE=${WEB_SERVICE:-web}
+  ADMIN_SERVICE=${ADMIN_SERVICE:-admin}
+  DEFAULT_API_BASE_URL=${DEFAULT_API_BASE_URL:-}
   API_CPU=${API_CPU:-2}
   API_MEMORY=${API_MEMORY:-1Gi}
   API_MIN=${API_MIN:-1}
@@ -43,9 +80,10 @@ if [[ "$ENV" == "prod" ]]; then
   ADMIN_MIN=${ADMIN_MIN:-1}
   ADMIN_MAX=${ADMIN_MAX:-10}
 else
-  API_SERVICE=${API_SERVICE:-mh-api-dev}
-  WEB_SERVICE=${WEB_SERVICE:-mh-web-dev}
-  ADMIN_SERVICE=${ADMIN_SERVICE:-mh-admin-dev}
+  API_SERVICE=${API_SERVICE:-api}
+  WEB_SERVICE=${WEB_SERVICE:-web}
+  ADMIN_SERVICE=${ADMIN_SERVICE:-admin}
+  DEFAULT_API_BASE_URL=${DEFAULT_API_BASE_URL:-https://api-251517365320.asia-northeast3.run.app}
   API_CPU=${API_CPU:-1}
   API_MEMORY=${API_MEMORY:-512Mi}
   API_MIN=${API_MIN:-0}
@@ -64,16 +102,78 @@ echo "Services: $API_SERVICE / $WEB_SERVICE / $ADMIN_SERVICE"
 echo "CPU/Memory: API=$API_CPU/$API_MEMORY WEB=$WEB_CPU/$WEB_MEMORY ADMIN=$ADMIN_CPU/$ADMIN_MEMORY"
 echo "Scale: API=$API_MIN-$API_MAX WEB=$WEB_MIN-$WEB_MAX ADMIN=$ADMIN_MIN-$ADMIN_MAX"
 
-DATABASE_URL_SECRET=${DATABASE_URL_SECRET:-database-url-${ENV}}
-NEXTAUTH_SECRET_SECRET=${NEXTAUTH_SECRET_SECRET:-nextauth-secret-${ENV}}
-KAKAO_CLIENT_ID_SECRET=${KAKAO_CLIENT_ID_SECRET:-kakao-client-id-${ENV}}
-KAKAO_CLIENT_SECRET_SECRET=${KAKAO_CLIENT_SECRET_SECRET:-kakao-client-secret-${ENV}}
+DEPLOY_API=false
+DEPLOY_WEB=false
+DEPLOY_ADMIN=false
 
-IMAGE_TAG=${IMAGE_TAG:-$(date +%Y%m%d%H%M)}
+if [[ $# -eq 0 ]]; then
+  DEPLOY_API=true
+  DEPLOY_WEB=true
+  DEPLOY_ADMIN=true
+else
+  for target in "$@"; do
+    case "$target" in
+      all)
+        DEPLOY_API=true
+        DEPLOY_WEB=true
+        DEPLOY_ADMIN=true
+        ;;
+      api)
+        DEPLOY_API=true
+        ;;
+      web)
+        DEPLOY_WEB=true
+        ;;
+      admin)
+        DEPLOY_ADMIN=true
+        ;;
+      *)
+        echo "Error: unknown target '$target'"
+        echo "Use: api | web | admin | all"
+        exit 1
+        ;;
+    esac
+  done
+fi
 
-ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+echo "Targets: API=$DEPLOY_API WEB=$DEPLOY_WEB ADMIN=$DEPLOY_ADMIN"
+
+DATABASE_URL=${DATABASE_URL:-}
+NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-}
+KAKAO_CLIENT_ID=${KAKAO_CLIENT_ID:-}
+KAKAO_CLIENT_SECRET=${KAKAO_CLIENT_SECRET:-}
+
+IMAGE_TAG=${IMAGE_TAG:-$(date +%Y%m%d%H%M)-$ENV}
 
 gcloud config set project "$PROJECT_ID" >/dev/null
+
+get_env_file_value() {
+  local file_path="$1"
+  local key="$2"
+
+  if [[ ! -f "$file_path" ]]; then
+    return 0
+  fi
+
+  grep -E "^${key}=" "$file_path" | tail -n1 | sed -E "s/^${key}=//; s/^['\"]//; s/['\"]$//"
+}
+
+get_merged_env_value() {
+  local app_file="$1"
+  local key="$2"
+  local value=""
+
+  value=$(get_env_file_value "$app_file" "$key" || true)
+  if [[ -z "$value" ]]; then
+    value=$(get_env_file_value "$ROOT_ENV_FILE" "$key" || true)
+  fi
+  echo "$value"
+}
+
+API_BASE_URL=${API_BASE_URL:-$(get_merged_env_value "$WEB_ENV_FILE" "NEXT_PUBLIC_API_BASE_URL")}
+if [[ -z "$API_BASE_URL" ]]; then
+  API_BASE_URL=$DEFAULT_API_BASE_URL
+fi
 
 echo "Ensuring Artifact Registry repository exists..."
 if ! gcloud artifacts repositories describe "$REPOSITORY" --location "$REGION" >/dev/null 2>&1; then
@@ -86,64 +186,155 @@ BASE_IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY"
 API_IMAGE="$BASE_IMAGE/$API_SERVICE:$IMAGE_TAG"
 WEB_IMAGE="$BASE_IMAGE/$WEB_SERVICE:$IMAGE_TAG"
 ADMIN_IMAGE="$BASE_IMAGE/$ADMIN_SERVICE:$IMAGE_TAG"
+BUILD_CONFIG="$ROOT_DIR/deploy/cloudrun/cloudbuild-docker.yaml"
 
 echo "Building images..."
-gcloud builds submit "$ROOT_DIR" --tag "$API_IMAGE" --file "$ROOT_DIR/deploy/cloudrun/Dockerfile.api"
-gcloud builds submit "$ROOT_DIR" --tag "$WEB_IMAGE" --file "$ROOT_DIR/deploy/cloudrun/Dockerfile.web"
-gcloud builds submit "$ROOT_DIR" --tag "$ADMIN_IMAGE" --file "$ROOT_DIR/deploy/cloudrun/Dockerfile.admin"
+if [[ "$DEPLOY_API" == "true" ]]; then
+  gcloud builds submit "$ROOT_DIR" \
+    --config "$BUILD_CONFIG" \
+    --substitutions "_DOCKERFILE=deploy/cloudrun/Dockerfile.api,_IMAGE=$API_IMAGE,_APP_ENV=$ENV,_NEXT_PUBLIC_API_BASE_URL="""
+fi
+if [[ "$DEPLOY_WEB" == "true" ]]; then
+  gcloud builds submit "$ROOT_DIR" \
+    --config "$BUILD_CONFIG" \
+    --substitutions "_DOCKERFILE=deploy/cloudrun/Dockerfile.web,_IMAGE=$WEB_IMAGE,_APP_ENV=$ENV,_NEXT_PUBLIC_API_BASE_URL=$API_BASE_URL"
+fi
+if [[ "$DEPLOY_ADMIN" == "true" ]]; then
+  gcloud builds submit "$ROOT_DIR" \
+    --config "$BUILD_CONFIG" \
+    --substitutions "_DOCKERFILE=deploy/cloudrun/Dockerfile.admin,_IMAGE=$ADMIN_IMAGE,_APP_ENV=$ENV,_NEXT_PUBLIC_API_BASE_URL=$API_BASE_URL"
+fi
 
-echo "Deploying API service..."
-gcloud run deploy "$API_SERVICE" \
-  --image "$API_IMAGE" \
-  --region "$REGION" \
-  --platform managed \
-  --allow-unauthenticated \
-  --cpu "$API_CPU" \
-  --memory "$API_MEMORY" \
-  --min-instances "$API_MIN" \
-  --max-instances "$API_MAX" \
-  --set-env-vars "NODE_ENV=production" \
-  --set-secrets "DATABASE_URL=$DATABASE_URL_SECRET:latest"
+if [[ "$DEPLOY_API" == "true" ]]; then
+  if [[ -z "$DATABASE_URL" ]]; then
+    DATABASE_URL=$(get_merged_env_value "$API_ENV_FILE" "DATABASE_URL" || true)
+  fi
 
-API_URL=$(gcloud run services describe "$API_SERVICE" --region "$REGION" --format='value(status.url)')
-echo "API_URL=$API_URL"
+  if [[ -z "$DATABASE_URL" ]]; then
+    echo "Error: DATABASE_URL is empty."
+    echo "- Export DATABASE_URL and rerun, or deploy once with DATABASE_URL set."
+    exit 1
+  fi
 
-echo "Deploying Web service..."
-gcloud run deploy "$WEB_SERVICE" \
-  --image "$WEB_IMAGE" \
-  --region "$REGION" \
-  --platform managed \
-  --allow-unauthenticated \
-  --cpu "$WEB_CPU" \
-  --memory "$WEB_MEMORY" \
-  --min-instances "$WEB_MIN" \
-  --max-instances "$WEB_MAX" \
-  --set-env-vars "NODE_ENV=production,NEXT_PUBLIC_API_BASE_URL=$API_URL" \
-  --set-secrets "NEXTAUTH_SECRET=$NEXTAUTH_SECRET_SECRET:latest,KAKAO_CLIENT_ID=$KAKAO_CLIENT_ID_SECRET:latest,KAKAO_CLIENT_SECRET=$KAKAO_CLIENT_SECRET_SECRET:latest"
+  # If DATABASE_URL was previously configured as Secret Manager ref,
+  # remove that binding first so we can set a literal value.
+  gcloud run services update "$API_SERVICE" \
+    --region "$REGION" \
+    --remove-secrets "DATABASE_URL" >/dev/null 2>&1 || true
 
-WEB_URL=$(gcloud run services describe "$WEB_SERVICE" --region "$REGION" --format='value(status.url)')
-echo "WEB_URL=$WEB_URL"
+  echo "Deploying API service..."
+  gcloud run deploy "$API_SERVICE" \
+    --image "$API_IMAGE" \
+    --region "$REGION" \
+    --platform managed \
+    --allow-unauthenticated \
+    --cpu "$API_CPU" \
+    --memory "$API_MEMORY" \
+    --min-instances "$API_MIN" \
+    --max-instances "$API_MAX" \
+    --set-env-vars "^${ENV_DELIM}^NODE_ENV=production${ENV_DELIM}APP_ENV=$ENV${ENV_DELIM}DATABASE_URL=$DATABASE_URL"
+fi
 
-# NEXTAUTH_URL must point to the deployed web URL.
-gcloud run services update "$WEB_SERVICE" \
-  --region "$REGION" \
-  --update-env-vars "NEXTAUTH_URL=$WEB_URL"
+if [[ "$DEPLOY_API" == "true" ]]; then
+  API_URL=$(gcloud run services describe "$API_SERVICE" --region "$REGION" --format='value(status.url)')
+elif [[ "$DEPLOY_WEB" == "true" || "$DEPLOY_ADMIN" == "true" ]]; then
+  if [[ -n "$API_BASE_URL" ]]; then
+    API_URL="$API_BASE_URL"
+  else
+    # .env를 기준으로 API URL을 탐색한다.
+    API_URL=$(get_env_file_value "$WEB_ENV_FILE" "NEXT_PUBLIC_API_BASE_URL" || true)
+    if [[ -z "${API_URL:-}" ]]; then
+      API_URL=$(get_env_file_value "$ADMIN_ENV_FILE" "NEXT_PUBLIC_API_BASE_URL" || true)
+    fi
+    if [[ -z "${API_URL:-}" ]]; then
+      API_URL="$DEFAULT_API_BASE_URL"
+    fi
+  fi
+fi
+if [[ -n "${API_URL:-}" ]]; then
+  echo "API_URL=$API_URL"
+fi
 
-echo "Deploying Admin service..."
-gcloud run deploy "$ADMIN_SERVICE" \
-  --image "$ADMIN_IMAGE" \
-  --region "$REGION" \
-  --platform managed \
-  --allow-unauthenticated \
-  --cpu "$ADMIN_CPU" \
-  --memory "$ADMIN_MEMORY" \
-  --min-instances "$ADMIN_MIN" \
-  --max-instances "$ADMIN_MAX" \
-  --set-env-vars "NODE_ENV=production,NEXT_PUBLIC_API_BASE_URL=$API_URL"
+if [[ "$DEPLOY_WEB" == "true" ]]; then
+  if [[ -z "$NEXTAUTH_SECRET" ]]; then
+    NEXTAUTH_SECRET=$(get_merged_env_value "$WEB_ENV_FILE" "NEXTAUTH_SECRET" || true)
+  fi
 
-ADMIN_URL=$(gcloud run services describe "$ADMIN_SERVICE" --region "$REGION" --format='value(status.url)')
+  if [[ -z "$KAKAO_CLIENT_ID" ]]; then
+    KAKAO_CLIENT_ID=$(get_merged_env_value "$WEB_ENV_FILE" "KAKAO_CLIENT_ID" || true)
+  fi
+
+  if [[ -z "$KAKAO_CLIENT_SECRET" ]]; then
+    KAKAO_CLIENT_SECRET=$(get_merged_env_value "$WEB_ENV_FILE" "KAKAO_CLIENT_SECRET" || true)
+  fi
+
+  # If these vars were previously configured as Secret Manager refs,
+  # remove those bindings first so we can set literal values.
+  gcloud run services update "$WEB_SERVICE" \
+    --region "$REGION" \
+    --remove-secrets "NEXTAUTH_SECRET,KAKAO_CLIENT_ID,KAKAO_CLIENT_SECRET" >/dev/null 2>&1 || true
+
+  WEB_ENV_VARS="NODE_ENV=production${ENV_DELIM}APP_ENV=$ENV${ENV_DELIM}NEXT_PUBLIC_APP_ENV=$ENV"
+  if [[ -n "${API_URL:-}" ]]; then
+    WEB_ENV_VARS="$WEB_ENV_VARS${ENV_DELIM}NEXT_PUBLIC_API_BASE_URL=$API_URL"
+  else
+    echo "Warning: API URL is empty. Keeping existing NEXT_PUBLIC_API_BASE_URL on service if present."
+  fi
+  if [[ -n "$NEXTAUTH_SECRET" ]]; then
+    WEB_ENV_VARS="$WEB_ENV_VARS${ENV_DELIM}NEXTAUTH_SECRET=$NEXTAUTH_SECRET"
+  fi
+  if [[ -n "$KAKAO_CLIENT_ID" ]]; then
+    WEB_ENV_VARS="$WEB_ENV_VARS${ENV_DELIM}KAKAO_CLIENT_ID=$KAKAO_CLIENT_ID"
+  fi
+  if [[ -n "$KAKAO_CLIENT_SECRET" ]]; then
+    WEB_ENV_VARS="$WEB_ENV_VARS${ENV_DELIM}KAKAO_CLIENT_SECRET=$KAKAO_CLIENT_SECRET"
+  fi
+
+  echo "Deploying Web service..."
+  gcloud run deploy "$WEB_SERVICE" \
+    --image "$WEB_IMAGE" \
+    --region "$REGION" \
+    --platform managed \
+    --allow-unauthenticated \
+    --cpu "$WEB_CPU" \
+    --memory "$WEB_MEMORY" \
+    --min-instances "$WEB_MIN" \
+    --max-instances "$WEB_MAX" \
+    --set-env-vars "^${ENV_DELIM}^$WEB_ENV_VARS"
+
+  WEB_URL=$(gcloud run services describe "$WEB_SERVICE" --region "$REGION" --format='value(status.url)')
+  echo "WEB_URL=$WEB_URL"
+
+  # NEXTAUTH_URL must point to the deployed web URL.
+  gcloud run services update "$WEB_SERVICE" \
+    --region "$REGION" \
+    --update-env-vars "NEXTAUTH_URL=$WEB_URL"
+fi
+
+if [[ "$DEPLOY_ADMIN" == "true" ]]; then
+  ADMIN_ENV_VARS="NODE_ENV=production${ENV_DELIM}APP_ENV=$ENV${ENV_DELIM}NEXT_PUBLIC_APP_ENV=$ENV"
+  if [[ -n "${API_URL:-}" ]]; then
+    ADMIN_ENV_VARS="$ADMIN_ENV_VARS${ENV_DELIM}NEXT_PUBLIC_API_BASE_URL=$API_URL"
+  else
+    echo "Warning: API URL is empty. Keeping existing NEXT_PUBLIC_API_BASE_URL on service if present."
+  fi
+
+  echo "Deploying Admin service..."
+  gcloud run deploy "$ADMIN_SERVICE" \
+    --image "$ADMIN_IMAGE" \
+    --region "$REGION" \
+    --platform managed \
+    --allow-unauthenticated \
+    --cpu "$ADMIN_CPU" \
+    --memory "$ADMIN_MEMORY" \
+    --min-instances "$ADMIN_MIN" \
+    --max-instances "$ADMIN_MAX" \
+    --set-env-vars "^${ENV_DELIM}^$ADMIN_ENV_VARS"
+
+  ADMIN_URL=$(gcloud run services describe "$ADMIN_SERVICE" --region "$REGION" --format='value(status.url)')
+fi
 
 echo "Done"
-echo "- API   : $API_URL"
-echo "- WEB   : $WEB_URL"
-echo "- ADMIN : $ADMIN_URL"
+if [[ -n "${API_URL:-}" ]]; then echo "- API   : $API_URL"; fi
+if [[ -n "${WEB_URL:-}" ]]; then echo "- WEB   : $WEB_URL"; fi
+if [[ -n "${ADMIN_URL:-}" ]]; then echo "- ADMIN : $ADMIN_URL"; fi

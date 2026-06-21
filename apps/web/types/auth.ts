@@ -19,7 +19,6 @@ export type CheckPhoneResponse = {
 export type RequestPhoneVerificationResponse = {
   ok: boolean;
   expiresAt: string;
-  devCode?: string;
 };
 
 export type VerifyPhoneCodePayload = {

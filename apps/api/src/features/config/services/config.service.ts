@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AppSettingEntity } from '../../../database/entities/app-setting.entity';
 import { ProductEntity } from '../../../database/entities/product.entity';
+import { TermsHistoryEntity } from '../../../database/entities/terms-history.entity';
 import { ConfigRepository } from '../repositories/config.repository';
 import {
   StoreConfig,
@@ -17,6 +18,8 @@ export class ConfigService implements OnModuleInit {
     private readonly configRepository: ConfigRepository,
     @InjectRepository(ProductEntity)
     private readonly productRepository: Repository<ProductEntity>,
+    @InjectRepository(TermsHistoryEntity)
+    private readonly termsHistoryRepository: Repository<TermsHistoryEntity>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -39,10 +42,10 @@ export class ConfigService implements OnModuleInit {
         this.configRepository.create(this.buildInitialSetting()),
       );
 
-      return this.resolveBonusProductName(this.mapSetting(created));
+      return this.resolveBonusProductName(await this.mapSetting(created));
     }
 
-    return this.resolveBonusProductName(this.mapSetting(setting));
+    return this.resolveBonusProductName(await this.mapSetting(setting));
   }
 
   async updateStoreConfig(input: Partial<StoreConfig>): Promise<StoreConfig> {
@@ -50,25 +53,42 @@ export class ConfigService implements OnModuleInit {
 
     const base = existing
       ? existing
-      : this.configRepository.create(this.buildInitialSetting());
+      : await this.configRepository.save(
+          this.configRepository.create(this.buildInitialSetting()),
+        );
+
+    const currentHistory = await this.loadTermsHistory(base.id);
+    const currentTermsUrl =
+      currentHistory.find((item) => item.documentType === 'terms')?.documentUrl ??
+      '';
+    const currentPrivacyUrl =
+      currentHistory.find((item) => item.documentType === 'privacy')
+        ?.documentUrl ?? '';
+
     const nextTermsUrl =
       typeof input.termsUrl === 'string'
         ? this.normalizeTermsUrl(input.termsUrl)
-        : this.normalizeTermsUrl(base.termsUrl ?? '');
-    const termsChanged = nextTermsUrl !== (base.termsUrl ?? '');
-    const now = termsChanged ? new Date() : null;
-    const nextTermsHistory = termsChanged
-      ? this.buildTermsHistory(
-          base.termsHistory,
-          nextTermsUrl,
-          now,
-        )
-      : (base.termsHistory ?? []);
+        : currentTermsUrl;
+    const nextPrivacyUrl =
+      typeof input.privacyUrl === 'string'
+        ? this.normalizeTermsUrl(input.privacyUrl)
+        : currentPrivacyUrl;
+
+    const termsChanged = nextTermsUrl !== currentTermsUrl;
+    const privacyChanged = nextPrivacyUrl !== currentPrivacyUrl;
+    const now = new Date();
 
     const merged = this.configRepository.merge(base, {
       shopName: input.shopName ?? base.shopName,
       sellerName: input.sellerName ?? base.sellerName,
       sellerPhone: input.sellerPhone ?? base.sellerPhone,
+      trusteeBusinessName:
+        input.trusteeBusinessName ?? base.trusteeBusinessName,
+      trusteeBusinessNumber:
+        input.trusteeBusinessNumber ?? base.trusteeBusinessNumber,
+      trusteeRepresentative:
+        input.trusteeRepresentative ?? base.trusteeRepresentative,
+      trusteePhone: input.trusteePhone ?? base.trusteePhone,
       origin: input.origin ?? base.origin,
       bankName: input.bankName ?? base.bankName,
       accountNumber: input.accountNumber ?? base.accountNumber,
@@ -77,12 +97,6 @@ export class ConfigService implements OnModuleInit {
       detailDescription: input.detailDescription ?? base.detailDescription,
       storyImages: input.storyImages ?? base.storyImages,
       videoUrl: input.videoUrl ?? base.videoUrl,
-      termsUrl: nextTermsUrl,
-      termsVersion: termsChanged
-        ? (now ? this.formatTermsVersion(now) : base.termsVersion ?? '')
-        : (base.termsVersion ?? ''),
-      termsUpdatedAt: termsChanged ? now : (base.termsUpdatedAt ?? null),
-      termsHistory: nextTermsHistory,
       recipes: input.recipes ?? base.recipes,
       paymentDueDays:
         input.paymentDueDays === undefined
@@ -106,10 +120,53 @@ export class ConfigService implements OnModuleInit {
         input.mileageEarnRate === undefined
           ? base.mileageEarnRate
           : Math.max(0, Math.floor(Number(input.mileageEarnRate) || 0)),
+      businessStatus:
+        input.businessStatus === 'standby' ||
+        input.businessStatus === 'closed' ||
+        input.businessStatus === 'open'
+          ? input.businessStatus
+          : base.businessStatus,
+      businessStatusOpenText:
+        input.businessStatusOpenText === undefined
+          ? base.businessStatusOpenText
+          : String(input.businessStatusOpenText).trim(),
+      businessStatusStandbyText:
+        input.businessStatusStandbyText === undefined
+          ? base.businessStatusStandbyText
+          : String(input.businessStatusStandbyText).trim(),
+      businessStatusClosedText:
+        input.businessStatusClosedText === undefined
+          ? base.businessStatusClosedText
+          : String(input.businessStatusClosedText).trim(),
     });
 
     const saved = await this.configRepository.save(merged);
-    return this.resolveBonusProductName(this.mapSetting(saved));
+
+    if (termsChanged && saved.id && nextTermsUrl) {
+      await this.termsHistoryRepository.save(
+        this.termsHistoryRepository.create({
+          appSettingId: saved.id,
+          documentType: 'terms',
+          documentUrl: nextTermsUrl,
+          termsVersion: this.formatTermsVersion(now),
+          termsUpdatedAt: now,
+        }),
+      );
+    }
+
+    if (privacyChanged && saved.id && nextPrivacyUrl) {
+      await this.termsHistoryRepository.save(
+        this.termsHistoryRepository.create({
+          appSettingId: saved.id,
+          documentType: 'privacy',
+          documentUrl: nextPrivacyUrl,
+          termsVersion: this.formatTermsVersion(now),
+          termsUpdatedAt: now,
+        }),
+      );
+    }
+
+    return this.resolveBonusProductName(await this.mapSetting(saved));
   }
 
   // 사은품 상품명을 조회해 응답에 채운다. 숨김(비노출) 상품도 이름을 노출하기 위해 active 조건은 두지 않는다.
@@ -133,6 +190,10 @@ export class ConfigService implements OnModuleInit {
       shopName: process.env.SHOP_NAME ?? '',
       sellerName: process.env.SELLER_NAME ?? '',
       sellerPhone: process.env.SELLER_PHONE ?? '',
+      trusteeBusinessName: process.env.TRUSTEE_BUSINESS_NAME ?? '',
+      trusteeBusinessNumber: process.env.TRUSTEE_BUSINESS_NUMBER ?? '',
+      trusteeRepresentative: process.env.TRUSTEE_REPRESENTATIVE ?? '',
+      trusteePhone: process.env.TRUSTEE_PHONE ?? '',
       origin: process.env.SELLER_ORIGIN ?? '',
       bankName: process.env.BANK_NAME ?? '',
       accountNumber: process.env.BANK_ACCOUNT ?? '',
@@ -141,10 +202,6 @@ export class ConfigService implements OnModuleInit {
       detailDescription: process.env.DETAIL_DESCRIPTION ?? '',
       storyImages: this.parseJsonEnv<StoreStoryImage[]>('STORY_IMAGES', []),
       videoUrl: process.env.PRODUCT_VIDEO_URL ?? '',
-      termsUrl: this.normalizeTermsUrl(process.env.TERMS_URL ?? ''),
-      termsVersion: process.env.TERMS_VERSION ?? '',
-      termsUpdatedAt: null,
-      termsHistory: [],
       recipes: this.parseJsonEnv<StoreRecipe[]>('RECIPES', []),
       paymentDueDays: Number(process.env.PAYMENT_DUE_DAYS ?? 0) || 0,
       deliveryFee: Number(process.env.DELIVERY_FEE ?? 0) || 0,
@@ -152,14 +209,34 @@ export class ConfigService implements OnModuleInit {
       memberBonusProductId:
         Number(process.env.MEMBER_BONUS_PRODUCT_ID ?? 0) || null,
       mileageEarnRate: Number(process.env.MILEAGE_EARN_RATE ?? 0) || 0,
+      businessStatus: (process.env.BUSINESS_STATUS ?? 'open') as
+        | 'open'
+        | 'standby'
+        | 'closed',
+      businessStatusOpenText:
+        process.env.BUSINESS_STATUS_OPEN_TEXT ?? '현재 정상 영업 중입니다.',
+      businessStatusStandbyText:
+        process.env.BUSINESS_STATUS_STANDBY_TEXT ?? '영업 준비 중입니다. 잠시 후 다시 방문해주세요.',
+      businessStatusClosedText:
+        process.env.BUSINESS_STATUS_CLOSED_TEXT ?? '영업이 종료되었습니다. 다음 영업 시간에 주문 가능합니다.',
     };
   }
 
-  private mapSetting(setting: AppSettingEntity): StoreConfig {
+  private async mapSetting(setting: AppSettingEntity): Promise<StoreConfig> {
+    const termsHistory = await this.loadTermsHistory(setting.id);
+    const latestTerms =
+      termsHistory.find((item) => item.documentType === 'terms') ?? null;
+    const latestPrivacy =
+      termsHistory.find((item) => item.documentType === 'privacy') ?? null;
+
     return {
       shopName: setting.shopName,
       sellerName: setting.sellerName,
       sellerPhone: setting.sellerPhone,
+      trusteeBusinessName: setting.trusteeBusinessName ?? '',
+      trusteeBusinessNumber: setting.trusteeBusinessNumber ?? '',
+      trusteeRepresentative: setting.trusteeRepresentative ?? '',
+      trusteePhone: setting.trusteePhone ?? '',
       origin: setting.origin,
       bankName: setting.bankName,
       accountNumber: setting.accountNumber,
@@ -168,12 +245,11 @@ export class ConfigService implements OnModuleInit {
       detailDescription: setting.detailDescription,
       storyImages: setting.storyImages as StoreStoryImage[],
       videoUrl: setting.videoUrl,
-      termsUrl: this.normalizeTermsUrl(setting.termsUrl ?? ''),
-      termsVersion: setting.termsVersion ?? '',
-      termsUpdatedAt: setting.termsUpdatedAt
-        ? setting.termsUpdatedAt.toISOString()
-        : null,
-      termsHistory: this.mapTermsHistory(setting.termsHistory),
+      termsUrl: latestTerms?.documentUrl ?? '',
+      privacyUrl: latestPrivacy?.documentUrl ?? '',
+      termsVersion: latestTerms?.termsVersion ?? '',
+      termsUpdatedAt: latestTerms?.termsUpdatedAt ?? null,
+      termsHistory,
       recipes: setting.recipes as StoreRecipe[],
       paymentDueDays: setting.paymentDueDays ?? 0,
       deliveryFee: setting.deliveryFee ?? 0,
@@ -181,7 +257,47 @@ export class ConfigService implements OnModuleInit {
       memberBonusProductId: setting.memberBonusProductId ?? null,
       memberBonusProductName: null,
       mileageEarnRate: setting.mileageEarnRate ?? 0,
+      businessStatus: this.normalizeBusinessStatus(setting.businessStatus),
+      businessStatusOpenText:
+        setting.businessStatusOpenText?.trim() || '현재 정상 영업 중입니다.',
+      businessStatusStandbyText:
+        setting.businessStatusStandbyText?.trim() || '영업 준비 중입니다. 잠시 후 다시 방문해주세요.',
+      businessStatusClosedText:
+        setting.businessStatusClosedText?.trim() || '영업이 종료되었습니다. 다음 영업 시간에 주문 가능합니다.',
     };
+  }
+
+  private async loadTermsHistory(
+    appSettingId: number,
+  ): Promise<StoreTermsHistoryItem[]> {
+    const rows = await this.termsHistoryRepository.find({
+      where: { appSettingId },
+      order: {
+        termsUpdatedAt: 'DESC',
+        id: 'DESC',
+      },
+      take: 100,
+    });
+
+    if (rows.length > 0) {
+      return rows.map((row) => ({
+        documentType:
+          row.documentType === 'privacy' ? 'privacy' : 'terms',
+        documentUrl: this.normalizeTermsUrl(row.documentUrl),
+        termsVersion: row.termsVersion,
+        termsUpdatedAt: row.termsUpdatedAt.toISOString(),
+      }));
+    }
+
+    return [];
+  }
+
+  private normalizeBusinessStatus(status: unknown): 'open' | 'standby' | 'closed' {
+    if (status === 'standby' || status === 'closed' || status === 'open') {
+      return status;
+    }
+
+    return 'open';
   }
 
   private parseJsonEnv<T>(name: string, fallback: T): T {
@@ -195,71 +311,6 @@ export class ConfigService implements OnModuleInit {
     } catch {
       return fallback;
     }
-  }
-
-  private mapTermsHistory(
-    history: unknown,
-  ): StoreTermsHistoryItem[] {
-    if (!Array.isArray(history)) {
-      return [];
-    }
-
-    return history
-      .map((item) => {
-        if (!item || typeof item !== 'object') {
-          return null;
-        }
-
-        const entry = item as Record<string, unknown>;
-        const termsUrl =
-          typeof entry.termsUrl === 'string'
-            ? this.normalizeTermsUrl(entry.termsUrl)
-            : '';
-        const termsVersion =
-          typeof entry.termsVersion === 'string' ? entry.termsVersion : '';
-        const termsUpdatedAt =
-          typeof entry.termsUpdatedAt === 'string' ? entry.termsUpdatedAt : '';
-
-        if (!termsUrl || !termsVersion || !termsUpdatedAt) {
-          return null;
-        }
-
-        return {
-          termsUrl,
-          termsVersion,
-          termsUpdatedAt,
-        } as StoreTermsHistoryItem;
-      })
-      .filter((item): item is StoreTermsHistoryItem => item !== null)
-      .slice(0, 100);
-  }
-
-  private buildTermsHistory(
-    current: unknown,
-    nextTermsUrl: string,
-    changedAt: Date | null,
-  ): StoreTermsHistoryItem[] {
-    if (!nextTermsUrl || !changedAt) {
-      return this.mapTermsHistory(current);
-    }
-
-    const prev = this.mapTermsHistory(current);
-    const nextVersion = this.formatTermsVersion(changedAt);
-
-    const nextEntry: StoreTermsHistoryItem = {
-      termsUrl: nextTermsUrl,
-      termsVersion: nextVersion,
-      termsUpdatedAt: changedAt.toISOString(),
-    };
-
-    const deduped = prev.filter(
-      (item) =>
-        item.termsVersion !== nextVersion &&
-        !(item.termsUrl === nextEntry.termsUrl &&
-          item.termsVersion === nextEntry.termsVersion),
-    );
-
-    return [nextEntry, ...deduped].slice(0, 100);
   }
 
   private normalizeTermsUrl(raw: string): string {

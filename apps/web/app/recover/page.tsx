@@ -20,7 +20,6 @@ export default function RecoverPage() {
   const [findVerificationToken, setFindVerificationToken] = useState<string | null>(null);
   const [findSendingCode, setFindSendingCode] = useState(false);
   const [findVerifyingCode, setFindVerifyingCode] = useState(false);
-  const [findDevCodeHint, setFindDevCodeHint] = useState<string | null>(null);
 
   const [resetUserId, setResetUserId] = useState("");
   const [resetPhone, setResetPhone] = useState("");
@@ -32,7 +31,6 @@ export default function RecoverPage() {
   const [resetVerificationToken, setResetVerificationToken] = useState<string | null>(null);
   const [resetSendingCode, setResetSendingCode] = useState(false);
   const [resetVerifyingCode, setResetVerifyingCode] = useState(false);
-  const [resetDevCodeHint, setResetDevCodeHint] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -48,11 +46,10 @@ export default function RecoverPage() {
     setError(null);
     setSuccess(null);
     try {
-      const result = await requestRecoverPhoneVerificationApi({ phone: normalizedPhone });
+      await requestRecoverPhoneVerificationApi({ phone: normalizedPhone });
       setFindCodeSent(true);
       setFindPhoneVerified(false);
       setFindVerificationToken(null);
-      setFindDevCodeHint(result.devCode ?? null);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "인증번호 요청 실패");
     } finally {
@@ -100,11 +97,10 @@ export default function RecoverPage() {
     setError(null);
     setSuccess(null);
     try {
-      const result = await requestRecoverPhoneVerificationApi({ phone: normalizedPhone });
+      await requestRecoverPhoneVerificationApi({ phone: normalizedPhone });
       setResetCodeSent(true);
       setResetPhoneVerified(false);
       setResetVerificationToken(null);
-      setResetDevCodeHint(result.devCode ?? null);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "인증번호 요청 실패");
     } finally {
@@ -258,9 +254,6 @@ export default function RecoverPage() {
                   {findVerifyingCode ? "확인 중..." : "확인"}
                 </button>
               </div>
-              {findDevCodeHint && (
-                <p className="text-xs text-stone-500">개발용 인증번호: {findDevCodeHint}</p>
-              )}
               <p className={`text-xs font-semibold ${findPhoneVerified ? "text-lime-700" : "text-stone-500"}`}>
                 {findPhoneVerified ? "문자 인증 완료" : "문자 인증 필요"}
               </p>
@@ -326,9 +319,6 @@ export default function RecoverPage() {
                   {resetVerifyingCode ? "확인 중..." : "확인"}
                 </button>
               </div>
-              {resetDevCodeHint && (
-                <p className="text-xs text-stone-500">개발용 인증번호: {resetDevCodeHint}</p>
-              )}
               <p className={`text-xs font-semibold ${resetPhoneVerified ? "text-lime-700" : "text-stone-500"}`}>
                 {resetPhoneVerified ? "문자 인증 완료" : "문자 인증 필요"}
               </p>

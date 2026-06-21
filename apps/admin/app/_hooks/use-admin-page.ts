@@ -1,6 +1,8 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
+  clearAdminAccessToken,
   fetchAdminNotificationsApi,
+  getAdminAccessToken,
   createAdminAccountApi,
   createBackofficeOrderApi,
   createProductApi,
@@ -9,7 +11,9 @@ import {
   fetchAdminInquiriesApi,
   fetchAdminOrdersApi,
   fetchAdminReviewsApi,
-  loadAdminInitialDataApi,
+  getConfigApi,
+  listAdminAccountsApi,
+  listProductsApi,
   loginAdminApi,
   saveConfigApi,
   updateAdminAccountApi,
@@ -23,6 +27,7 @@ import {
   issueCouponByTemplateApi,
   revokeCouponApi,
   getAccountMileageApi,
+  setAdminAccessToken,
 } from "../_lib/api";
 import { useFirestoreTriggers } from "./use-firestore-triggers";
 import {
@@ -75,6 +80,10 @@ export type AdminPageState = {
   shopName: string;
   sellerName: string;
   sellerPhone: string;
+  trusteeBusinessName: string;
+  trusteeBusinessNumber: string;
+  trusteeRepresentative: string;
+  trusteePhone: string;
   origin: string;
   bankName: string;
   accountNumber: string;
@@ -83,6 +92,7 @@ export type AdminPageState = {
   detailDescription: string;
   videoUrl: string;
   termsUrl: string;
+  privacyUrl: string;
   paymentDueDays: string;
   deliveryFee: string;
   chargeDeliveryFee: boolean;
@@ -102,6 +112,10 @@ export type AdminPageState = {
   setShopName: (value: string) => void;
   setSellerName: (value: string) => void;
   setSellerPhone: (value: string) => void;
+  setTrusteeBusinessName: (value: string) => void;
+  setTrusteeBusinessNumber: (value: string) => void;
+  setTrusteeRepresentative: (value: string) => void;
+  setTrusteePhone: (value: string) => void;
   setOrigin: (value: string) => void;
   setBankName: (value: string) => void;
   setAccountNumber: (value: string) => void;
@@ -110,6 +124,7 @@ export type AdminPageState = {
   setDetailDescription: (value: string) => void;
   setVideoUrl: (value: string) => void;
   setTermsUrl: (value: string) => void;
+  setPrivacyUrl: (value: string) => void;
   setPaymentDueDays: (value: string) => void;
   setDeliveryFee: (value: string) => void;
   setChargeDeliveryFee: (value: boolean) => void;
@@ -144,10 +159,32 @@ export type AdminPageState = {
   deleteProduct: (id: number) => Promise<void>;
   saveConfig: (
     event: FormEvent<HTMLFormElement>,
-    overrides?: Partial<Pick<StoreConfig, "videoUrl" | "termsUrl">>,
+    overrides?: Partial<
+      Pick<
+        StoreConfig,
+        | "videoUrl"
+        | "termsUrl"
+        | "privacyUrl"
+        | "businessStatus"
+        | "businessStatusOpenText"
+        | "businessStatusStandbyText"
+        | "businessStatusClosedText"
+      >
+    >,
   ) => Promise<boolean>;
   saveConfigDirect: (
-    overrides?: Partial<Pick<StoreConfig, "videoUrl" | "termsUrl">>,
+    overrides?: Partial<
+      Pick<
+        StoreConfig,
+        | "videoUrl"
+        | "termsUrl"
+        | "privacyUrl"
+        | "businessStatus"
+        | "businessStatusOpenText"
+        | "businessStatusStandbyText"
+        | "businessStatusClosedText"
+      >
+    >,
   ) => Promise<boolean>;
   createAccount: (payload: AdminUserCreatePayload) => Promise<void>;
   updateAccount: (id: number, payload: AdminUserUpdatePayload) => Promise<void>;
@@ -196,6 +233,10 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   const [shopName, setShopName] = useState("");
   const [sellerName, setSellerName] = useState("");
   const [sellerPhone, setSellerPhone] = useState("");
+  const [trusteeBusinessName, setTrusteeBusinessName] = useState("");
+  const [trusteeBusinessNumber, setTrusteeBusinessNumber] = useState("");
+  const [trusteeRepresentative, setTrusteeRepresentative] = useState("");
+  const [trusteePhone, setTrusteePhone] = useState("");
   const [origin, setOrigin] = useState("");
   const [bankName, setBankName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
@@ -204,6 +245,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   const [detailDescription, setDetailDescription] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [termsUrl, setTermsUrl] = useState("");
+  const [privacyUrl, setPrivacyUrl] = useState("");
   const [paymentDueDays, setPaymentDueDays] = useState("0");
   const [deliveryFee, setDeliveryFee] = useState("0");
   const [chargeDeliveryFee, setChargeDeliveryFee] = useState(false);
@@ -214,13 +256,56 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [couponTemplates, setCouponTemplates] = useState<CouponTemplate[]>([]);
 
+  function normalizeInquiries(inquiries: Inquiry[]): Inquiry[] {
+    return inquiries.map((inquiry) => ({
+      ...inquiry,
+      comments: Array.isArray((inquiry as { comments?: unknown }).comments)
+        ? inquiry.comments
+        : [],
+    }));
+  }
+
+  function normalizeReviews(reviews: Review[]): Review[] {
+    return reviews.map((review) => ({
+      ...review,
+      comments: Array.isArray((review as { comments?: unknown }).comments)
+        ? review.comments
+        : [],
+    }));
+  }
+
+  function applyConfig(configValue: StoreConfig) {
+    setConfig(configValue);
+    setShopName(configValue.shopName ?? "");
+    setSellerName(configValue.sellerName ?? "");
+    setSellerPhone(configValue.sellerPhone ?? "");
+    setTrusteeBusinessName(configValue.trusteeBusinessName ?? "");
+    setTrusteeBusinessNumber(configValue.trusteeBusinessNumber ?? "");
+    setTrusteeRepresentative(configValue.trusteeRepresentative ?? "");
+    setTrusteePhone(configValue.trusteePhone ?? "");
+    setOrigin(configValue.origin ?? "");
+    setBankName(configValue.bankName ?? "");
+    setAccountNumber(configValue.accountNumber ?? "");
+    setAccountHolder(configValue.accountHolder ?? "");
+    setTransferNote(configValue.transferNote ?? "");
+    setDetailDescription(configValue.detailDescription ?? "");
+    setVideoUrl(configValue.videoUrl ?? "");
+    setTermsUrl(configValue.termsUrl ?? "");
+    setPrivacyUrl(configValue.privacyUrl ?? "");
+    setPaymentDueDays(String(configValue.paymentDueDays ?? 0));
+    setDeliveryFee(String(configValue.deliveryFee ?? 0));
+    setChargeDeliveryFee(Boolean(configValue.chargeDeliveryFee));
+    setMemberBonusProductId(configValue.memberBonusProductId ?? null);
+    setMileageEarnRate(String(configValue.mileageEarnRate ?? 0));
+  }
+
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("admin-authed");
-    if (saved === "true") {
+    const token = getAdminAccessToken();
+    if (token) {
       setIsAuthed(true);
     }
   }, []);
@@ -234,44 +319,42 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
       setLoading(true);
       setError(null);
       try {
-        const [data, notifications] = await Promise.all([
-          loadAdminInitialDataApi(),
+        const [notifications, config] = await Promise.all([
           fetchAdminNotificationsApi(),
+          getConfigApi(),
         ]);
-        setConfig(data.config);
-        setProducts(data.products);
-        setAccounts(data.accounts);
-        setOrders(data.orders);
-        setInquiries(data.inquiries);
-        setReviews(data.reviews);
         setNotifications(notifications);
+        applyConfig(config);
 
-        setShopName(data.config.shopName ?? "");
-        setSellerName(data.config.sellerName ?? "");
-        setSellerPhone(data.config.sellerPhone ?? "");
-        setOrigin(data.config.origin ?? "");
-        setBankName(data.config.bankName ?? "");
-        setAccountNumber(data.config.accountNumber ?? "");
-        setAccountHolder(data.config.accountHolder ?? "");
-        setTransferNote(data.config.transferNote ?? "");
-        setDetailDescription(data.config.detailDescription ?? "");
-        setVideoUrl(data.config.videoUrl ?? "");
-        setTermsUrl(data.config.termsUrl ?? "");
-        setPaymentDueDays(String(data.config.paymentDueDays ?? 0));
-        setDeliveryFee(String(data.config.deliveryFee ?? 0));
-        setChargeDeliveryFee(Boolean(data.config.chargeDeliveryFee));
-        setMemberBonusProductId(data.config.memberBonusProductId ?? null);
-        setMileageEarnRate(String(data.config.mileageEarnRate ?? 0));
-
-        try {
-          const [couponRows, templateRows] = await Promise.all([
+        if (initialTab === "주문내역") {
+          const [orders, products, accounts] = await Promise.all([
+            fetchAdminOrdersApi(),
+            listProductsApi(),
+            listAdminAccountsApi(),
+          ]);
+          setOrders(orders);
+          setProducts(products);
+          setAccounts(accounts);
+        } else if (initialTab === "매출 상세") {
+          setOrders(await fetchAdminOrdersApi());
+        } else if (initialTab === "상품관리") {
+          setProducts(await listProductsApi());
+        } else if (initialTab === "문의내역") {
+          setInquiries(normalizeInquiries(await fetchAdminInquiriesApi()));
+        } else if (initialTab === "후기") {
+          setReviews(normalizeReviews(await fetchAdminReviewsApi()));
+        } else if (initialTab === "계정관리" || initialTab === "문자전송") {
+          setAccounts(await listAdminAccountsApi());
+        } else if (initialTab === "기본정보" || initialTab === "약관관리") {
+        } else if (initialTab === "쿠폰·적립금") {
+          const [accounts, couponRows, templateRows] = await Promise.all([
+            listAdminAccountsApi(),
             listCouponsApi(),
             listCouponTemplatesApi(),
           ]);
+          setAccounts(accounts);
           setCoupons(couponRows);
           setCouponTemplates(templateRows);
-        } catch {
-          // 쿠폰 목록 로드 실패는 조용히 무시
         }
       } catch (loadError) {
         const message =
@@ -349,7 +432,8 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setLoginError(null);
 
     try {
-      await loginAdminApi(loginUserId.trim(), loginPassword.trim());
+      const loginResult = await loginAdminApi(loginUserId.trim(), loginPassword.trim());
+      setAdminAccessToken(loginResult.accessToken);
       setIsAuthed(true);
       window.localStorage.setItem("admin-authed", "true");
     } catch {
@@ -360,6 +444,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   function logout() {
     setIsAuthed(false);
     setLoginPassword("");
+    clearAdminAccessToken();
     window.localStorage.removeItem("admin-authed");
   }
 
@@ -483,7 +568,18 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
 
   async function saveConfig(
     event: FormEvent<HTMLFormElement>,
-    overrides?: Partial<Pick<StoreConfig, "videoUrl" | "termsUrl">>,
+    overrides?: Partial<
+      Pick<
+        StoreConfig,
+        | "videoUrl"
+        | "termsUrl"
+        | "privacyUrl"
+        | "businessStatus"
+        | "businessStatusOpenText"
+        | "businessStatusStandbyText"
+        | "businessStatusClosedText"
+      >
+    >,
   ): Promise<boolean> {
     event.preventDefault();
 
@@ -491,7 +587,18 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   }
 
   async function saveConfigDirect(
-    overrides?: Partial<Pick<StoreConfig, "videoUrl" | "termsUrl">>,
+    overrides?: Partial<
+      Pick<
+        StoreConfig,
+        | "videoUrl"
+        | "termsUrl"
+        | "privacyUrl"
+        | "businessStatus"
+        | "businessStatusOpenText"
+        | "businessStatusStandbyText"
+        | "businessStatusClosedText"
+      >
+    >,
   ): Promise<boolean> {
 
     if (!config) {
@@ -504,6 +611,10 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         shopName,
         sellerName,
         sellerPhone,
+        trusteeBusinessName,
+        trusteeBusinessNumber,
+        trusteeRepresentative,
+        trusteePhone,
         origin,
         bankName,
         accountNumber,
@@ -512,6 +623,14 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         detailDescription,
         videoUrl: overrides?.videoUrl ?? videoUrl,
         termsUrl: overrides?.termsUrl ?? termsUrl,
+        privacyUrl: overrides?.privacyUrl ?? privacyUrl,
+        businessStatus: overrides?.businessStatus ?? config.businessStatus,
+        businessStatusOpenText:
+          overrides?.businessStatusOpenText ?? config.businessStatusOpenText,
+        businessStatusStandbyText:
+          overrides?.businessStatusStandbyText ?? config.businessStatusStandbyText,
+        businessStatusClosedText:
+          overrides?.businessStatusClosedText ?? config.businessStatusClosedText,
         paymentDueDays: Math.max(0, Math.floor(Number(paymentDueDays) || 0)),
         deliveryFee: Math.max(0, Math.floor(Number(deliveryFee) || 0)),
         chargeDeliveryFee,
@@ -521,6 +640,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
 
       setConfig(saved);
       setTermsUrl(saved.termsUrl ?? "");
+      setPrivacyUrl(saved.privacyUrl ?? "");
       setPaymentDueDays(String(saved.paymentDueDays ?? 0));
       setDeliveryFee(String(saved.deliveryFee ?? 0));
       setChargeDeliveryFee(Boolean(saved.chargeDeliveryFee));
@@ -681,6 +801,10 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     shopName,
     sellerName,
     sellerPhone,
+    trusteeBusinessName,
+    trusteeBusinessNumber,
+    trusteeRepresentative,
+    trusteePhone,
     origin,
     bankName,
     accountNumber,
@@ -689,6 +813,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     detailDescription,
     videoUrl,
     termsUrl,
+    privacyUrl,
     paymentDueDays,
     deliveryFee,
     chargeDeliveryFee,
@@ -717,6 +842,10 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setShopName,
     setSellerName,
     setSellerPhone,
+    setTrusteeBusinessName,
+    setTrusteeBusinessNumber,
+    setTrusteeRepresentative,
+    setTrusteePhone,
     setOrigin,
     setBankName,
     setAccountNumber,
@@ -725,6 +854,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setDetailDescription,
     setVideoUrl,
     setTermsUrl,
+    setPrivacyUrl,
     setPaymentDueDays,
     setDeliveryFee,
     setChargeDeliveryFee,

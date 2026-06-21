@@ -1,5 +1,11 @@
 FROM node:20-alpine AS builder
 
+ARG APP_ENV=dev
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:9000
+ENV APP_ENV=$APP_ENV
+ENV NEXT_PUBLIC_APP_ENV=$APP_ENV
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable
@@ -10,23 +16,24 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY apps/admin ./apps/admin
 COPY packages ./packages
 
-RUN pnpm install --frozen-lockfile
-RUN pnpm --filter admin build
+RUN pnpm install --frozen-lockfile && \
+    pnpm --filter admin build
 
 FROM node:20-alpine AS runner
 
+ARG APP_ENV=dev
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV PNPM_HOME=/pnpm
-ENV PATH=$PNPM_HOME:$PATH
-RUN corepack enable
+ENV APP_ENV=$APP_ENV
+ENV PORT=8080
+ENV HOSTNAME=0.0.0.0
 
 WORKDIR /app
 
-COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml /app/turbo.json ./
-COPY --from=builder /app/apps/admin ./apps/admin
-COPY --from=builder /app/packages ./packages
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/admin/.next/standalone ./
+COPY --from=builder /app/apps/admin/.next/static ./apps/admin/.next/static
+COPY --from=builder /app/apps/admin/public ./apps/admin/public
 
 EXPOSE 8080
-CMD ["sh", "-c", "pnpm --filter admin exec next start -p ${PORT:-8080}"]
+CMD ["sh", "-c", "if [ -f server.js ]; then node server.js; else node apps/admin/server.js; fi"]

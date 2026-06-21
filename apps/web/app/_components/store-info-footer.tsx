@@ -4,6 +4,10 @@ import { formatPhone } from "../_lib/format";
 type StoreFooterConfig = {
   sellerName: string;
   sellerPhone: string;
+  trusteeBusinessName: string;
+  trusteeBusinessNumber: string;
+  trusteeRepresentative: string;
+  trusteePhone: string;
   origin: string;
   termsUrl: string;
 };
@@ -20,6 +24,10 @@ async function loadStoreFooterConfig(): Promise<StoreFooterConfig> {
       return {
         sellerName: "-",
         sellerPhone: "",
+        trusteeBusinessName: "",
+        trusteeBusinessNumber: "",
+        trusteeRepresentative: "",
+        trusteePhone: "",
         origin: "-",
         termsUrl: "",
       };
@@ -29,6 +37,10 @@ async function loadStoreFooterConfig(): Promise<StoreFooterConfig> {
     return {
       sellerName: data.sellerName?.trim() || "-",
       sellerPhone: data.sellerPhone?.trim() || "",
+      trusteeBusinessName: data.trusteeBusinessName?.trim() || "",
+      trusteeBusinessNumber: data.trusteeBusinessNumber?.trim() || "",
+      trusteeRepresentative: data.trusteeRepresentative?.trim() || "",
+      trusteePhone: data.trusteePhone?.trim() || "",
       origin: data.origin?.trim() || "-",
       termsUrl: data.termsUrl?.trim() || "",
     };
@@ -36,6 +48,10 @@ async function loadStoreFooterConfig(): Promise<StoreFooterConfig> {
     return {
       sellerName: "-",
       sellerPhone: "",
+      trusteeBusinessName: "",
+      trusteeBusinessNumber: "",
+      trusteeRepresentative: "",
+      trusteePhone: "",
       origin: "-",
       termsUrl: "",
     };
@@ -45,26 +61,21 @@ async function loadStoreFooterConfig(): Promise<StoreFooterConfig> {
 export default async function StoreInfoFooter() {
   const config = await loadStoreFooterConfig();
   const formattedPhone = config.sellerPhone ? formatPhone(config.sellerPhone) : "-";
+  const formattedTrusteePhone = config.trusteePhone ? formatPhone(config.trusteePhone) : "-";
 
   return (
-    <footer className="border-t border-amber-200/80 bg-gradient-to-b from-amber-50/80 to-white px-3 py-5 text-stone-700 sm:px-4 sm:py-6">
+    <footer className="border-t border-stone-200 bg-white px-3 py-5 text-stone-900 sm:px-4 sm:py-6">
       <div className="mx-auto w-full max-w-3xl space-y-3">
-        <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm shadow-amber-900/5">
-          <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-amber-700">사업자 정보</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <div className="rounded-xl bg-amber-50 px-3 py-2">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">판매자</p>
-              <p className="mt-1 text-sm font-semibold text-stone-900">{config.sellerName}</p>
-            </div>
-            <div className="rounded-xl bg-lime-50 px-3 py-2">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-lime-800">연락처</p>
-              <p className="mt-1 text-sm font-semibold text-stone-900">{formattedPhone}</p>
-            </div>
-            <div className="rounded-xl bg-stone-100 px-3 py-2">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-stone-700">원산지</p>
-              <p className="mt-1 text-sm font-semibold text-stone-900">{config.origin}</p>
-            </div>
-          </div>
+        <div className="space-y-1 text-sm text-stone-900">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em]">사업자 정보</p>
+          <p>판매자: {config.sellerName}</p>
+          <p>연락처: {formattedPhone}</p>
+          <p>원산지: {config.origin}</p>
+          <p className="pt-2 text-[11px] font-bold uppercase tracking-[0.12em]">위탁 사업자 정보</p>
+          <p>사업자명: {config.trusteeBusinessName || "-"}</p>
+          <p>사업자등록번호: {config.trusteeBusinessNumber || "-"}</p>
+          <p>대표: {config.trusteeRepresentative || "-"}</p>
+          <p>연락처: {formattedTrusteePhone}</p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
           {config.termsUrl && (

@@ -1,5 +1,5 @@
 import { API_BASE } from "./constants";
-import { parseJsonOrThrow } from "./api-common";
+import { adminFetch, parseJsonOrThrow } from "./api-common";
 import type {
   Coupon,
   CouponTemplate,
@@ -10,7 +10,7 @@ import type {
 } from "./types";
 
 export async function listCouponTemplatesApi(): Promise<CouponTemplate[]> {
-  const response = await fetch(`${API_BASE}/api/backoffice/coupon-templates`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/coupon-templates`, {
     cache: "no-store",
   });
   return parseJsonOrThrow<CouponTemplate[]>(
@@ -22,7 +22,7 @@ export async function listCouponTemplatesApi(): Promise<CouponTemplate[]> {
 export async function createCouponTemplateApi(
   input: CreateCouponTemplateInput,
 ): Promise<CouponTemplate> {
-  const response = await fetch(`${API_BASE}/api/backoffice/coupon-templates`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/coupon-templates`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -31,7 +31,7 @@ export async function createCouponTemplateApi(
 }
 
 export async function listCouponsApi(): Promise<Coupon[]> {
-  const response = await fetch(`${API_BASE}/api/backoffice/coupons`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/coupons`, {
     cache: "no-store",
   });
   return parseJsonOrThrow<Coupon[]>(response, "쿠폰 목록을 불러오지 못했습니다.");
@@ -40,7 +40,7 @@ export async function listCouponsApi(): Promise<Coupon[]> {
 export async function issueCouponApi(
   input: IssueCouponInput,
 ): Promise<{ issued: number }> {
-  const response = await fetch(`${API_BASE}/api/backoffice/coupons`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/coupons`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -51,7 +51,7 @@ export async function issueCouponApi(
 export async function issueCouponByTemplateApi(
   input: IssueCouponByTemplateInput,
 ): Promise<{ issued: number }> {
-  const response = await fetch(`${API_BASE}/api/backoffice/coupons/issue`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/coupons/issue`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -60,7 +60,7 @@ export async function issueCouponByTemplateApi(
 }
 
 export async function revokeCouponApi(id: number): Promise<void> {
-  const response = await fetch(`${API_BASE}/api/backoffice/coupons/${id}`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/coupons/${id}`, {
     method: "DELETE",
   });
   await parseJsonOrThrow<{ ok: boolean }>(response, "쿠폰 회수에 실패했습니다.");
@@ -69,7 +69,7 @@ export async function revokeCouponApi(id: number): Promise<void> {
 export async function getAccountMileageApi(
   accountId: number,
 ): Promise<MileageSummary> {
-  const response = await fetch(
+  const response = await adminFetch(
     `${API_BASE}/api/backoffice/accounts/${accountId}/mileage`,
     { cache: "no-store" },
   );

@@ -150,6 +150,33 @@ export type AdminNotification = {
   url: string;
 };
 
+export type AdminSmsHistoryStatus = "success" | "failed" | "cancelled";
+
+export type AdminSmsHistoryItem = {
+  id: number;
+  createdAt: string;
+  corpNum: string;
+  sender: string;
+  senderName: string | null;
+  userID: string | null;
+  receiver: string;
+  receiverName: string | null;
+  content: string;
+  reserveDT: string | null;
+  adsYN: boolean;
+  receiptNum: string | null;
+  status: AdminSmsHistoryStatus;
+  errorMessage: string | null;
+};
+
+export type AdminSmsHistoryPage = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  items: AdminSmsHistoryItem[];
+};
+
 export type StoreRecipeStep = {
   description: string;
   imageUrl: string;
@@ -165,6 +192,10 @@ export type StoreConfig = {
   shopName: string;
   sellerName: string;
   sellerPhone: string;
+  trusteeBusinessName: string;
+  trusteeBusinessNumber: string;
+  trusteeRepresentative: string;
+  trusteePhone: string;
   origin: string;
   bankName: string;
   accountNumber: string;
@@ -174,10 +205,12 @@ export type StoreConfig = {
   storyImages: Array<{ title: string; imageUrl: string }>;
   videoUrl: string;
   termsUrl: string;
+  privacyUrl: string;
   termsVersion: string;
   termsUpdatedAt: string | null;
   termsHistory: Array<{
-    termsUrl: string;
+    documentType: "terms" | "privacy";
+    documentUrl: string;
     termsVersion: string;
     termsUpdatedAt: string;
   }>;
@@ -189,13 +222,19 @@ export type StoreConfig = {
   // 응답 전용 파생 값 (저장 시에는 무시됨)
   memberBonusProductName?: string | null;
   mileageEarnRate: number;
+  businessStatus: "open" | "standby" | "closed";
+  businessStatusOpenText: string;
+  businessStatusStandbyText: string;
+  businessStatusClosedText: string;
 };
 
 export type AdminTab =
   | "주문내역"
+  | "문자전송"
   | "공지사항"
   | "매출 상세"
   | "기본정보"
+  | "레시피관리"
   | "약관관리"
   | "상품관리"
   | "문의내역"

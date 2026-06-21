@@ -54,6 +54,10 @@ type StoreConfig = {
   shopName: string;
   sellerName: string;
   sellerPhone: string;
+  trusteeBusinessName: string;
+  trusteeBusinessNumber: string;
+  trusteeRepresentative: string;
+  trusteePhone: string;
   origin: string;
   bankName: string;
   accountNumber: string;
@@ -71,7 +75,7 @@ type StoreConfig = {
   recipes: Array<{
     title: string;
     ingredients: string[];
-    steps: string[];
+    steps: any[];
   }>;
   paymentDueDays: number;
   deliveryFee: number;
@@ -79,6 +83,10 @@ type StoreConfig = {
   memberBonusProductId: number | null;
   memberBonusProductName: string | null;
   mileageEarnRate: number;
+  businessStatus: "open" | "standby" | "closed";
+  businessStatusOpenText: string;
+  businessStatusStandbyText: string;
+  businessStatusClosedText: string;
 };
 
 type OrderResponse = {
@@ -129,6 +137,10 @@ export default function Home() {
     shopName: "",
     sellerName: "",
     sellerPhone: "",
+    trusteeBusinessName: "",
+    trusteeBusinessNumber: "",
+    trusteeRepresentative: "",
+    trusteePhone: "",
     origin: "",
     bankName: "",
     accountNumber: "",
@@ -147,6 +159,10 @@ export default function Home() {
     memberBonusProductId: null,
     memberBonusProductName: null,
     mileageEarnRate: 0,
+    businessStatus: "open",
+    businessStatusOpenText: "현재 정상 영업 중입니다.",
+    businessStatusStandbyText: "영업 준비 중입니다. 잠시 후 다시 방문해주세요.",
+    businessStatusClosedText: "영업이 종료되었습니다. 다음 영업 시간에 주문 가능합니다.",
   });
   const [cart, setCart] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
@@ -188,12 +204,12 @@ export default function Home() {
   const [dismissPopupChecked, setDismissPopupChecked] = useState(false);
   const [showOrderConfirmModal, setShowOrderConfirmModal] = useState(false);
   const [showTermsUpdateModal, setShowTermsUpdateModal] = useState(false);
+  const [showBusinessStatusModal, setShowBusinessStatusModal] = useState(false);
   const [postcodeReady, setPostcodeReady] = useState(false);
   const [guestAddressBase, setGuestAddressBase] = useState("");
   const [guestAddressDetail, setGuestAddressDetail] = useState("");
   const [guestOrderCode, setGuestOrderCode] = useState("");
   const [guestOrderCodeSent, setGuestOrderCodeSent] = useState(false);
-  const [guestOrderDevCodeHint, setGuestOrderDevCodeHint] = useState<string | null>(null);
   const [guestOrderLookupToken, setGuestOrderLookupToken] = useState<string | null>(null);
   const [guestOrderPhoneVerified, setGuestOrderPhoneVerified] = useState(false);
   const [guestOrderSendingCode, setGuestOrderSendingCode] = useState(false);
@@ -327,6 +343,14 @@ export default function Home() {
     }
   }, [storeConfig.termsUrl, storeConfig.termsVersion]);
 
+  useEffect(() => {
+    if (storeConfig.businessStatus === "open") {
+      return;
+    }
+
+    setShowOrderConfirmModal(false);
+  }, [storeConfig.businessStatus]);
+
   function dismissNoticeForThisDevice() {
     if (!activePopupNotice) {
       return;
@@ -393,6 +417,22 @@ export default function Home() {
   );
 
   const isMemberCheckout = purchaseType === "member";
+  const isOrderAvailable = storeConfig.businessStatus === "open";
+  const activeBusinessStatusText = useMemo(() => {
+    if (storeConfig.businessStatus === "open") {
+      return storeConfig.businessStatusOpenText || "현재 정상 영업 중입니다.";
+    }
+    if (storeConfig.businessStatus === "standby") {
+      return storeConfig.businessStatusStandbyText || "영업 준비 중입니다. 잠시 후 다시 방문해주세요.";
+    }
+
+    return storeConfig.businessStatusClosedText || "영업이 종료되었습니다. 다음 영업 시간에 주문 가능합니다.";
+  }, [
+    storeConfig.businessStatus,
+    storeConfig.businessStatusOpenText,
+    storeConfig.businessStatusStandbyText,
+    storeConfig.businessStatusClosedText,
+  ]);
 
   const selectedCoupon = useMemo(
     () => memberCoupons.find((c) => c.id === selectedCouponId) ?? null,
@@ -547,6 +587,12 @@ export default function Home() {
   function validateOrderBeforeSubmit(): boolean {
     setError(null);
 
+    if (!isOrderAvailable) {
+      setError(activeBusinessStatusText);
+      setShowBusinessStatusModal(true);
+      return false;
+    }
+
     if (!cartItems.length) {
       setError("장바구니에 상품을 추가해주세요.");
       return false;
@@ -641,7 +687,6 @@ export default function Home() {
       setGuestAddressDetail("");
       setGuestOrderCode("");
       setGuestOrderCodeSent(false);
-      setGuestOrderDevCodeHint(null);
       setGuestOrderLookupToken(null);
       setGuestOrderPhoneVerified(false);
       setOrderRequestNote("");
@@ -657,6 +702,12 @@ export default function Home() {
   }
 
   async function requestGuestOrderCode() {
+    if (!isOrderAvailable) {
+      setError(activeBusinessStatusText);
+      setShowBusinessStatusModal(true);
+      return;
+    }
+
     const normalizedPhone = phone.replace(/\D/g, "");
     if (!normalizedPhone) {
       setError("전화번호를 입력해주세요.");
@@ -680,14 +731,12 @@ export default function Home() {
       }
 
       const data = (await response.json()) as {
-        devCode?: string;
         alreadyRegistered?: boolean;
         message?: string;
       };
 
       if (data.alreadyRegistered) {
         setGuestOrderCodeSent(false);
-        setGuestOrderDevCodeHint(null);
         setGuestOrderLookupToken(null);
         setGuestOrderPhoneVerified(false);
         setGuestHasRegisteredAccount(true);
@@ -696,7 +745,6 @@ export default function Home() {
       }
 
       setGuestOrderCodeSent(true);
-      setGuestOrderDevCodeHint(data.devCode ?? null);
       setGuestOrderLookupToken(null);
       setGuestOrderPhoneVerified(false);
       setGuestHasRegisteredAccount(false);
@@ -708,6 +756,12 @@ export default function Home() {
   }
 
   async function verifyGuestOrderCode() {
+    if (!isOrderAvailable) {
+      setError(activeBusinessStatusText);
+      setShowBusinessStatusModal(true);
+      return;
+    }
+
     const normalizedPhone = phone.replace(/\D/g, "");
     if (!normalizedPhone || !guestOrderCode.trim()) {
       setError("전화번호와 인증번호를 입력해주세요.");
@@ -928,6 +982,25 @@ export default function Home() {
           <div>
             <p className="font-display text-2xl text-amber-700 sm:text-3xl">{storeConfig.shopName || "옥수수 가게"}</p>
             <p className="mt-1 text-sm text-amber-900/90 sm:text-base">강원도 산지직송 스토어입니다.</p>
+            <div
+              className={`mt-2 inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+                storeConfig.businessStatus === "open"
+                  ? "border-lime-300 bg-lime-50 text-lime-800"
+                  : storeConfig.businessStatus === "standby"
+                    ? "border-amber-300 bg-amber-50 text-amber-800"
+                    : "border-rose-300 bg-rose-50 text-rose-800"
+              }`}
+              title={activeBusinessStatusText}
+            >
+              <span>
+                {storeConfig.businessStatus === "open"
+                  ? "영업중"
+                  : storeConfig.businessStatus === "standby"
+                    ? "영업 대기"
+                    : "영업 종료"}
+              </span>
+              <span className="text-[11px] font-medium">{activeBusinessStatusText}</span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {!isLoggedIn && (
@@ -1119,11 +1192,13 @@ export default function Home() {
                         <li key={idx} className="space-y-2">
                           <p>{step.description}</p>
                           {step.imageUrl && (
-                            <img
-                              src={step.imageUrl}
-                              alt={`${recipe.title} ${idx + 1}단계`}
-                              className="w-full rounded-lg border border-stone-200 object-cover"
-                            />
+                            <div className="flex justify-center">
+                              <img
+                                src={step.imageUrl}
+                                alt={`${recipe.title} ${idx + 1}단계`}
+                                className="w-full max-w-[220px] rounded-lg border border-stone-200 object-cover"
+                              />
+                            </div>
                           )}
                         </li>
                       ))}
@@ -1255,56 +1330,60 @@ export default function Home() {
             <p className="text-xs text-stone-600">선택 수량 {totalQuantity}개</p>
             <p className="text-sm font-extrabold text-amber-700">{formatCurrency(totalPrice)}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setShowPurchaseModal(true);
-              setShowOrderConfirmModal(false);
-              if (isLoggedIn) {
-                setPurchaseType("member");
-                setMemberShippingAddresses([]);
-                setSelectedShippingAddressId(null);
-                void fillDefaultShippingAddress();
-              } else {
-                setPurchaseType(null);
-                setDepositorName("");
-                setPhone("");
-                setShippingAddress("");
-                setMemberShippingAddresses([]);
-                setSelectedShippingAddressId(null);
-              }
-              setOrderRequestNote("");
-              setOrderDone(null);
-              setError(null);
-            }}
-            disabled={submitting || totalQuantity === 0}
-            className="min-w-36 rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-lime-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            구매 신청
-          </button>
+          <div className="group relative">
+            {!isOrderAvailable && (
+              <div className="pointer-events-none absolute bottom-full right-0 z-20 mb-2 hidden w-64 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 shadow-lg group-hover:block">
+                주문 불가 사유: {activeBusinessStatusText}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (!isOrderAvailable) {
+                  setShowBusinessStatusModal(true);
+                  return;
+                }
+
+                setShowPurchaseModal(true);
+                setShowOrderConfirmModal(false);
+                if (isLoggedIn) {
+                  setPurchaseType("member");
+                  setMemberShippingAddresses([]);
+                  setSelectedShippingAddressId(null);
+                  void fillDefaultShippingAddress();
+                } else {
+                  setPurchaseType(null);
+                  setDepositorName("");
+                  setPhone("");
+                  setShippingAddress("");
+                  setMemberShippingAddresses([]);
+                  setSelectedShippingAddressId(null);
+                }
+                setOrderRequestNote("");
+                setOrderDone(null);
+                setError(null);
+              }}
+              disabled={submitting || totalQuantity === 0 || !isOrderAvailable}
+              className="min-w-36 rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-lime-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isOrderAvailable ? "구매 신청" : "주문 불가"}
+            </button>
+          </div>
         </div>
       </div>
 
-      <footer className="border-t border-amber-200/80 bg-gradient-to-b from-amber-50/80 to-white px-3 py-5 text-stone-700 sm:px-4 sm:py-6">
+      <footer className="border-t border-stone-200 bg-white px-3 py-5 text-stone-900 sm:px-4 sm:py-6">
         <div className="mx-auto w-full max-w-3xl space-y-3">
-          <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm shadow-amber-900/5">
-            <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-amber-700">사업자 정보</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
-              <div className="rounded-xl bg-amber-50 px-3 py-2">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">판매자</p>
-                <p className="mt-1 text-sm font-semibold text-stone-900">{storeConfig.sellerName || "-"}</p>
-              </div>
-              <div className="rounded-xl bg-lime-50 px-3 py-2">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-lime-800">연락처</p>
-                <p className="mt-1 text-sm font-semibold text-stone-900">
-                  {storeConfig.sellerPhone ? formatPhone(storeConfig.sellerPhone) : "-"}
-                </p>
-              </div>
-              <div className="rounded-xl bg-stone-100 px-3 py-2">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-stone-700">원산지</p>
-                <p className="mt-1 text-sm font-semibold text-stone-900">{storeConfig.origin || "-"}</p>
-              </div>
-            </div>
+          <div className="space-y-1 text-sm text-stone-900">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em]">사업자 정보</p>
+            <p>판매자: {storeConfig.sellerName || "-"}</p>
+            <p>연락처: {storeConfig.sellerPhone ? formatPhone(storeConfig.sellerPhone) : "-"}</p>
+            <p>원산지: {storeConfig.origin || "-"}</p>
+            <p className="pt-2 text-[11px] font-bold uppercase tracking-[0.12em]">위탁 사업자 정보</p>
+            <p>사업자명: {storeConfig.trusteeBusinessName || "-"}</p>
+            <p>사업자등록번호: {storeConfig.trusteeBusinessNumber || "-"}</p>
+            <p>대표: {storeConfig.trusteeRepresentative || "-"}</p>
+            <p>연락처: {storeConfig.trusteePhone ? formatPhone(storeConfig.trusteePhone) : "-"}</p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
             {storeConfig.termsUrl && (
@@ -1360,7 +1439,6 @@ export default function Home() {
                         setGuestAddressDetail("");
                         setGuestOrderCode("");
                         setGuestOrderCodeSent(false);
-                        setGuestOrderDevCodeHint(null);
                         setGuestOrderLookupToken(null);
                         setGuestOrderPhoneVerified(false);
                         setGuestHasRegisteredAccount(false);
@@ -1444,9 +1522,6 @@ export default function Home() {
                               {guestOrderVerifyingCode ? "확인 중..." : "확인"}
                             </button>
                           </div>
-                          {guestOrderDevCodeHint && (
-                            <p className="text-xs text-stone-500">개발용 인증번호: {guestOrderDevCodeHint}</p>
-                          )}
                           <p className={`text-xs font-semibold ${guestOrderPhoneVerified ? "text-lime-700" : "text-stone-500"}`}>
                             {guestOrderPhoneVerified ? "문자 인증 완료" : "문자 인증 필요"}
                           </p>
@@ -1640,10 +1715,10 @@ export default function Home() {
                         </button>
                         <button
                           type="submit"
-                          disabled={submitting}
+                          disabled={submitting || !isOrderAvailable}
                           className="flex-1 rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
                         >
-                          {submitting ? "접수 중..." : "주문 접수"}
+                          {!isOrderAvailable ? "주문 불가" : submitting ? "접수 중..." : "주문 접수"}
                         </button>
                       </div>
                     </form>
@@ -1774,12 +1849,37 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => void confirmOrderSubmit()}
-                disabled={submitting}
+                disabled={submitting || !isOrderAvailable}
                 className="flex-1 rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
               >
-                {submitting ? "접수 중..." : "주문 접수"}
+                {!isOrderAvailable ? "주문 불가" : submitting ? "접수 중..." : "주문 접수"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showBusinessStatusModal && !isOrderAvailable && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowBusinessStatusModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="font-display text-3xl text-amber-800">주문 안내</h2>
+            <p className="mt-2 text-sm font-bold text-stone-900">
+              {storeConfig.businessStatus === "standby" ? "영업 대기" : "영업 종료"}
+            </p>
+            <p className="mt-1 text-sm text-stone-700">{activeBusinessStatusText}</p>
+            <button
+              type="button"
+              onClick={() => setShowBusinessStatusModal(false)}
+              className="mt-4 w-full rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white"
+            >
+              확인
+            </button>
           </div>
         </div>
       )}

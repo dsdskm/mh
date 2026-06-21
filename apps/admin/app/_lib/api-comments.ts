@@ -1,5 +1,5 @@
 import { API_BASE } from "./constants";
-import { parseJsonOrThrow } from "./api-common";
+import { adminFetch, parseJsonOrThrow } from "./api-common";
 import { Inquiry, Review } from "./types";
 
 type CommentPayload = {
@@ -11,7 +11,7 @@ export async function createAdminInquiryCommentApi(
   inquiryId: string,
   payload: CommentPayload,
 ): Promise<Inquiry> {
-  const response = await fetch(`${API_BASE}/api/backoffice/inquiries/${inquiryId}/comments`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/inquiries/${inquiryId}/comments`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -26,7 +26,7 @@ export async function createAdminReviewCommentApi(
   reviewId: string,
   payload: CommentPayload,
 ): Promise<Review> {
-  const response = await fetch(`${API_BASE}/api/backoffice/reviews/${reviewId}/comments`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/reviews/${reviewId}/comments`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

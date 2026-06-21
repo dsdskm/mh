@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { formatCurrency, formatPhone, STATUS_OPTIONS, getOrderStatusLabelKo } from "../../_lib/constants";
 import { AdminOrderCreatePayload, AdminOrderUpdatePayload, AdminUser, Order, OrderStatus, Product } from "../../_lib/types";
+import { sendAdminSmsApi } from "../../_lib/api-messages";
 import { ORDER_STATUS, ORDER_STATUS_FLOW } from "@repo/shared-types/order";
 import { PaginationControls } from "../../_components/pagination-controls";
 import { usePersistedPagination } from "../../_hooks/use-persisted-pagination";
@@ -87,6 +88,9 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
 
   const [smsTarget, setSmsTarget] = useState<Order | null>(null);
   const [smsMessage, setSmsMessage] = useState("");
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsError, setSmsError] = useState<string | null>(null);
+  const [smsConfirmOpen, setSmsConfirmOpen] = useState(false);
 
   const [editOrderId, setEditOrderId] = useState<number | null>(null);
   const [updatingOrder, setUpdatingOrder] = useState(false);
@@ -334,11 +338,59 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
   function openSmsModal(order: Order) {
     setSmsTarget(order);
     setSmsMessage("");
+    setSmsError(null);
+    setSmsConfirmOpen(false);
+  }
+
+  function closeSmsModal() {
+    setSmsTarget(null);
+    setSmsConfirmOpen(false);
   }
 
   function submitSms(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // TODO: 문자 전송 이벤트 구현 예정
+
+    if (!smsTarget) {
+      return;
+    }
+
+    const content = smsMessage.trim();
+    if (!content) {
+      setSmsError("메시지를 입력해주세요.");
+      return;
+    }
+
+    setSmsConfirmOpen(true);
+  }
+
+  async function confirmSmsSend() {
+    if (!smsTarget) {
+      return;
+    }
+
+    const content = smsMessage.trim();
+    if (!content) {
+      setSmsError("메시지를 입력해주세요.");
+      setSmsConfirmOpen(false);
+      return;
+    }
+
+    setSmsSending(true);
+    setSmsError(null);
+    try {
+      await sendAdminSmsApi({
+        receiver: smsTarget.phone,
+        receiverName: smsTarget.customerName,
+        content,
+      });
+      closeSmsModal();
+      setSmsMessage("");
+    } catch (error) {
+      setSmsError(error instanceof Error ? error.message : "문자 전송에 실패했습니다.");
+      setSmsConfirmOpen(false);
+    } finally {
+      setSmsSending(false);
+    }
   }
 
   function openEditModal(order: Order) {
@@ -1247,7 +1299,11 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
       {smsTarget && (
         <div
           className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => setSmsTarget(null)}
+          onClick={() => {
+            if (!smsSending) {
+              closeSmsModal();
+            }
+          }}
         >
           <div
             className="w-full max-w-md rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
@@ -1269,22 +1325,73 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
                   className="h-32 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
                 />
               </div>
+              {smsError && (
+                <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{smsError}</p>
+              )}
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setSmsTarget(null)}
+                  onClick={() => {
+                    if (!smsSending) {
+                      closeSmsModal();
+                    }
+                  }}
+                  disabled={smsSending}
                   className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700"
                 >
                   취소
                 </button>
                 <button
                   type="submit"
+                  disabled={smsSending}
                   className="flex-1 rounded-xl bg-sky-600 px-3 py-2 text-sm font-bold text-white"
                 >
                   전송
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {smsTarget && smsConfirmOpen && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => {
+            if (!smsSending) {
+              setSmsConfirmOpen(false);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-stone-900">문자 전송 확인</h3>
+            <p className="mt-2 text-sm text-stone-700">
+              {smsTarget.customerName} ({formatPhone(smsTarget.phone)}) 님에게 문자를 전송할까요?
+            </p>
+            <p className="mt-2 line-clamp-4 rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
+              {smsMessage.trim()}
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSmsConfirmOpen(false)}
+                disabled={smsSending}
+                className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700 disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmSmsSend()}
+                disabled={smsSending}
+                className="flex-1 rounded-xl bg-sky-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {smsSending ? "전송 중..." : "확인"}
+              </button>
+            </div>
           </div>
         </div>
       )}

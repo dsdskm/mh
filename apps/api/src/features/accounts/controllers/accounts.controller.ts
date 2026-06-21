@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Logger,
   NotFoundException,
   Param,
   Patch,
@@ -16,6 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { AccountsService } from '../services/accounts.service';
 import { UploadService } from '../services/upload.service';
 import type { AdminUserCreateInput, AdminUserUpdateInput } from '@repo/shared-types/user';
+import { AdminAuthService } from '../../../shared/auth/admin-auth.service';
 
 type LoginBody = {
   id?: string;
@@ -25,12 +27,83 @@ type LoginBody = {
 
 type AccountBody = AdminUserCreateInput & AdminUserUpdateInput;
 
+type PresignUploadBody = {
+  target?: string;
+  productId?: string;
+  fileName?: string;
+  contentType?: string;
+};
+
+type CompleteUploadBody = {
+  target?: string;
+  objectPath?: string;
+  downloadToken?: string;
+  contentType?: string;
+};
+
 @Controller('api/backoffice')
 export class AccountsController {
+  private readonly logger = new Logger(AccountsController.name);
+
   constructor(
     private readonly accountsService: AccountsService,
     private readonly uploadService: UploadService,
+    private readonly adminAuthService: AdminAuthService,
   ) {}
+
+  @Post('uploads/presign')
+  async createUploadPresignedUrl(@Body() body: PresignUploadBody) {
+    const target = (body.target ?? '').trim().toLowerCase();
+    const fileName = (body.fileName ?? '').trim();
+    const productId = body.productId?.trim();
+    const contentType = body.contentType?.trim();
+
+    if (target !== 'products' && target !== 'videos' && target !== 'terms' && target !== 'recipes') {
+      throw new BadRequestException(
+        'target은 products, videos, terms 또는 recipes 여야 합니다.',
+      );
+    }
+
+    if (!fileName) {
+      throw new BadRequestException('fileName이 필요합니다.');
+    }
+
+    const session = await this.uploadService.createPresignedUploadSession(
+      fileName,
+      target,
+      productId,
+      contentType,
+    );
+
+    return session;
+  }
+
+  @Post('uploads/complete')
+  async completeUpload(@Body() body: CompleteUploadBody) {
+    const target = (body.target ?? '').trim().toLowerCase();
+    const objectPath = (body.objectPath ?? '').trim();
+    const downloadToken = (body.downloadToken ?? '').trim();
+    const contentType = body.contentType?.trim();
+
+    if (target !== 'products' && target !== 'videos' && target !== 'terms' && target !== 'recipes') {
+      throw new BadRequestException(
+        'target은 products, videos, terms 또는 recipes 여야 합니다.',
+      );
+    }
+
+    if (!objectPath || !downloadToken) {
+      throw new BadRequestException('objectPath와 downloadToken이 필요합니다.');
+    }
+
+    const url = await this.uploadService.completePresignedUpload(
+      target,
+      objectPath,
+      downloadToken,
+      contentType,
+    );
+
+    return { url };
+  }
 
   @Post('uploads')
   @UseInterceptors(FileInterceptor('file'))
@@ -39,7 +112,11 @@ export class AccountsController {
     @Body('target') targetRaw?: string,
     @Body('productId') productId?: string,
   ) {
+    const startedAt = Date.now();
     const target = (targetRaw ?? '').trim().toLowerCase();
+    this.logger.log(
+      `[upload] request received target=${target || 'unknown'} productId=${productId ?? '-'} file=${file?.originalname ?? '-'} size=${file?.size ?? 0} mime=${file?.mimetype ?? '-'}`,
+    );
     if (target !== 'products' && target !== 'videos' && target !== 'terms' && target !== 'recipes') {
       throw new BadRequestException(
         'target은 products, videos, terms 또는 recipes 여야 합니다.',
@@ -47,6 +124,9 @@ export class AccountsController {
     }
 
     const url = await this.uploadService.uploadAsset(file, target, productId);
+    this.logger.log(
+      `[upload] success target=${target} file=${file?.originalname ?? '-'} elapsedMs=${Date.now() - startedAt} url=${url}`,
+    );
     return { url };
   }
 
@@ -64,7 +144,15 @@ export class AccountsController {
       throw new UnauthorizedException('아이디 또는 비밀번호가 올바르지 않습니다.');
     }
 
-    return { ok: true };
+    const { token, expiresAt, expiresIn } = this.adminAuthService.createToken(userId);
+
+    return {
+      ok: true,
+      accessToken: token,
+      tokenType: 'Bearer',
+      expiresAt,
+      expiresIn,
+    };
   }
 
   @Get('accounts')

@@ -38,3 +38,6 @@ yarn-error.log*
 .DS_Store
 *.pem
 /.pnpm-store
+.env.prd
+apps/api/.env.prd
+apps/api/.env.prd

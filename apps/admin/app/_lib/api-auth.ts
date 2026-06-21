@@ -1,7 +1,15 @@
 import { API_BASE } from "./constants";
 import { parseJsonOrThrow } from "./api-common";
 
-export async function loginAdminApi(userId: string, password: string): Promise<void> {
+type AdminLoginResponse = {
+  ok: boolean;
+  accessToken: string;
+  tokenType: "Bearer";
+  expiresAt: number;
+  expiresIn: number;
+};
+
+export async function loginAdminApi(userId: string, password: string): Promise<AdminLoginResponse> {
   const response = await fetch(`${API_BASE}/api/backoffice/login`, {
     method: "POST",
     headers: {
@@ -10,9 +18,7 @@ export async function loginAdminApi(userId: string, password: string): Promise<v
     body: JSON.stringify({ userId, password }),
   });
 
-  if (!response.ok) {
-    throw new Error("아이디 또는 비밀번호를 확인해주세요.");
-  }
+  return parseJsonOrThrow<AdminLoginResponse>(response, "아이디 또는 비밀번호를 확인해주세요.");
 }
 
 export async function checkAdminUserIdApi(

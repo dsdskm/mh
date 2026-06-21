@@ -1,9 +1,17 @@
 import { API_BASE } from "./constants";
-import { parseJsonOrThrow } from "./api-common";
+import { adminFetch, parseJsonOrThrow } from "./api-common";
 import { StoreConfig } from "./types";
 
+export async function getConfigApi(): Promise<StoreConfig> {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/config`, {
+    cache: "no-store",
+  });
+
+  return parseJsonOrThrow<StoreConfig>(response, "기본정보를 불러오지 못했습니다.");
+}
+
 export async function saveConfigApi(config: StoreConfig): Promise<StoreConfig> {
-  const response = await fetch(`${API_BASE}/api/backoffice/config`, {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/config`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
