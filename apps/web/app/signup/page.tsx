@@ -314,7 +314,7 @@ export default function SignupPage() {
         </p>
 
         <form className="mt-4 space-y-3" onSubmit={submit}>
-          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+          <div className="grid gap-2 grid-cols-[1fr_auto]">
             <input
               value={userId}
               onChange={(event) => {
@@ -331,7 +331,7 @@ export default function SignupPage() {
               type="button"
               onClick={() => void checkUserId()}
               disabled={checkingUserId || !userId.trim()}
-              className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-60"
+              className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-60 whitespace-nowrap"
             >
               {checkingUserId ? "확인 중..." : "중복확인"}
             </button>
@@ -400,7 +400,7 @@ export default function SignupPage() {
             required
           />
 
-          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+          <div className="grid gap-2 grid-cols-[1fr_auto]">
             <input
               value={phone}
               onChange={(event) => {
@@ -422,7 +422,7 @@ export default function SignupPage() {
               type="button"
               onClick={() => void requestSmsCode()}
               disabled={sendingCode || !normalizedPhone}
-              className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+              className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-60 whitespace-nowrap"
             >
               {sendingCode ? "발송 중..." : "인증번호 받기"}
             </button>
@@ -439,7 +439,7 @@ export default function SignupPage() {
           )}
 
           {codeSent && (
-            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <div className="grid gap-2 grid-cols-[1fr_auto]">
               <input
                 value={smsCode}
                 onChange={(event) => setSmsCode(event.target.value)}
@@ -451,7 +451,7 @@ export default function SignupPage() {
                 type="button"
                 onClick={() => void verifySmsCode()}
                 disabled={verifyingCode || !smsCode.trim()}
-                className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-60"
+                className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-60 whitespace-nowrap"
               >
                 {verifyingCode ? "확인 중..." : "인증 확인"}
               </button>
@@ -462,7 +462,7 @@ export default function SignupPage() {
             <p className="rounded-xl bg-lime-50 p-3 text-sm text-lime-800">전화번호 인증 완료</p>
           )}
 
-          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+          <div className="grid gap-2 grid-cols-[1fr_auto]">
             <input
               value={address1}
               placeholder="주소검색 클릭"
@@ -475,7 +475,7 @@ export default function SignupPage() {
               type="button"
               onClick={searchAddress}
               disabled={!postcodeReady}
-              className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-60"
+              className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-60 whitespace-nowrap"
             >
               {postcodeReady ? "주소 검색" : "로딩 중..."}
             </button>
@@ -537,6 +537,29 @@ export default function SignupPage() {
         {error && <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {success && <p className="mt-3 rounded-xl bg-lime-50 p-3 text-sm text-lime-800">{success}</p>}
       </section>
-    </main>
+      {success && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4"
+          onClick={() => setSuccess(null)}
+        >
+          <div
+            className="w-full max-w-xs rounded-2xl bg-white p-6 text-center shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-lime-100 text-2xl text-lime-700">
+              ✓
+            </div>
+            <p className="mt-3 text-base font-bold text-stone-900">가입이 완료되었습니다</p>
+            <p className="mt-1 text-sm text-stone-600">자동으로 로그인됩니다.</p>
+            <button
+              type="button"
+              onClick={() => setSuccess(null)}
+              className="mt-4 w-full rounded-xl bg-lime-600 px-3 py-2 text-sm font-bold text-white"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}    </main>
   );
 }

@@ -651,11 +651,6 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
       {smsTargets && smsConfirmOpen && (
         <div
           className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"
-          onClick={() => {
-            if (!smsSending) {
-              setSmsConfirmOpen(false);
-            }
-          }}
         >
           <div
             className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"

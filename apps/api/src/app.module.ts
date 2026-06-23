@@ -55,6 +55,8 @@ import { TermsHistoryEntity } from './database/entities/terms-history.entity';
 import { FirestoreTriggerService } from './shared/firestore-trigger.service';
 import { AdminAuthService } from './shared/auth/admin-auth.service';
 import { BackofficeAuthGuard } from './shared/auth/backoffice-auth.guard';
+import { DatabaseSyncController } from './features/database-sync/database-sync.controller';
+import { DatabaseSyncService } from './features/database-sync/database-sync.service';
 
 function loadEnvFiles() {
   const candidates = [
@@ -137,6 +139,7 @@ const databaseUrl =
     CouponsController,
     MileageController,
     MessagesController,
+    DatabaseSyncController,
   ],
   providers: [
     HealthService,
@@ -157,6 +160,7 @@ const databaseUrl =
     MessagesService,
     PopbillSmsClient,
     FirestoreTriggerService,
+    DatabaseSyncService,
     AdminAuthService,
     {
       provide: APP_GUARD,

@@ -13,16 +13,16 @@ gcloud config set project corn-fbaae
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
 
 # 4) 실행 권한 부여
-chmod +x deploy/cloudrun/deploy.sh
+chmod +x scripts/deploy/deploy.sh
 
 # 5) dev 배포 (기본값)
-./deploy/cloudrun/deploy.sh
+./scripts/deploy/deploy.sh
 
 # 6) prod 배포
-ENV=prod ./deploy/cloudrun/deploy.sh
+ENV=prod ./scripts/deploy/deploy.sh
 
 # 7) 개별 배포
-./deploy/cloudrun/deploy.sh api
-./deploy/cloudrun/deploy.sh web
-./deploy/cloudrun/deploy.sh admin
+./scripts/deploy/deploy.sh api
+./scripts/deploy/deploy.sh web
+./scripts/deploy/deploy.sh admin
 ```

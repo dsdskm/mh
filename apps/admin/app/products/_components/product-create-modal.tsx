@@ -61,23 +61,26 @@ export function ProductCreateModal({ open, submitting, state, onClose, onRequest
       return;
     }
 
-    let imageUrl = state.newImageUrl;
-
-    if (selectedImageFile) {
-      setUploadingImage(true);
-      setUploadError(null);
-      try {
-        const { url } = await uploadAdminAssetApi(selectedImageFile, "products", "new");
-        imageUrl = url;
-        setSelectedImageFile(null);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "이미지 업로드에 실패했습니다.";
-        setUploadError(message);
-        setUploadingImage(false);
-        return;
-      }
-      setUploadingImage(false);
+    if (!selectedImageFile) {
+      setUploadError("이미지 파일을 선택해주세요.");
+      return;
     }
+
+    setUploadingImage(true);
+    setUploadError(null);
+
+    let imageUrl = "";
+    try {
+      const { url } = await uploadAdminAssetApi(selectedImageFile, "products", "new");
+      imageUrl = url;
+      setSelectedImageFile(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "이미지 업로드에 실패했습니다.";
+      setUploadError(message);
+      setUploadingImage(false);
+      return;
+    }
+    setUploadingImage(false);
 
     onRequestConfirm({
       name: state.newName,
@@ -94,7 +97,6 @@ export function ProductCreateModal({ open, submitting, state, onClose, onRequest
   return (
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
-      onClick={() => !submitting && !uploadingImage && onClose()}
     >
       <div
         className="w-full max-w-lg rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
@@ -171,14 +173,7 @@ export function ProductCreateModal({ open, submitting, state, onClose, onRequest
           )}
 
           <label className="block space-y-1">
-            <span className="text-xs font-semibold text-stone-600">이미지 URL</span>
-            <input
-              value={state.newImageUrl}
-              onChange={(event) => state.setNewImageUrl(event.target.value)}
-              placeholder="이미지 URL"
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-              required
-            />
+            <span className="text-xs font-semibold text-stone-600">상품 이미지</span>
             <input
               type="file"
               accept="image/*"

@@ -1,0 +1,36 @@
+# Docker-based Cloud Build configuration
+# Used by scripts/deploy/deploy.sh for building Docker images
+# Substitutions injected by deploy.sh:
+#   _DOCKERFILE: path to Dockerfile (e.g., deploy/Dockerfile.api)
+#   _IMAGE: full image URI
+#   _APP_ENV: environment name (dev/prod)
+#   _NEXT_PUBLIC_API_BASE_URL: API endpoint URL (for web/admin builds)
+
+substitutions:
+  _DOCKERFILE: ""
+  _IMAGE: ""
+  _APP_ENV: "dev"
+  _NEXT_PUBLIC_API_BASE_URL: ""
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - ${_DOCKERFILE}
+      - --build-arg=APP_ENV=${_APP_ENV}
+      - --build-arg=NEXT_PUBLIC_API_BASE_URL=${_NEXT_PUBLIC_API_BASE_URL}
+      - -t
+      - ${_IMAGE}
+      - .
+    
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_IMAGE}
+
+images:
+  - ${_IMAGE}
+
+# Default machine type (e2-medium) = 120 free builds/day tier applies.
+# To speed up builds, increase machineType in options but it will be excluded from free tier.

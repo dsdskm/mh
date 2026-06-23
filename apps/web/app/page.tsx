@@ -981,7 +981,7 @@ export default function Home() {
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-4">
           <div>
             <p className="font-display text-2xl text-amber-700 sm:text-3xl">{storeConfig.shopName || "옥수수 가게"}</p>
-            <p className="mt-1 text-sm text-amber-900/90 sm:text-base">강원도 산지직송 스토어입니다.</p>
+            <p className="mt-1 text-sm text-amber-900/90 sm:text-base">{storeConfig.detailDescription || "상점 설명"}</p>
             <div
               className={`mt-2 inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
                 storeConfig.businessStatus === "open"
@@ -1010,9 +1010,9 @@ export default function Home() {
                   setShowLoginModal(true);
                   setLoginError(null);
                 }}
-                className="rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800"
+                className="whitespace-nowrap rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800"
               >
-                로그인/회원가입
+                로그인
               </button>
             )}
             {isLoggedIn && (
@@ -1119,25 +1119,27 @@ export default function Home() {
         </section>
 
         <section className="space-y-4 rounded-3xl border border-lime-200 bg-white p-5 shadow-lg">
-          <div>
-            <h2 className="font-display text-2xl text-lime-800">상품 상세 설명</h2>
-            <p className="text-sm text-stone-600">{storeConfig.detailDescription || "등록된 상품 상세 설명이 없습니다."}</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {storeConfig.storyImages.map((item) => (
-              <article key={item.title} className="overflow-hidden rounded-2xl border border-stone-200">
-                <Image
-                  src={item.imageUrl}
-                  alt={item.title}
-                  width={1200}
-                  height={800}
-                  className="h-36 w-full object-cover sm:h-44"
-                />
-              </article>
-            ))}
-            {storeConfig.storyImages.length === 0 && (
-              <p className="col-span-2 text-sm text-stone-500">등록된 상세 이미지가 없습니다.</p>
+          <div className="space-y-2">
+            <h3 className="text-base font-bold text-stone-900">상점 이미지</h3>
+            {storeConfig.storyImages.length > 0 ? (
+              <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
+                {storeConfig.storyImages.map((item, index) => (
+                  <article
+                    key={`${item.imageUrl}-${index}`}
+                    className="w-[180px] min-w-[180px] overflow-hidden rounded-2xl border border-stone-200 sm:w-[240px] sm:min-w-[240px]"
+                  >
+                    <Image
+                      src={item.imageUrl}
+                      alt={item.title || `상점 이미지 ${index + 1}`}
+                      width={1200}
+                      height={800}
+                      className="h-36 w-full object-cover sm:h-44"
+                    />
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-stone-500">등록된 상점 이미지가 없습니다.</p>
             )}
           </div>
 
@@ -1176,33 +1178,36 @@ export default function Home() {
                 <summary className="cursor-pointer px-4 py-4 text-base font-extrabold text-lime-900">
                   {recipe.title}
                 </summary>
-                <div className="grid gap-4 border-t border-lime-100 px-4 py-4 text-sm text-stone-700 md:grid-cols-2">
+                <div className="border-t border-lime-100 px-4 py-4">
                   <div>
-                    <p className="font-semibold text-stone-900">재료</p>
-                    <ul className="mt-2 list-disc space-y-1 pl-5">
+                    <p className="font-semibold text-stone-900 text-sm">재료</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-stone-700">
                       {recipe.ingredients.map((ingredient) => (
                         <li key={ingredient}>{ingredient}</li>
                       ))}
                     </ul>
                   </div>
-                  <div>
-                    <p className="font-semibold text-stone-900">조리순서</p>
-                    <ol className="mt-2 list-decimal space-y-4 pl-5">
+                  <div className="mt-4">
+                    <p className="font-semibold text-stone-900 text-sm">조리순서</p>
+                    <div className="mt-3 flex flex-col gap-3">
                       {recipe.steps.map((step, idx) => (
-                        <li key={idx} className="space-y-2">
-                          <p>{step.description}</p>
+                        <div key={idx} className="flex gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3">
                           {step.imageUrl && (
-                            <div className="flex justify-center">
+                            <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-md bg-stone-100">
                               <img
                                 src={step.imageUrl}
                                 alt={`${recipe.title} ${idx + 1}단계`}
-                                className="w-full max-w-[220px] rounded-lg border border-stone-200 object-cover"
+                                className="h-full w-full object-cover rounded-md"
                               />
                             </div>
                           )}
-                        </li>
+                          <div className="flex-1">
+                            <p className="text-xs font-semibold text-stone-700">{idx + 1}단계</p>
+                            <p className="mt-1 text-xs text-stone-600">{step.description}</p>
+                          </div>
+                        </div>
                       ))}
-                    </ol>
+                    </div>
                   </div>
                 </div>
               </details>
@@ -1862,7 +1867,6 @@ export default function Home() {
       {showBusinessStatusModal && !isOrderAvailable && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setShowBusinessStatusModal(false)}
         >
           <div
             className="w-full max-w-sm rounded-3xl border border-stone-200 bg-white p-5 shadow-2xl"
@@ -1952,11 +1956,6 @@ export default function Home() {
       {showLogoutConfirmModal && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => {
-            if (!logoutSubmitting) {
-              setShowLogoutConfirmModal(false);
-            }
-          }}
         >
           <div
             className="w-full max-w-sm rounded-3xl border border-amber-200 bg-white p-5 shadow-2xl"
@@ -1989,12 +1988,6 @@ export default function Home() {
 
       {showMenuDrawer && (
         <div className="fixed inset-0 z-50 bg-black/40">
-          <button
-            type="button"
-            aria-label="메뉴 닫기"
-            onClick={() => setShowMenuDrawer(false)}
-            className="absolute inset-0 h-full w-full"
-          />
           <aside className="absolute right-0 top-0 h-full w-80 max-w-[86vw] border-l border-amber-200 bg-white p-5 shadow-2xl">
             <div className="flex items-center justify-between">
               <h2 className="font-display text-3xl text-amber-800">메뉴</h2>
@@ -2019,7 +2012,7 @@ export default function Home() {
                 }}
                 className="mt-3 w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold text-amber-800"
               >
-                로그인/회원가입
+                로그인
               </button>
             )}
 
@@ -2134,7 +2127,6 @@ export default function Home() {
       {showTermsUpdateModal && storeConfig.termsUrl && (
         <div
           className="fixed inset-0 z-[72] flex items-center justify-center bg-black/50 p-4"
-          onClick={closeTermsUpdateModal}
         >
           <div
             className="w-full max-w-md rounded-3xl border border-lime-200 bg-white p-5 shadow-2xl"
@@ -2171,7 +2163,6 @@ export default function Home() {
       {showContactAuthDialog && (
         <div
           className="fixed inset-0 z-[75] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => setShowContactAuthDialog(false)}
         >
           <div
             className="w-full max-w-sm rounded-3xl border border-amber-200 bg-white p-5 shadow-2xl"

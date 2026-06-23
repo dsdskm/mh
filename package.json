@@ -9,6 +9,8 @@
     "dev:web": "turbo run dev --filter=web",
     "dev:admin": "turbo run dev --filter=admin",
     "dev:api": "turbo run dev --filter=api",
+    "db:server-to-local": "sh ./scripts/db/server-to-local.sh",
+    "db:local-to-server": "sh ./scripts/db/local-to-server.sh",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"

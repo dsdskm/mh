@@ -1203,7 +1203,6 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
       {showCreateModal && (
         <div
           className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => !creating && setShowCreateModal(false)}
         >
           <div
             className="w-full max-w-2xl rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
@@ -1357,11 +1356,6 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
       {smsTarget && smsConfirmOpen && (
         <div
           className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"
-          onClick={() => {
-            if (!smsSending) {
-              setSmsConfirmOpen(false);
-            }
-          }}
         >
           <div
             className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"

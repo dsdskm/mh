@@ -398,7 +398,6 @@ export default function ContactPage() {
       {showSubmitConfirmModal && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => !submitting && setShowSubmitConfirmModal(false)}
         >
           <div
             className="w-full max-w-md rounded-3xl border border-amber-200 bg-white p-5 shadow-2xl"
@@ -438,7 +437,6 @@ export default function ContactPage() {
       {showDeleteConfirmModal && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => !deleteSubmitting && setShowDeleteConfirmModal(false)}
         >
           <div
             className="w-full max-w-sm rounded-3xl border border-stone-200 bg-white p-5 shadow-2xl"

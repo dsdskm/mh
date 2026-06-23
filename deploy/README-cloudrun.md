@@ -63,14 +63,14 @@ From repo root:
 ### Deploy to dev
 
 ```bash
-chmod +x deploy/cloudrun/deploy.sh
-PROJECT_ID=YOUR_PROJECT_ID REGION=asia-northeast3 ENV=dev ./deploy/cloudrun/deploy.sh
+chmod +x scripts/deploy/cloudrun/deploy.sh
+PROJECT_ID=YOUR_PROJECT_ID REGION=asia-northeast3 ENV=dev ./scripts/deploy/cloudrun/deploy.sh
 ```
 
 ### Deploy to prod
 
 ```bash
-PROJECT_ID=YOUR_PROJECT_ID REGION=asia-northeast3 ENV=prod ./deploy/cloudrun/deploy.sh
+PROJECT_ID=YOUR_PROJECT_ID REGION=asia-northeast3 ENV=prod ./scripts/deploy/cloudrun/deploy.sh
 ```
 
 Dev/prod will automatically use different:
@@ -86,7 +86,7 @@ REGION=asia-northeast3 \
 ENV=dev \
 REPOSITORY=mh \
 API_SERVICE=custom-api-name \
-./deploy/cloudrun/deploy.sh
+./scripts/deploy/cloudrun/deploy.sh
 ```
 
 ## 5) Environment Configuration

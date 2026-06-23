@@ -219,23 +219,24 @@ export function RecipesTab({ state }: Props) {
             <p className="text-xs text-stone-600">
               단일 레시피 모드입니다. 현재는 조리 단계만 수정할 수 있습니다.
             </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-3 flex flex-col gap-2">
               {existingRecipe.steps.map((step, stepIdx) => (
-                <div key={`existing-${stepIdx}`} className="overflow-hidden rounded-md border border-stone-200 bg-white">
-                  <div className="flex h-28 items-center justify-center bg-stone-100">
+                <div key={`existing-${stepIdx}`} className="flex gap-3 rounded-lg border border-stone-200 bg-white p-3">
+                  <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-md bg-stone-100">
                     {step.imageUrl ? (
                       <img
                         src={step.imageUrl}
                         alt={`${existingRecipe.title} ${stepIdx + 1}단계 이미지`}
-                        className="h-full w-full object-cover"
+                        className="h-full w-full object-cover rounded-md"
                       />
                     ) : (
                       <span className="text-[11px] text-stone-500">이미지 없음</span>
                     )}
                   </div>
-                  <p className="line-clamp-2 px-2 py-1 text-[11px] text-stone-600">
-                    {stepIdx + 1}단계: {step.description}
-                  </p>
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-stone-700">{stepIdx + 1}단계</p>
+                    <p className="mt-1 text-xs text-stone-600">{step.description}</p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -371,7 +372,6 @@ export function RecipesTab({ state }: Props) {
       {state.configSaved && (
         <div
           className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => state.setConfigSaved(false)}
         >
           <div
             className="w-full max-w-xs rounded-2xl bg-white p-6 text-center shadow-2xl"

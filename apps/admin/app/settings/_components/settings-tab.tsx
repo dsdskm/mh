@@ -50,7 +50,9 @@ function pickYouTubeVideoId(url: URL): string | null {
 
 export function SettingsTab({ state }: Props) {
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
 
   useEffect(() => {
@@ -103,6 +105,60 @@ export function SettingsTab({ state }: Props) {
       type: file?.type,
       at: new Date().toISOString(),
     });
+  }
+
+  async function handleStoryImageSelect(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+
+    setImageUploadError(null);
+    setUploadingImage(true);
+    try {
+      const { url } = await uploadAdminAssetApi(file, "products", "story");
+      const nextStoryImages = [
+        ...state.storyImages,
+        {
+          title: file.name.replace(/\.[^/.]+$/, "") || `상점 이미지 ${state.storyImages.length + 1}`,
+          imageUrl: url,
+        },
+      ];
+      state.setStoryImages(nextStoryImages);
+      state.setConfigSaved(false);
+      const saved = await state.saveConfigDirect({ storyImages: nextStoryImages });
+      if (!saved) {
+        setImageUploadError("상점 이미지 저장에 실패했습니다.");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "이미지 업로드에 실패했습니다.";
+      setImageUploadError(message);
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  function handleStoryImageTitleChange(index: number, title: string) {
+    state.updateStoryImageTitle(index, title);
+  }
+
+  async function handleStoryImageTitleBlur() {
+    state.setConfigSaved(false);
+    const saved = await state.saveConfigDirect({ storyImages: state.storyImages });
+    if (!saved) {
+      setImageUploadError("상점 이미지 제목 저장에 실패했습니다.");
+    }
+  }
+
+  async function handleStoryImageRemove(index: number) {
+    const nextStoryImages = state.storyImages.filter((_, idx) => idx !== index);
+    state.setStoryImages(nextStoryImages);
+    state.setConfigSaved(false);
+    const saved = await state.saveConfigDirect({ storyImages: nextStoryImages });
+    if (!saved) {
+      setImageUploadError("상점 이미지 삭제 저장에 실패했습니다.");
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -187,19 +243,39 @@ export function SettingsTab({ state }: Props) {
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1">
               <span className="text-xs font-semibold text-stone-600">상점명</span>
-              <input value={state.shopName} onChange={(e) => state.setShopName(e.target.value)} placeholder="상점명" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+              <input
+                value={state.shopName}
+                onChange={(e) => state.setShopName(e.target.value)}
+                placeholder="상점명"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
             </label>
             <label className="space-y-1">
               <span className="text-xs font-semibold text-stone-600">판매자명</span>
-              <input value={state.sellerName} onChange={(e) => state.setSellerName(e.target.value)} placeholder="판매자명" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+              <input
+                value={state.sellerName}
+                onChange={(e) => state.setSellerName(e.target.value)}
+                placeholder="판매자명"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
             </label>
             <label className="space-y-1">
               <span className="text-xs font-semibold text-stone-600">연락처</span>
-              <input value={state.sellerPhone} onChange={(e) => state.setSellerPhone(e.target.value)} placeholder="연락처" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+              <input
+                value={state.sellerPhone}
+                onChange={(e) => state.setSellerPhone(e.target.value)}
+                placeholder="연락처"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
             </label>
             <label className="space-y-1">
               <span className="text-xs font-semibold text-stone-600">원산지</span>
-              <input value={state.origin} onChange={(e) => state.setOrigin(e.target.value)} placeholder="원산지" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+              <input
+                value={state.origin}
+                onChange={(e) => state.setOrigin(e.target.value)}
+                placeholder="원산지"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
             </label>
           </div>
         </section>
@@ -251,15 +327,30 @@ export function SettingsTab({ state }: Props) {
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1">
               <span className="text-xs font-semibold text-stone-600">은행명</span>
-              <input value={state.bankName} onChange={(e) => state.setBankName(e.target.value)} placeholder="은행명" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+              <input
+                value={state.bankName}
+                onChange={(e) => state.setBankName(e.target.value)}
+                placeholder="은행명"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
             </label>
             <label className="space-y-1">
               <span className="text-xs font-semibold text-stone-600">계좌번호</span>
-              <input value={state.accountNumber} onChange={(e) => state.setAccountNumber(e.target.value)} placeholder="계좌번호" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+              <input
+                value={state.accountNumber}
+                onChange={(e) => state.setAccountNumber(e.target.value)}
+                placeholder="계좌번호"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
             </label>
             <label className="space-y-1">
               <span className="text-xs font-semibold text-stone-600">예금주</span>
-              <input value={state.accountHolder} onChange={(e) => state.setAccountHolder(e.target.value)} placeholder="예금주" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+              <input
+                value={state.accountHolder}
+                onChange={(e) => state.setAccountHolder(e.target.value)}
+                placeholder="예금주"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
             </label>
             <label className="space-y-1">
               <span className="text-xs font-semibold text-stone-600">배송료 (원)</span>
@@ -278,21 +369,28 @@ export function SettingsTab({ state }: Props) {
                   onChange={(e) => state.setChargeDeliveryFee(e.target.checked)}
                   className="h-4 w-4 cursor-pointer accent-lime-600"
                 />
-                <span className="text-[11px] text-stone-600">배송료 청구 (체크 시 주문 금액에 배송료가 더해집니다)</span>
+                <span className="text-[11px] text-stone-600">
+                  배송료 청구 (체크 시 주문 금액에 배송료가 더해집니다)
+                </span>
               </span>
             </label>
           </div>
           <label className="block space-y-1">
             <span className="text-xs font-semibold text-stone-600">입금 안내</span>
-            <textarea value={state.transferNote} onChange={(e) => state.setTransferNote(e.target.value)} placeholder="입금 안내" className="h-20 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+            <textarea
+              value={state.transferNote}
+              onChange={(e) => state.setTransferNote(e.target.value)}
+              placeholder="입금 안내"
+              className="h-20 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            />
           </label>
         </section>
 
         <section className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
           <h3 className="text-sm font-bold text-stone-900">주문 및 혜택 설정</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1">
-              <span className="text-xs font-semibold text-stone-600">입금 기한 (일)</span>
+          <div className="space-y-3">
+            <label className="grid gap-2 sm:grid-cols-[150px_220px_1fr] sm:items-start sm:gap-3">
+              <span className="pt-2 text-xs font-semibold text-stone-600">입금 기한 (일)</span>
               <input
                 type="number"
                 min={0}
@@ -301,10 +399,12 @@ export function SettingsTab({ state }: Props) {
                 placeholder="예: 3 (0이면 기한 없음)"
                 className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               />
-              <span className="block text-[11px] text-stone-500">주문 후 이 일수가 지나도록 미입금이면 자동으로 취소됩니다. 0이면 자동 취소하지 않습니다.</span>
+              <span className="pt-2 text-[11px] leading-5 text-stone-500">
+                주문 후 이 일수가 지나도록 미입금이면 자동으로 취소됩니다. 0이면 자동 취소하지 않습니다.
+              </span>
             </label>
-            <label className="space-y-1">
-              <span className="text-xs font-semibold text-stone-600">적립금 적립률 (%)</span>
+            <label className="grid gap-2 sm:grid-cols-[150px_220px_1fr] sm:items-start sm:gap-3">
+              <span className="pt-2 text-xs font-semibold text-stone-600">적립금 적립률 (%)</span>
               <input
                 type="number"
                 min={0}
@@ -313,11 +413,13 @@ export function SettingsTab({ state }: Props) {
                 placeholder="예: 5 (0이면 적립 안 함)"
                 className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               />
-              <span className="block text-[11px] text-stone-500">회원 주문이 배송완료되면 결제 금액의 이 비율만큼 적립금이 자동 적립됩니다. 0이면 자동 적립하지 않습니다.</span>
+              <span className="pt-2 text-[11px] leading-5 text-stone-500">
+                회원 주문이 배송완료되면 결제 금액의 이 비율만큼 적립금이 자동 적립됩니다. 0이면 자동 적립하지 않습니다.
+              </span>
             </label>
           </div>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold text-stone-600">회원 주문 포함 상품 (무료 사은품)</span>
+          <label className="grid gap-2 sm:grid-cols-[150px_220px_1fr] sm:items-start sm:gap-3">
+            <span className="pt-2 text-xs font-semibold text-stone-600">회원 주문 포함 상품</span>
             <select
               value={state.memberBonusProductId ?? ""}
               onChange={(e) => state.setMemberBonusProductId(e.target.value ? Number(e.target.value) : null)}
@@ -330,7 +432,10 @@ export function SettingsTab({ state }: Props) {
                 </option>
               ))}
             </select>
-            <span className="block text-[11px] text-stone-500">회원(로그인) 주문 시 선택한 상품이 0원 사은품으로 함께 발송됩니다. 재고는 차감되지 않으며, 매장에 노출하고 싶지 않으면 상품관리에서 비노출(숨김) 상태로 등록해도 사은품으로 사용할 수 있습니다.</span>
+            <span className="pt-2 text-[11px] leading-5 text-stone-500">
+              회원(로그인) 주문 시 선택한 상품이 0원 사은품으로 함께 발송됩니다. 재고는 차감되지 않으며, 매장에 노출하고
+              싶지 않으면 상품관리에서 비노출(숨김) 상태로 등록해도 사은품으로 사용할 수 있습니다.
+            </span>
           </label>
         </section>
 
@@ -338,7 +443,12 @@ export function SettingsTab({ state }: Props) {
           <h3 className="text-sm font-bold text-stone-900">콘텐츠</h3>
           <label className="block space-y-1">
             <span className="text-xs font-semibold text-stone-600">영상 URL</span>
-            <input value={state.videoUrl} onChange={(e) => state.setVideoUrl(e.target.value)} placeholder="영상 URL" className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+            <input
+              value={state.videoUrl}
+              onChange={(e) => state.setVideoUrl(e.target.value)}
+              placeholder="영상 URL"
+              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            />
             <input
               type="file"
               accept="video/*"
@@ -356,7 +466,7 @@ export function SettingsTab({ state }: Props) {
             {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
 
             {videoPreview && (
-              <div className="mt-3 overflow-hidden rounded-xl border border-stone-200 bg-white">
+              <div className="mt-3 max-w-md overflow-hidden rounded-xl border border-stone-200 bg-white">
                 <div className="aspect-video w-full">
                   {videoPreview.type === "embed" ? (
                     <iframe
@@ -368,24 +478,74 @@ export function SettingsTab({ state }: Props) {
                       allowFullScreen
                     />
                   ) : (
-                    <video
-                      src={videoPreview.src}
-                      className="h-full w-full object-cover"
-                      controls
-                      muted
-                      playsInline
-                    />
+                    <video src={videoPreview.src} className="h-full w-full object-cover" controls muted playsInline />
                   )}
                 </div>
               </div>
             )}
           </label>
+
+          <label className="block space-y-2">
+            <span className="text-xs font-semibold text-stone-600">상점 이미지 (무제한)</span>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(event) => void handleStoryImageSelect(event)}
+              disabled={uploadingImage}
+              className="block w-full text-xs text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-lime-600 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white disabled:opacity-60"
+            />
+            <p className="text-[11px] text-stone-500">
+              {uploadingImage ? "이미지 업로드 중..." : "여러 이미지를 계속 추가할 수 있습니다. 저장 후 web에 반영됩니다."}
+            </p>
+            {imageUploadError && <p className="text-xs text-red-600">{imageUploadError}</p>}
+
+            {state.storyImages.length > 0 ? (
+              <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
+                {state.storyImages.map((item, index) => (
+                  <div
+                    key={`${item.imageUrl}-${index}`}
+                    className="w-[220px] min-w-[220px] rounded-xl border border-stone-200 p-2"
+                  >
+                    <img src={item.imageUrl} alt={item.title || `상점 이미지 ${index + 1}`} className="h-28 w-full rounded-lg object-cover" />
+                    <input
+                      value={item.title}
+                      onChange={(e) => handleStoryImageTitleChange(index, e.target.value)}
+                      onBlur={() => void handleStoryImageTitleBlur()}
+                      placeholder={`상점 이미지 ${index + 1}`}
+                      className="mt-2 w-full rounded-lg border border-stone-300 px-2 py-1.5 text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleStoryImageRemove(index)}
+                      className="mt-2 w-full rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-700"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-stone-500">등록된 상점 이미지가 없습니다.</p>
+            )}
+          </label>
+
           <label className="block space-y-1">
-            <span className="text-xs font-semibold text-stone-600">상품 상세 설명</span>
-            <textarea value={state.detailDescription} onChange={(e) => state.setDetailDescription(e.target.value)} placeholder="상품 상세 설명" className="h-28 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
+            <span className="text-xs font-semibold text-stone-600">상점 설명</span>
+            <textarea
+              value={state.detailDescription}
+              onChange={(e) => state.setDetailDescription(e.target.value)}
+              placeholder="상점 설명"
+              className="h-28 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            />
           </label>
         </section>
-        <button type="submit" disabled={uploadingVideo} className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">기본정보 저장</button>
+        <button
+          type="submit"
+          disabled={uploadingVideo || uploadingImage}
+          className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+        >
+          기본정보 저장
+        </button>
       </form>
 
       {uploadingVideo && (
@@ -399,15 +559,14 @@ export function SettingsTab({ state }: Props) {
       )}
 
       {state.configSaved && (
-        <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => state.setConfigSaved(false)}
-        >
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4">
           <div
             className="w-full max-w-xs rounded-2xl bg-white p-6 text-center shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-lime-100 text-2xl text-lime-700">✓</div>
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-lime-100 text-2xl text-lime-700">
+              ✓
+            </div>
             <p className="mt-3 text-base font-bold text-stone-900">기본정보를 저장했습니다</p>
             <button
               type="button"

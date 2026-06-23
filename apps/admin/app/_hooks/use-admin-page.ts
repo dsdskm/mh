@@ -90,6 +90,7 @@ export type AdminPageState = {
   accountHolder: string;
   transferNote: string;
   detailDescription: string;
+  storyImages: Array<{ title: string; imageUrl: string }>;
   videoUrl: string;
   termsUrl: string;
   privacyUrl: string;
@@ -122,6 +123,10 @@ export type AdminPageState = {
   setAccountHolder: (value: string) => void;
   setTransferNote: (value: string) => void;
   setDetailDescription: (value: string) => void;
+  setStoryImages: (value: Array<{ title: string; imageUrl: string }>) => void;
+  updateStoryImageTitle: (index: number, title: string) => void;
+  addStoryImage: (imageUrl: string, title?: string) => void;
+  removeStoryImage: (index: number) => void;
   setVideoUrl: (value: string) => void;
   setTermsUrl: (value: string) => void;
   setPrivacyUrl: (value: string) => void;
@@ -163,6 +168,7 @@ export type AdminPageState = {
       Pick<
         StoreConfig,
         | "videoUrl"
+        | "storyImages"
         | "termsUrl"
         | "privacyUrl"
         | "businessStatus"
@@ -177,6 +183,7 @@ export type AdminPageState = {
       Pick<
         StoreConfig,
         | "videoUrl"
+        | "storyImages"
         | "termsUrl"
         | "privacyUrl"
         | "businessStatus"
@@ -243,6 +250,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   const [accountHolder, setAccountHolder] = useState("");
   const [transferNote, setTransferNote] = useState("");
   const [detailDescription, setDetailDescription] = useState("");
+  const [storyImages, setStoryImages] = useState<Array<{ title: string; imageUrl: string }>>([]);
   const [videoUrl, setVideoUrl] = useState("");
   const [termsUrl, setTermsUrl] = useState("");
   const [privacyUrl, setPrivacyUrl] = useState("");
@@ -289,6 +297,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setAccountHolder(configValue.accountHolder ?? "");
     setTransferNote(configValue.transferNote ?? "");
     setDetailDescription(configValue.detailDescription ?? "");
+    setStoryImages(Array.isArray(configValue.storyImages) ? configValue.storyImages : []);
     setVideoUrl(configValue.videoUrl ?? "");
     setTermsUrl(configValue.termsUrl ?? "");
     setPrivacyUrl(configValue.privacyUrl ?? "");
@@ -346,6 +355,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         } else if (initialTab === "계정관리" || initialTab === "문자전송") {
           setAccounts(await listAdminAccountsApi());
         } else if (initialTab === "기본정보" || initialTab === "약관관리") {
+          setProducts(await listProductsApi());
         } else if (initialTab === "쿠폰·적립금") {
           const [accounts, couponRows, templateRows] = await Promise.all([
             listAdminAccountsApi(),
@@ -572,6 +582,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
       Pick<
         StoreConfig,
         | "videoUrl"
+        | "storyImages"
         | "termsUrl"
         | "privacyUrl"
         | "businessStatus"
@@ -591,6 +602,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
       Pick<
         StoreConfig,
         | "videoUrl"
+        | "storyImages"
         | "termsUrl"
         | "privacyUrl"
         | "businessStatus"
@@ -622,6 +634,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         transferNote,
         detailDescription,
         videoUrl: overrides?.videoUrl ?? videoUrl,
+        storyImages: overrides?.storyImages ?? storyImages,
         termsUrl: overrides?.termsUrl ?? termsUrl,
         privacyUrl: overrides?.privacyUrl ?? privacyUrl,
         businessStatus: overrides?.businessStatus ?? config.businessStatus,
@@ -641,6 +654,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
       setConfig(saved);
       setTermsUrl(saved.termsUrl ?? "");
       setPrivacyUrl(saved.privacyUrl ?? "");
+      setStoryImages(Array.isArray(saved.storyImages) ? saved.storyImages : []);
       setPaymentDueDays(String(saved.paymentDueDays ?? 0));
       setDeliveryFee(String(saved.deliveryFee ?? 0));
       setChargeDeliveryFee(Boolean(saved.chargeDeliveryFee));
@@ -773,6 +787,29 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     }
   }
 
+  function updateStoryImageTitle(index: number, title: string) {
+    setStoryImages((prev) =>
+      prev.map((item, idx) => (idx === index ? { ...item, title } : item)),
+    );
+  }
+
+  function addStoryImage(imageUrl: string, title?: string) {
+    setStoryImages((prev) => {
+      const nextIndex = prev.length + 1;
+      return [
+        ...prev,
+        {
+          title: title?.trim() || `상점 이미지 ${nextIndex}`,
+          imageUrl,
+        },
+      ];
+    });
+  }
+
+  function removeStoryImage(index: number) {
+    setStoryImages((prev) => prev.filter((_, idx) => idx !== index));
+  }
+
   return {
     isAuthed,
     loginUserId,
@@ -811,6 +848,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     accountHolder,
     transferNote,
     detailDescription,
+    storyImages,
     videoUrl,
     termsUrl,
     privacyUrl,
@@ -852,6 +890,10 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setAccountHolder,
     setTransferNote,
     setDetailDescription,
+    setStoryImages,
+    updateStoryImageTitle,
+    addStoryImage,
+    removeStoryImage,
     setVideoUrl,
     setTermsUrl,
     setPrivacyUrl,

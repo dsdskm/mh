@@ -16,6 +16,7 @@ COPY packages ./packages
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @repo/shared-types build
 RUN pnpm --filter api build
+RUN pnpm prune --prod
 
 FROM node:20-alpine AS runner
 
@@ -24,15 +25,23 @@ ARG APP_ENV=dev
 ENV NODE_ENV=production
 ENV APP_ENV=$APP_ENV
 ENV PORT=8080
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
 
 WORKDIR /app
 
+# Copy node_modules from builder stage (already pruned for production)
+COPY --from=builder /pnpm /pnpm
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages/shared-types/node_modules ./packages/shared-types/node_modules
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+
+# Copy built files from builder
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
-COPY --from=builder /app/packages/shared-types/package.json ./packages/shared-types/package.json
 COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json ./apps/api/package.json
+COPY packages/shared-types/package.json ./packages/shared-types/package.json
 
 EXPOSE 8080
 CMD ["node", "apps/api/dist/main.js"]

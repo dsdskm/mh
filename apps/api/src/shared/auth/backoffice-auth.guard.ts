@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { AdminAuthService } from './admin-auth.service';
 
@@ -22,6 +28,13 @@ export class BackofficeAuthGuard implements CanActivate {
       return true;
     }
 
+    if (
+      requestPath.startsWith('/api/backoffice/database-sync') &&
+      this.hasValidDatabaseSyncSecret(request)
+    ) {
+      return true;
+    }
+
     const authorization = request.headers.authorization;
     const token = this.extractBearerToken(authorization);
 
@@ -31,7 +44,9 @@ export class BackofficeAuthGuard implements CanActivate {
 
     const payload = this.adminAuthService.verifyToken(token);
     if (!payload) {
-      throw new UnauthorizedException('관리자 인증이 유효하지 않습니다. 다시 로그인해주세요.');
+      throw new UnauthorizedException(
+        '관리자 인증이 유효하지 않습니다. 다시 로그인해주세요.',
+      );
     }
 
     return true;
@@ -49,5 +64,28 @@ export class BackofficeAuthGuard implements CanActivate {
     }
 
     return token.trim() || null;
+  }
+
+  private hasValidDatabaseSyncSecret(request: Request): boolean {
+    const configuredSecret =
+      process.env.DATABASE_SYNC_SECRET?.trim() ||
+      (process.env.NODE_ENV === 'production'
+        ? ''
+        : 'dev-database-sync-secret-change-me');
+    const providedHeader = request.headers['x-database-sync-secret'];
+    const providedSecret = Array.isArray(providedHeader)
+      ? providedHeader[0]?.trim()
+      : providedHeader?.trim();
+
+    if (!configuredSecret || !providedSecret) {
+      return false;
+    }
+
+    const configuredBuffer = Buffer.from(configuredSecret);
+    const providedBuffer = Buffer.from(providedSecret);
+    return (
+      configuredBuffer.length === providedBuffer.length &&
+      timingSafeEqual(configuredBuffer, providedBuffer)
+    );
   }
 }

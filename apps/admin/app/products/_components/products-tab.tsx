@@ -253,7 +253,6 @@ export function ProductsTab({ state }: Props) {
       {detailProduct && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setDetailProductId(null)}
         >
           <div
             className="w-full max-w-lg rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
@@ -356,7 +355,6 @@ export function ProductsTab({ state }: Props) {
       {editingForm && (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => !submitting && !uploadingEditImage && setEditingForm(null)}
         >
           <div
             className="w-full max-w-lg rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
@@ -507,7 +505,6 @@ export function ProductsTab({ state }: Props) {
       {confirmAction && (
         <div
           className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"
-          onClick={() => !submitting && setConfirmAction(null)}
         >
           <div
             className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
