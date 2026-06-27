@@ -95,6 +95,8 @@ export class ConfigService implements OnModuleInit {
       accountHolder: input.accountHolder ?? base.accountHolder,
       transferNote: input.transferNote ?? base.transferNote,
       detailDescription: input.detailDescription ?? base.detailDescription,
+      shippingRefundPolicy:
+        input.shippingRefundPolicy ?? base.shippingRefundPolicy,
       storyImages: input.storyImages ?? base.storyImages,
       videoUrl: input.videoUrl ?? base.videoUrl,
       recipes: input.recipes ?? base.recipes,
@@ -115,6 +117,12 @@ export class ConfigService implements OnModuleInit {
           ? base.memberBonusProductId
           : Math.floor(Number(input.memberBonusProductId)) > 0
             ? Math.floor(Number(input.memberBonusProductId))
+            : null,
+      signupCouponTemplateId:
+        input.signupCouponTemplateId === undefined
+          ? base.signupCouponTemplateId
+          : Math.floor(Number(input.signupCouponTemplateId)) > 0
+            ? Math.floor(Number(input.signupCouponTemplateId))
             : null,
       mileageEarnRate:
         input.mileageEarnRate === undefined
@@ -200,6 +208,15 @@ export class ConfigService implements OnModuleInit {
       accountHolder: process.env.BANK_HOLDER ?? '',
       transferNote: process.env.TRANSFER_NOTE ?? '',
       detailDescription: process.env.DETAIL_DESCRIPTION ?? '',
+      shippingRefundPolicy:
+        process.env.SHIPPING_REFUND_POLICY ??
+        [
+          '배송: 평일 오전 결제 확인 건은 당일 출고, 이후 건은 익일 출고합니다.',
+          '배송비: 기본 3,500원이며 도서산간 지역은 추가 비용이 발생할 수 있습니다.',
+          '취소: 상품 준비 전에는 취소 가능하며, 준비중 이후에는 고객센터 문의가 필요합니다.',
+          '환불: 신선식품 특성상 단순 변심 환불은 어렵고, 오배송/하자 시 사진 첨부 후 처리합니다.',
+          '문의: 문의하기 페이지를 통해 주문번호/연락처와 함께 접수해주세요.',
+        ].join('\n'),
       storyImages: this.parseJsonEnv<StoreStoryImage[]>('STORY_IMAGES', []),
       videoUrl: process.env.PRODUCT_VIDEO_URL ?? '',
       recipes: this.parseJsonEnv<StoreRecipe[]>('RECIPES', []),
@@ -208,6 +225,7 @@ export class ConfigService implements OnModuleInit {
       chargeDeliveryFee: process.env.CHARGE_DELIVERY_FEE === 'true',
       memberBonusProductId:
         Number(process.env.MEMBER_BONUS_PRODUCT_ID ?? 0) || null,
+      signupCouponTemplateId: null,
       mileageEarnRate: Number(process.env.MILEAGE_EARN_RATE ?? 0) || 0,
       businessStatus: (process.env.BUSINESS_STATUS ?? 'open') as
         | 'open'
@@ -243,6 +261,7 @@ export class ConfigService implements OnModuleInit {
       accountHolder: setting.accountHolder,
       transferNote: setting.transferNote,
       detailDescription: setting.detailDescription,
+      shippingRefundPolicy: setting.shippingRefundPolicy ?? '',
       storyImages: setting.storyImages as StoreStoryImage[],
       videoUrl: setting.videoUrl,
       termsUrl: latestTerms?.documentUrl ?? '',
@@ -256,6 +275,7 @@ export class ConfigService implements OnModuleInit {
       chargeDeliveryFee: setting.chargeDeliveryFee ?? false,
       memberBonusProductId: setting.memberBonusProductId ?? null,
       memberBonusProductName: null,
+      signupCouponTemplateId: setting.signupCouponTemplateId ?? null,
       mileageEarnRate: setting.mileageEarnRate ?? 0,
       businessStatus: this.normalizeBusinessStatus(setting.businessStatus),
       businessStatusOpenText:

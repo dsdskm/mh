@@ -25,7 +25,7 @@ type EditForm = {
 };
 
 type ConfirmAction =
-  | { kind: "create"; form: CreateProductForm }
+  | { kind: "create"; form: CreateProductForm; selectedImageFile: File }
   | { kind: "update"; id: number; form: EditForm; selectedImageFile?: File | null }
   | { kind: "delete"; id: number; name: string };
 
@@ -112,8 +112,8 @@ export function ProductsTab({ state }: Props) {
     setShowCreateModal(true);
   }
 
-  function requestCreateConfirmation(form: CreateProductForm) {
-    setConfirmAction({ kind: "create", form });
+  function requestCreateConfirmation(form: CreateProductForm, selectedImageFile: File) {
+    setConfirmAction({ kind: "create", form, selectedImageFile });
     setConfirmError(null);
   }
 
@@ -161,7 +161,8 @@ export function ProductsTab({ state }: Props) {
     setConfirmError(null);
     try {
       if (confirmAction.kind === "create") {
-        await state.createProduct(confirmAction.form);
+        const { url } = await uploadAdminAssetApi(confirmAction.selectedImageFile, "products", "new");
+        await state.createProduct({ ...confirmAction.form, imageUrl: url });
         setShowCreateModal(false);
       } else if (confirmAction.kind === "update") {
         const form = confirmAction.form;

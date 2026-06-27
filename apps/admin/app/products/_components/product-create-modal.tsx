@@ -1,6 +1,5 @@
 import { ChangeEvent, FormEvent, useState } from "react";
 import { AdminPageState } from "../../_hooks/use-admin-page";
-import { uploadAdminAssetApi } from "../../_lib/api";
 
 export type CreateProductForm = {
   name: string;
@@ -18,7 +17,7 @@ type Props = {
   submitting: boolean;
   state: AdminPageState;
   onClose: () => void;
-  onRequestConfirm: (form: CreateProductForm) => void;
+  onRequestConfirm: (form: CreateProductForm, selectedImageFile: File) => void;
 };
 
 function parseNumber(value: string): number | null {
@@ -37,7 +36,6 @@ function parseNumber(value: string): number | null {
 
 export function ProductCreateModal({ open, submitting, state, onClose, onRequestConfirm }: Props) {
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   if (!open) {
@@ -66,21 +64,7 @@ export function ProductCreateModal({ open, submitting, state, onClose, onRequest
       return;
     }
 
-    setUploadingImage(true);
     setUploadError(null);
-
-    let imageUrl = "";
-    try {
-      const { url } = await uploadAdminAssetApi(selectedImageFile, "products", "new");
-      imageUrl = url;
-      setSelectedImageFile(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "이미지 업로드에 실패했습니다.";
-      setUploadError(message);
-      setUploadingImage(false);
-      return;
-    }
-    setUploadingImage(false);
 
     onRequestConfirm({
       name: state.newName,
@@ -88,10 +72,10 @@ export function ProductCreateModal({ open, submitting, state, onClose, onRequest
       price: Number(state.newPrice),
       stock: Number(state.newStock),
       totalQuantity: Number(state.newTotalQuantity),
-      imageUrl,
+      imageUrl: "",
       badge: state.newBadge,
       active: state.newProductPublic,
-    });
+    }, selectedImageFile);
   }
 
   return (
@@ -178,11 +162,11 @@ export function ProductCreateModal({ open, submitting, state, onClose, onRequest
               type="file"
               accept="image/*"
               onChange={(event) => void handleImageSelect(event)}
-              disabled={submitting || uploadingImage}
+              disabled={submitting}
               className="block w-full text-xs text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-lime-600 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white disabled:opacity-60"
             />
             <p className="text-[11px] text-stone-500">
-              {uploadingImage ? "이미지 업로드 중..." : selectedImageFile ? `선택됨: ${selectedImageFile.name}` : "이미지 파일을 선택해주세요."}
+              {selectedImageFile ? `선택됨: ${selectedImageFile.name}` : "이미지 파일을 선택해주세요."}
             </p>
             {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
           </label>
@@ -216,14 +200,14 @@ export function ProductCreateModal({ open, submitting, state, onClose, onRequest
             <button
               type="button"
               onClick={onClose}
-              disabled={submitting || uploadingImage}
+              disabled={submitting}
               className="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-700 disabled:opacity-60"
             >
               닫기
             </button>
             <button
               type="submit"
-              disabled={submitting || uploadingImage}
+              disabled={submitting}
               className="flex-1 rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
             >
               상품 등록
@@ -231,16 +215,6 @@ export function ProductCreateModal({ open, submitting, state, onClose, onRequest
           </div>
         </form>
       </div>
-
-      {uploadingImage && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-xs rounded-2xl bg-white p-5 text-center shadow-2xl">
-            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-lime-200 border-t-lime-600" />
-            <p className="mt-3 text-sm font-semibold text-stone-800">이미지 업로드 중입니다</p>
-            <p className="mt-1 text-xs text-stone-500">완료될 때까지 잠시만 기다려주세요.</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

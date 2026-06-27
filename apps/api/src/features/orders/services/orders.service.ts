@@ -30,6 +30,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import { FirestoreTriggerService } from '../../../shared/firestore-trigger.service';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { PopbillSmsClient } from '../../messages/services/popbill-sms.client';
+import { MessagesService } from '../../messages/services/messages.service';
 
 type PhoneCodeState = {
   code: string;
@@ -69,6 +70,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     private readonly firestoreTrigger: FirestoreTriggerService,
     private readonly notificationsService: NotificationsService,
     private readonly popbillSmsClient: PopbillSmsClient,
+    private readonly messagesService: MessagesService,
   ) {}
 
   onModuleInit(): void {
@@ -411,6 +413,9 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
           type: 'order',
           url: '/orders',
         });
+        if (!input.skipGuestVerification) {
+          void this.notifyAdminOrderCreatedSms();
+        }
         void this.firestoreTrigger.notify('orders');
         return result;
       } catch (error) {
@@ -527,6 +532,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   async updateOrderStatus(id: number, status: OrderStatus): Promise<Order> {
     const storeConfig = await this.configService.getStoreConfig();
     const mileageEarnRate = Math.max(0, Math.floor(storeConfig.mileageEarnRate || 0));
+    let shouldSendStatusSms = false;
 
     const updated = await this.dataSource.transaction(async (manager) => {
       const orderRepository = manager.getRepository(OrderEntity);
@@ -542,6 +548,9 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       }
 
       const currentStatus = this.normalizeOrderStatus(order.status);
+      shouldSendStatusSms =
+        status !== currentStatus &&
+        (status === ORDER_STATUS.PAID || status === ORDER_STATUS.SHIPPING);
 
       if (currentStatus === ORDER_STATUS.CANCEL_COMPLETED && status !== ORDER_STATUS.CANCEL_COMPLETED) {
         throw new BadRequestException('취소 완료된 주문은 상태를 변경할 수 없습니다.');
@@ -605,6 +614,10 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       type: 'order',
       url: '/orders',
     });
+
+    if (shouldSendStatusSms) {
+      void this.sendOrderStatusSms(updated);
+    }
 
     void this.firestoreTrigger.notify('orders');
     return this.toOrder(updated);
@@ -857,6 +870,90 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
     if (!response.ok) {
       throw new BadRequestException('문자 발송에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    }
+  }
+
+  private async sendOrderStatusSms(order: OrderEntity): Promise<void> {
+    const status = this.normalizeOrderStatus(order.status);
+    if (status !== ORDER_STATUS.PAID && status !== ORDER_STATUS.SHIPPING) {
+      return;
+    }
+
+    const storeConfig = await this.configService.getStoreConfig();
+    const shopName = storeConfig.shopName.trim() || '상점';
+    const popbillConfig = this.getPopbillConfig();
+    const message =
+      status === ORDER_STATUS.PAID
+        ? `[${shopName}] ${order.customerName}님 ${order.totalAmount}원 입금이 확인되었습니다. 감사합니다.`
+        : `[${shopName}] 배송이 시작되었습니다. 택배사로부터 자세한 배송 정보를 얻으실 수 있습니다. 감사합니다.`;
+
+    try {
+      if (popbillConfig) {
+        await this.popbillSmsClient.checkSenderNumber({
+          corpNum: popbillConfig.corpNum,
+          sender: popbillConfig.sender,
+          userID: popbillConfig.userID,
+        });
+
+        await this.popbillSmsClient.sendSms({
+          corpNum: popbillConfig.corpNum,
+          sender: popbillConfig.sender,
+          senderName: popbillConfig.senderName,
+          receiver: this.normalizePhone(order.phone),
+          content: message,
+          userID: popbillConfig.userID,
+        });
+        return;
+      }
+
+      const webhookUrl = process.env.SMS_WEBHOOK_URL?.trim();
+      if (!webhookUrl) {
+        return;
+      }
+
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: this.normalizePhone(order.phone),
+          message,
+        }),
+      });
+
+      if (!response.ok) {
+        console.warn('[orders] 상태변경 문자 발송 실패', {
+          orderId: order.id,
+          status,
+          httpStatus: response.status,
+        });
+      }
+    } catch (error) {
+      console.warn('[orders] 상태변경 문자 발송 실패', {
+        orderId: order.id,
+        status,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async notifyAdminOrderCreatedSms(): Promise<void> {
+    try {
+      const config = await this.configService.getStoreConfig();
+      const receiver = this.normalizePhone(config.sellerPhone ?? '');
+      if (!/^\d{8,20}$/.test(receiver)) {
+        return;
+      }
+
+      await this.messagesService.sendSms({
+        receiver,
+        content: '신규 주문이 접수되었습니다.',
+      });
+    } catch (error) {
+      console.warn('[orders] 관리자 주문 알림 문자 발송 실패', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

@@ -9,11 +9,35 @@ type PresignUploadResponse = {
   downloadToken: string;
 };
 
+function guessMimeType(file: File): string {
+  if (file.type) {
+    return file.type;
+  }
+
+  const fileName = file.name.toLowerCase();
+  if (fileName.endsWith(".pdf")) {
+    return "application/pdf";
+  }
+  if (fileName.endsWith(".html") || fileName.endsWith(".htm")) {
+    return "text/html";
+  }
+  if (fileName.endsWith(".md")) {
+    return "text/markdown";
+  }
+  if (fileName.endsWith(".txt")) {
+    return "text/plain";
+  }
+
+  return "application/octet-stream";
+}
+
 export async function uploadAdminAssetApi(
   file: File,
   target: AdminUploadTarget,
   productId?: string,
 ): Promise<{ url: string }> {
+  const contentType = guessMimeType(file);
+
   const presignResponse = await adminFetch(`${API_BASE}/api/backoffice/uploads/presign`, {
     method: "POST",
     headers: {
@@ -23,7 +47,7 @@ export async function uploadAdminAssetApi(
       target,
       productId,
       fileName: file.name,
-      contentType: file.type || "application/octet-stream",
+      contentType,
     }),
     timeoutMs: 30000,
   });
@@ -36,7 +60,7 @@ export async function uploadAdminAssetApi(
   const uploadRes = await fetch(session.uploadUrl, {
     method: "PUT",
     headers: {
-      "Content-Type": file.type || "application/octet-stream",
+      "Content-Type": contentType,
     },
     body: file,
   });
@@ -54,7 +78,7 @@ export async function uploadAdminAssetApi(
       target,
       objectPath: session.objectPath,
       downloadToken: session.downloadToken,
-      contentType: file.type || "application/octet-stream",
+      contentType,
     }),
     timeoutMs: 30000,
   });

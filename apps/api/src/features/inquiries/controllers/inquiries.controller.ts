@@ -88,6 +88,7 @@ export class InquiriesController {
       inquiryId,
       name,
       content,
+      notifyInquiryAuthorSms: false,
     });
   }
 
@@ -128,6 +129,7 @@ export class InquiriesController {
       inquiryId,
       name,
       content,
+      notifyInquiryAuthorSms: true,
     });
   }
 }

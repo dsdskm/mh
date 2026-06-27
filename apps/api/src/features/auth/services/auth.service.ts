@@ -5,6 +5,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AccountEntity } from '../../../database/entities/account.entity';
 import { AccountShippingAddressEntity } from '../../../database/entities/account-shipping-address.entity';
+import { CouponEntity } from '../../../database/entities/coupon.entity';
+import { CouponTemplateEntity } from '../../../database/entities/coupon-template.entity';
 import { PopbillSmsClient } from '../../messages/services/popbill-sms.client';
 import { ConfigService } from '../../config/services/config.service';
 import {
@@ -41,6 +43,10 @@ export class AuthService {
     private readonly accountRepository: Repository<AccountEntity>,
     @InjectRepository(AccountShippingAddressEntity)
     private readonly shippingAddressRepository: Repository<AccountShippingAddressEntity>,
+    @InjectRepository(CouponEntity)
+    private readonly couponRepository: Repository<CouponEntity>,
+    @InjectRepository(CouponTemplateEntity)
+    private readonly couponTemplateRepository: Repository<CouponTemplateEntity>,
     private readonly configService: ConfigService,
     private readonly popbillSmsClient: PopbillSmsClient,
   ) {}
@@ -159,7 +165,10 @@ export class AuthService {
     };
   }
 
-  async signup(input: CreateLocalAccountInput): Promise<{ account: LocalAccountProfile }> {
+  async signup(input: CreateLocalAccountInput): Promise<{
+    account: LocalAccountProfile;
+    signupCoupon: { issued: boolean; name: string | null };
+  }> {
     const userId = input.userId.trim().toLowerCase();
     const password = input.password;
     const name = input.name.trim();
@@ -243,6 +252,9 @@ export class AuthService {
 
     this.verifiedPhoneStore.delete(verificationToken);
 
+    // 가입 쿠폰 자동 발급
+    const signupCoupon = await this.issueSignupCouponIfConfigured(created.id);
+
     return {
       account: {
         id: created.id,
@@ -253,7 +265,45 @@ export class AuthService {
         address2: created.address2 ?? '',
         createdAt: created.createdAt.toISOString(),
       },
+      signupCoupon,
     };
+  }
+
+  private async issueSignupCouponIfConfigured(
+    accountId: number,
+  ): Promise<{ issued: boolean; name: string | null }> {
+    try {
+      const config = await this.configService.getStoreConfig();
+      const templateId = config.signupCouponTemplateId;
+      if (!templateId) {
+        return { issued: false, name: null };
+      }
+
+      const template = await this.couponTemplateRepository.findOne({
+        where: { id: templateId },
+      });
+      if (!template) {
+        return { issued: false, name: null };
+      }
+
+      await this.couponRepository.save(
+        this.couponRepository.create({
+          accountId,
+          name: template.name,
+          discountType: template.discountType,
+          discountValue: template.discountValue,
+          minOrderAmount: template.minOrderAmount,
+          maxDiscountAmount: template.maxDiscountAmount,
+          validUntil: template.validUntil,
+          status: 'available',
+        }),
+      );
+
+      return { issued: true, name: template.name ?? null };
+    } catch {
+      // 쿠폰 발급 실패 시 가입 자체는 정상 처리되도록 에러를 삼킨다
+      return { issued: false, name: null };
+    }
   }
 
   private normalizePhone(phone: string): string {

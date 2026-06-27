@@ -61,6 +61,8 @@ export default function SignupPage() {
   const [postcodeReady, setPostcodeReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [registered, setRegistered] = useState(false);
+  const [signupCouponNotice, setSignupCouponNotice] = useState<string | null>(null);
 
   const normalizedPhone = useMemo(() => phone.replace(/\D/g, ""), [phone]);
   const passwordChecks = useMemo(() => {
@@ -271,7 +273,16 @@ export default function SignupPage() {
         termsAgreed,
         verificationToken,
       });
-      setSuccess(`${result.account.name}님, 회원가입이 완료되었습니다. 자동으로 로그인됩니다.`);
+      setRegistered(true);
+      if (result.signupCoupon.issued) {
+        setSignupCouponNotice(
+          result.signupCoupon.name
+            ? `${result.signupCoupon.name}이 발급되었습니다.`
+            : "신규 가입 쿠폰이 발급되었습니다.",
+        );
+      } else {
+        setSignupCouponNotice(null);
+      }
 
       // Keep submitting state until auto-login and redirect complete.
       const loginResult = await signIn("credentials", {
@@ -283,8 +294,6 @@ export default function SignupPage() {
       if (loginResult?.error) {
         throw new Error(loginResult.error);
       }
-
-      router.push("/");
 
       setPassword("");
       setPasswordConfirm("");
@@ -537,10 +546,9 @@ export default function SignupPage() {
         {error && <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {success && <p className="mt-3 rounded-xl bg-lime-50 p-3 text-sm text-lime-800">{success}</p>}
       </section>
-      {success && (
+      {registered && (
         <div
           className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => setSuccess(null)}
         >
           <div
             className="w-full max-w-xs rounded-2xl bg-white p-6 text-center shadow-2xl"
@@ -550,13 +558,21 @@ export default function SignupPage() {
               ✓
             </div>
             <p className="mt-3 text-base font-bold text-stone-900">가입이 완료되었습니다</p>
-            <p className="mt-1 text-sm text-stone-600">자동으로 로그인됩니다.</p>
+            <p className="mt-1 text-sm text-stone-600">자동으로 로그인되었습니다.</p>
+            {signupCouponNotice && (
+              <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+                {signupCouponNotice}
+              </p>
+            )}
             <button
               type="button"
-              onClick={() => setSuccess(null)}
+              onClick={() => {
+                setRegistered(false);
+                router.push("/");
+              }}
               className="mt-4 w-full rounded-xl bg-lime-600 px-3 py-2 text-sm font-bold text-white"
             >
-              확인
+              홈으로 이동
             </button>
           </div>
         </div>

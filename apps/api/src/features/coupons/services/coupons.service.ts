@@ -138,6 +138,14 @@ export class CouponsService {
       .map((coupon) => this.toCoupon(coupon, null));
   }
 
+  async deleteTemplate(id: number): Promise<void> {
+    const template = await this.couponTemplateRepository.findOne({ where: { id } });
+    if (!template) {
+      throw new NotFoundException('쿠폰 템플릿을 찾을 수 없습니다.');
+    }
+    await this.couponTemplateRepository.remove(template);
+  }
+
   async revoke(id: number): Promise<void> {
     const coupon = await this.couponRepository.findOne({ where: { id } });
     if (!coupon) {

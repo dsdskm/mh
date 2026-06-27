@@ -77,6 +77,9 @@ export function RewardsTab({ state }: Props) {
   const [templateMaxDiscountAmount, setTemplateMaxDiscountAmount] = useState("");
   const [templateValidUntil, setTemplateValidUntil] = useState("");
   const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [templateCreateError, setTemplateCreateError] = useState<string | null>(null);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<number | null>(null);
+  const [deleteTemplateTarget, setDeleteTemplateTarget] = useState<CouponTemplate | null>(null);
 
   // ----- 쿠폰 발급 폼 -----
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | "">("");
@@ -84,6 +87,10 @@ export function RewardsTab({ state }: Props) {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [memberSearch, setMemberSearch] = useState("");
   const [issuing, setIssuing] = useState(false);
+  const [issueFeedback, setIssueFeedback] = useState<string | null>(null);
+  const [issueError, setIssueError] = useState<string | null>(null);
+  const [showIssueConfirmModal, setShowIssueConfirmModal] = useState(false);
+  const [revokeCouponTarget, setRevokeCouponTarget] = useState<{ id: number; name: string } | null>(null);
 
   const selectedTemplate = useMemo<CouponTemplate | null>(() => {
     if (selectedTemplateId === "") {
@@ -109,13 +116,15 @@ export function RewardsTab({ state }: Props) {
   }
 
   async function handleCreateTemplate() {
+    setTemplateCreateError(null);
+
     if (!templateName.trim()) {
-      window.alert("쿠폰 이름을 입력해주세요.");
+      setTemplateCreateError("쿠폰 이름을 입력해주세요.");
       return;
     }
     const value = Math.floor(Number(templateDiscountValue) || 0);
     if (value <= 0) {
-      window.alert("할인 값을 입력해주세요.");
+      setTemplateCreateError("할인 값을 입력해주세요.");
       return;
     }
 
@@ -138,6 +147,7 @@ export function RewardsTab({ state }: Props) {
         setTemplateDiscountValue("3000");
         setTemplateMaxDiscountAmount("");
         setTemplateValidUntil("");
+        setTemplateCreateError(null);
         setShowCreateModal(false);
       }
     } finally {
@@ -150,25 +160,69 @@ export function RewardsTab({ state }: Props) {
     void handleCreateTemplate();
   }
 
-  async function handleIssueByTemplate() {
-    if (selectedTemplateId === "") {
-      window.alert("발급할 쿠폰을 선택해주세요.");
-      return;
-    }
-    if (targetMode === "select" && selectedIds.length === 0) {
-      window.alert("지급 대상 회원을 선택해주세요.");
+  function handleDeleteTemplate(template: CouponTemplate) {
+    setDeleteTemplateTarget(template);
+  }
+
+  async function confirmDeleteTemplate() {
+    if (!deleteTemplateTarget) {
       return;
     }
 
+    setDeletingTemplateId(deleteTemplateTarget.id);
+    try {
+      await state.deleteCouponTemplate(deleteTemplateTarget.id);
+      if (selectedTemplateId === deleteTemplateTarget.id) {
+        setSelectedTemplateId("");
+      }
+      setDeleteTemplateTarget(null);
+    } finally {
+      setDeletingTemplateId(null);
+    }
+  }
+
+  async function confirmRevokeCoupon() {
+    if (!revokeCouponTarget) {
+      return;
+    }
+
+    try {
+      await state.revokeCoupon(revokeCouponTarget.id);
+      setRevokeCouponTarget(null);
+    } catch {
+      // state.revokeCoupon 내부에서 에러 처리/표시
+    }
+  }
+
+  function openIssueConfirmModal() {
+    setIssueFeedback(null);
+    setIssueError(null);
+
+    if (selectedTemplateId === "") {
+      setIssueError("발급할 쿠폰을 선택해주세요.");
+      return;
+    }
+    if (targetMode === "select" && selectedIds.length === 0) {
+      setIssueError("지급 대상 회원을 선택해주세요.");
+      return;
+    }
+
+    setShowIssueConfirmModal(true);
+  }
+
+  async function handleIssueByTemplate() {
+    setShowIssueConfirmModal(false);
+
     setIssuing(true);
     try {
-      const ok = await state.issueCouponByTemplate({
+      const issued = await state.issueCouponByTemplate({
         couponTemplateId: selectedTemplateId,
         accountIds: targetMode === "all" ? "all" : selectedIds,
       });
-      if (ok) {
-        setSelectedIds([]);
-      }
+      setSelectedIds([]);
+      setIssueFeedback(`쿠폰 ${issued}건이 발급되었습니다.`);
+    } catch (error) {
+      setIssueError(error instanceof Error ? error.message : "쿠폰 발급에 실패했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setIssuing(false);
     }
@@ -225,7 +279,10 @@ export function RewardsTab({ state }: Props) {
           </div>
           <button
             type="button"
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => {
+              setTemplateCreateError(null);
+              setShowCreateModal(true);
+            }}
             className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white"
           >
             쿠폰 등록
@@ -245,6 +302,7 @@ export function RewardsTab({ state }: Props) {
                 <th className="py-2">할인</th>
                 <th className="py-2">유효기한</th>
                 <th className="py-2">생성일</th>
+                <th className="py-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -258,11 +316,21 @@ export function RewardsTab({ state }: Props) {
                       : "무기한"}
                   </td>
                   <td className="py-2">{new Date(template.createdAt).toLocaleString("ko-KR")}</td>
+                  <td className="py-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTemplate(template)}
+                      disabled={deletingTemplateId === template.id}
+                      className="rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 disabled:opacity-60"
+                    >
+                      {deletingTemplateId === template.id ? "삭제 중..." : "삭제"}
+                    </button>
+                  </td>
                 </tr>
               ))}
               {paginatedCouponTemplates.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-4 text-center text-xs text-stone-400">
+                  <td colSpan={5} className="py-4 text-center text-xs text-stone-400">
                     생성된 쿠폰이 없습니다.
                   </td>
                 </tr>
@@ -384,14 +452,66 @@ export function RewardsTab({ state }: Props) {
 
           <button
             type="button"
-            onClick={handleIssueByTemplate}
-            disabled={issuing}
+            onClick={openIssueConfirmModal}
+            disabled={
+              issuing ||
+              selectedTemplateId === "" ||
+              (targetMode === "select" && selectedIds.length === 0)
+            }
             className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
           >
             {issuing ? "발급 중..." : "쿠폰 발급"}
           </button>
+          {issueFeedback && (
+            <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+              {issueFeedback}
+            </p>
+          )}
+          {issueError && (
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">
+              {issueError}
+            </p>
+          )}
         </div>
       </section>
+
+      {showIssueConfirmModal && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-stone-900">쿠폰 발급 확인</h3>
+            <div className="mt-3 space-y-1 rounded-xl bg-stone-50 p-3 text-sm text-stone-700">
+              <p>
+                쿠폰: <span className="font-semibold text-stone-900">{selectedTemplate?.name ?? "-"}</span>
+              </p>
+              <p>
+                대상: <span className="font-semibold text-stone-900">{targetMode === "all" ? `전체 회원 ${memberAccounts.length}명` : `${selectedIds.length}명`}</span>
+              </p>
+            </div>
+            <p className="mt-3 text-sm text-stone-600">정말 발급하시겠어요?</p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowIssueConfirmModal(false)}
+                disabled={issuing}
+                className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700 disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleIssueByTemplate()}
+                disabled={issuing}
+                className="flex-1 rounded-xl bg-lime-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {issuing ? "발급 중..." : "확인"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 발급된 쿠폰 목록 */}
       <section className="rounded-2xl border border-stone-200 bg-white p-4">
@@ -435,11 +555,7 @@ export function RewardsTab({ state }: Props) {
                       {coupon.status === "available" && (
                         <button
                           type="button"
-                          onClick={() => {
-                            if (window.confirm("이 쿠폰을 회수할까요?")) {
-                              void state.revokeCoupon(coupon.id);
-                            }
-                          }}
+                          onClick={() => setRevokeCouponTarget({ id: coupon.id, name: coupon.name })}
                           className="rounded-lg border border-stone-300 px-2 py-1 text-xs text-stone-600 hover:bg-stone-50"
                         >
                           회수
@@ -650,6 +766,10 @@ export function RewardsTab({ state }: Props) {
                 </label>
               )}
 
+              {templateCreateError && (
+                <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{templateCreateError}</p>
+              )}
+
               <div className="flex gap-2 pt-1">
                 <button
                   type="button"
@@ -668,6 +788,68 @@ export function RewardsTab({ state }: Props) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {deleteTemplateTarget && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4">
+          <div
+            className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-stone-900">쿠폰 삭제 확인</h3>
+            <p className="mt-2 text-sm text-stone-700">
+              쿠폰 "{deleteTemplateTarget.name}"을(를) 삭제할까요?
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTemplateTarget(null)}
+                disabled={deletingTemplateId === deleteTemplateTarget.id}
+                className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700 disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDeleteTemplate()}
+                disabled={deletingTemplateId === deleteTemplateTarget.id}
+                className="flex-1 rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {deletingTemplateId === deleteTemplateTarget.id ? "삭제 중..." : "삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {revokeCouponTarget && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4">
+          <div
+            className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-stone-900">쿠폰 회수 확인</h3>
+            <p className="mt-2 text-sm text-stone-700">
+              "{revokeCouponTarget.name}" 쿠폰을 회수할까요?
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setRevokeCouponTarget(null)}
+                className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmRevokeCoupon()}
+                className="flex-1 rounded-xl bg-stone-700 px-3 py-2 text-sm font-bold text-white"
+              >
+                회수
+              </button>
+            </div>
           </div>
         </div>
       )}

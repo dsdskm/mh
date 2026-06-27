@@ -193,6 +193,18 @@ export function AdminShell({ activeTab, state, children }: Props) {
     void markAdminNotificationAsReadApi(notificationId);
     window.location.href = notification.url;
   }, [state.notifications]);
+
+  const hideAlert = useCallback((alertId: string) => {
+    setReadAlertIds((prev) => new Set([...prev, alertId]));
+
+    const notificationId = parseInt(alertId, 10);
+    if (Number.isNaN(notificationId)) {
+      return;
+    }
+
+    void markAdminNotificationAsReadApi(notificationId);
+  }, []);
+
   const commonAlerts = useMemo<AlertItem[]>(() => {
     const notificationAlerts: AlertItem[] = state.notifications
       .filter((notification) => !notification.isRead)
@@ -395,20 +407,31 @@ export function AdminShell({ activeTab, state, children }: Props) {
             ) : (
               <div className="space-y-2">
                 {commonAlerts.map((alert) => (
-                  <button
+                  <div
                     key={alert.id}
-                    type="button"
-                    onClick={() => onAlertClick(alert.id, alert.kind)}
                     className={`w-full rounded-lg border p-2.5 text-left transition ${getAlertCardStyle(alert)}`}
                   >
-                    <div className="flex items-center gap-1.5">
-                      <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${getAlertBadgeStyle(alert)}`}>
-                        {getKindLabel(alert.kind)}
-                      </span>
-                      <p className="text-xs font-semibold text-stone-700">{alert.text}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onAlertClick(alert.id, alert.kind)}
+                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                      >
+                        <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${getAlertBadgeStyle(alert)}`}>
+                          {getKindLabel(alert.kind)}
+                        </span>
+                        <p className="truncate text-xs font-semibold text-stone-700">{alert.text}</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => hideAlert(alert.id)}
+                        className="rounded-md border border-stone-300 px-2 py-0.5 text-[10px] font-semibold text-stone-600 hover:bg-white"
+                      >
+                        숨김
+                      </button>
                     </div>
                     <p className="mt-1 line-clamp-2 text-xs text-stone-600">{alert.preview}</p>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}

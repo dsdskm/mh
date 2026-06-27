@@ -104,6 +104,17 @@ export class CouponsController {
     });
   }
 
+  // 관리자: 쿠폰 템플릿 삭제
+  @Delete('backoffice/coupon-templates/:id')
+  async deleteCouponTemplate(@Param('id') id: string) {
+    const parsed = Number(id);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new BadRequestException('쿠폰 템플릿 id가 올바르지 않습니다.');
+    }
+    await this.couponsService.deleteTemplate(parsed);
+    return { ok: true };
+  }
+
   // 관리자: 쿠폰 회수
   @Delete('backoffice/coupons/:id')
   async revokeCoupon(@Param('id') id: string) {

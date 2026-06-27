@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Black_Han_Sans, Noto_Sans_KR } from "next/font/google";
+import sharedIcon from "@repo/ui/assets/icon.png";
 import "./globals.css";
 
 const display = Black_Han_Sans({
@@ -18,9 +19,9 @@ export const metadata: Metadata = {
   title: "Corn",
   description: "옥수수 쇼핑몰 주문/상품 관리 콘솔",
   icons: {
-    icon: "/icon.png",
-    shortcut: "/icon.png",
-    apple: "/icon.png",
+    icon: sharedIcon.src,
+    shortcut: sharedIcon.src,
+    apple: sharedIcon.src,
   },
 };
 

@@ -76,6 +76,7 @@ export function NoticesTab() {
   const [error, setError] = useState<string | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
   const [createForm, setCreateForm] = useState<NoticeForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingForm, setEditingForm] = useState<NoticeForm>(EMPTY_FORM);
@@ -180,9 +181,6 @@ export function NoticesTab() {
   }
 
   async function deleteNotice(id: number) {
-    if (!window.confirm("공지사항을 삭제할까요?")) {
-      return;
-    }
 
     setSaving(true);
     setError(null);
@@ -200,6 +198,15 @@ export function NoticesTab() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function confirmDeleteNotice() {
+    if (!deleteTargetId) {
+      return;
+    }
+
+    await deleteNotice(deleteTargetId);
+    setDeleteTargetId(null);
   }
 
   return (
@@ -262,7 +269,7 @@ export function NoticesTab() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void deleteNotice(item.id)}
+                  onClick={() => setDeleteTargetId(item.id)}
                   disabled={saving}
                   className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
                 >
@@ -304,6 +311,36 @@ export function NoticesTab() {
           onClose={cancelEdit}
           onSubmit={() => void saveEdit()}
         />
+      )}
+
+      {deleteTargetId !== null && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4">
+          <div
+            className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-stone-900">공지 삭제 확인</h3>
+            <p className="mt-2 text-sm text-stone-700">공지사항을 삭제할까요?</p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTargetId(null)}
+                disabled={saving}
+                className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700 disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDeleteNotice()}
+                disabled={saving}
+                className="flex-1 rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {saving ? "삭제 중..." : "삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

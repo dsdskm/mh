@@ -48,6 +48,9 @@ export class AppSettingEntity {
   @Column({ type: 'text' })
   detailDescription!: string;
 
+  @Column({ type: 'text', default: '' })
+  shippingRefundPolicy!: string;
+
   @Column({ type: 'jsonb' })
   storyImages!: StoreStoryImage[];
 
@@ -69,6 +72,10 @@ export class AppSettingEntity {
   // 회원 주문 시 무료로 함께 발송할 사은품 상품 ID (없으면 null)
   @Column({ type: 'int', nullable: true })
   memberBonusProductId!: number | null;
+
+  // 가입 시 자동 발급할 쿠폰 템플릿 ID (없으면 null)
+  @Column({ type: 'int', nullable: true })
+  signupCouponTemplateId!: number | null;
 
   // 마일리지 적립률(%). 0이면 자동 적립 안 함. 주문 배송완료 시 결제액 × 비율로 적립
   @Column({ type: 'int', default: 0 })

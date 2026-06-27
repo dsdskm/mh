@@ -409,9 +409,7 @@ export default function OrdersPage() {
         )}
 
         {isLoggedIn ? (
-          <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
-            로그인 계정 기준으로 주문내역을 자동 조회합니다.
-          </p>
+          <></>
         ) : (
           <>
             <form className="mt-4 space-y-3" onSubmit={requestGuestLookupCode}>

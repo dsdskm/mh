@@ -52,6 +52,14 @@ export type SignupResponse = {
     address1: string;
     address2: string;
     createdAt: string;
+  signupCoupon: {
+    issued: boolean;
+    name: string | null;
+  };
+  };
+  signupCoupon: {
+    issued: boolean;
+    name: string | null;
   };
 };
 

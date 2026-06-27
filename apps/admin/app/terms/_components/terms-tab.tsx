@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
 import { AdminPageState } from "../../_hooks/use-admin-page";
 import { uploadAdminAssetApi } from "../../_lib/api";
 
@@ -9,19 +9,16 @@ type Props = {
 };
 
 export function TermsTab({ state }: Props) {
-  const [termsUrlInput, setTermsUrlInput] = useState(state.termsUrl);
-  const [privacyUrlInput, setPrivacyUrlInput] = useState(state.privacyUrl);
   const [selectedTermsFile, setSelectedTermsFile] = useState<File | null>(null);
   const [selectedPrivacyFile, setSelectedPrivacyFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<{
+    documentType: "terms" | "privacy";
+    documentUrl: string;
+  } | null>(null);
   const termsFileInputRef = useRef<HTMLInputElement | null>(null);
   const privacyFileInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    setTermsUrlInput(state.termsUrl);
-    setPrivacyUrlInput(state.privacyUrl);
-  }, [state.termsUrl, state.privacyUrl]);
 
   const history = useMemo(
     () => [...(state.config?.termsHistory ?? [])].sort((a, b) => new Date(b.termsUpdatedAt).getTime() - new Date(a.termsUpdatedAt).getTime()),
@@ -46,19 +43,17 @@ export function TermsTab({ state }: Props) {
     setUploading(true);
 
     try {
-      let nextTermsUrl = termsUrlInput.trim();
-      let nextPrivacyUrl = privacyUrlInput.trim();
+      let nextTermsUrl = state.termsUrl.trim();
+      let nextPrivacyUrl = state.privacyUrl.trim();
 
       if (selectedTermsFile) {
         const { url } = await uploadAdminAssetApi(selectedTermsFile, "terms");
         nextTermsUrl = url;
-        setTermsUrlInput(url);
       }
 
       if (selectedPrivacyFile) {
         const { url } = await uploadAdminAssetApi(selectedPrivacyFile, "terms");
         nextPrivacyUrl = url;
-        setPrivacyUrlInput(url);
       }
 
       state.setTermsUrl(nextTermsUrl);
@@ -87,24 +82,29 @@ export function TermsTab({ state }: Props) {
     }
   }
 
-  async function restoreHistory(item: {
+  function restoreHistory(item: {
     documentType: "terms" | "privacy";
     documentUrl: string;
   }) {
-    const label = item.documentType === "terms" ? "이용약관" : "개인정보처리방침";
-    if (!window.confirm(`선택한 ${label} 버전으로 복원할까요?`)) {
+    setRestoreTarget(item);
+  }
+
+  async function confirmRestoreHistory() {
+    if (!restoreTarget) {
       return;
     }
 
+    const item = restoreTarget;
+    const label = item.documentType === "terms" ? "이용약관" : "개인정보처리방침";
+
     setSaveError(null);
     setUploading(true);
+    setRestoreTarget(null);
 
     try {
       if (item.documentType === "terms") {
-        setTermsUrlInput(item.documentUrl);
         state.setTermsUrl(item.documentUrl);
       } else {
-        setPrivacyUrlInput(item.documentUrl);
         state.setPrivacyUrl(item.documentUrl);
       }
 
@@ -133,22 +133,12 @@ export function TermsTab({ state }: Props) {
     <section className="space-y-4">
       <div>
         <h2 className="font-display text-3xl text-lime-800">약관관리</h2>
-        <p className="mt-1 text-xs text-stone-500">이용약관/개인정보처리방침 URL 및 파일 업로드를 관리합니다. 약관은 버전 히스토리 복원이 가능합니다.</p>
+        <p className="mt-1 text-xs text-stone-500">이용약관/개인정보처리방침 파일 업로드를 관리합니다. 약관은 버전 히스토리 복원이 가능합니다.</p>
       </div>
 
       <form onSubmit={(event) => void handleSubmit(event)} className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4">
         <section className="space-y-3 rounded-xl border border-stone-200 p-3">
           <h3 className="text-sm font-bold text-stone-800">이용약관</h3>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold text-stone-600">약관 파일 URL</span>
-            <input
-              value={termsUrlInput}
-              onChange={(event) => setTermsUrlInput(event.target.value)}
-              placeholder="약관 파일 URL"
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            />
-          </label>
-
           <label className="block space-y-1">
             <span className="text-xs font-semibold text-stone-600">약관 파일 업로드</span>
             <input
@@ -164,23 +154,13 @@ export function TermsTab({ state }: Props) {
                 ? "업로드/저장 중..."
                 : selectedTermsFile
                   ? `선택됨: ${selectedTermsFile.name} (저장 시 업로드)`
-                  : "파일을 선택하지 않으면 URL 값으로 저장됩니다."}
+                  : "파일 선택 후 문서 저장 시 업로드됩니다."}
             </p>
           </label>
         </section>
 
         <section className="space-y-3 rounded-xl border border-stone-200 p-3">
           <h3 className="text-sm font-bold text-stone-800">개인정보처리방침</h3>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold text-stone-600">개인정보처리방침 파일 URL</span>
-            <input
-              value={privacyUrlInput}
-              onChange={(event) => setPrivacyUrlInput(event.target.value)}
-              placeholder="개인정보처리방침 파일 URL"
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            />
-          </label>
-
           <label className="block space-y-1">
             <span className="text-xs font-semibold text-stone-600">개인정보처리방침 파일 업로드</span>
             <input
@@ -196,7 +176,7 @@ export function TermsTab({ state }: Props) {
                 ? "업로드/저장 중..."
                 : selectedPrivacyFile
                   ? `선택됨: ${selectedPrivacyFile.name} (저장 시 업로드)`
-                  : "파일을 선택하지 않으면 URL 값으로 저장됩니다."}
+                  : "파일 선택 후 문서 저장 시 업로드됩니다."}
             </p>
           </label>
         </section>
@@ -218,9 +198,9 @@ export function TermsTab({ state }: Props) {
           >
             {uploading ? "저장 중..." : "문서 저장"}
           </button>
-          {termsUrlInput && (
+          {state.termsUrl && (
             <a
-              href={termsUrlInput}
+              href={state.termsUrl}
               target="_blank"
               rel="noreferrer"
               className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700"
@@ -228,9 +208,9 @@ export function TermsTab({ state }: Props) {
               약관 파일 열기
             </a>
           )}
-          {privacyUrlInput && (
+          {state.privacyUrl && (
             <a
-              href={privacyUrlInput}
+              href={state.privacyUrl}
               target="_blank"
               rel="noreferrer"
               className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700"
@@ -291,6 +271,38 @@ export function TermsTab({ state }: Props) {
           </div>
         )}
       </section>
+
+      {restoreTarget && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4">
+          <div
+            className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-stone-900">히스토리 복원 확인</h3>
+            <p className="mt-2 text-sm text-stone-700">
+              선택한 {restoreTarget.documentType === "terms" ? "이용약관" : "개인정보처리방침"} 버전으로 복원할까요?
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setRestoreTarget(null)}
+                disabled={uploading}
+                className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700 disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmRestoreHistory()}
+                disabled={uploading}
+                className="flex-1 rounded-xl bg-amber-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {uploading ? "복원 중..." : "복원"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

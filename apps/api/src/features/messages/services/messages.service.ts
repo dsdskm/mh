@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { PopbillSmsClient } from './popbill-sms.client';
 import { Repository } from 'typeorm';
 import { AdminSmsHistoryEntity } from '../../../database/entities/admin-sms-history.entity';
+import { ConfigService } from '../../config/services/config.service';
 
 type SendSmsInput = {
   receiver: string;
@@ -31,6 +32,7 @@ type GetAdminSmsHistoryInput = {
 export class MessagesService {
   constructor(
     private readonly popbillSmsClient: PopbillSmsClient,
+    private readonly configService: ConfigService,
     @InjectRepository(AdminSmsHistoryEntity)
     private readonly adminSmsHistoryRepository: Repository<AdminSmsHistoryEntity>,
   ) {}
@@ -95,6 +97,7 @@ export class MessagesService {
 
   async sendSms(input: SendSmsInput): Promise<{ receiptNum: string }> {
     const fixedConfig = this.getFixedSmsConfig();
+    const prefixedContent = await this.applyShopNamePrefix(input.content);
 
     try {
       await this.popbillSmsClient.checkSenderNumber({
@@ -109,6 +112,7 @@ export class MessagesService {
       const receiptNum = await this.popbillSmsClient.sendSms({
         ...fixedConfig,
         ...input,
+        content: prefixedContent,
       });
 
       await this.adminSmsHistoryRepository.save(
@@ -119,7 +123,7 @@ export class MessagesService {
           userID: fixedConfig.userID ?? null,
           receiver: input.receiver,
           receiverName: input.receiverName ?? null,
-          content: input.content,
+          content: prefixedContent,
           reserveDT: input.reserveDT ?? null,
           adsYN: Boolean(input.adsYN),
           receiptNum,
@@ -143,7 +147,7 @@ export class MessagesService {
           userID: fixedConfig.userID ?? null,
           receiver: input.receiver,
           receiverName: input.receiverName ?? null,
-          content: input.content,
+          content: prefixedContent,
           reserveDT: input.reserveDT ?? null,
           adsYN: Boolean(input.adsYN),
           receiptNum: null,
@@ -222,5 +226,25 @@ export class MessagesService {
       senderName: senderName || undefined,
       userID: userID || undefined,
     };
+  }
+
+  private async applyShopNamePrefix(content: string): Promise<string> {
+    const storeConfig = await this.configService.getStoreConfig();
+    const shopName = storeConfig.shopName.trim() || '상점';
+    const prefix = `[${shopName}]`;
+    const trimmed = content.trim();
+    const prefixed = trimmed.startsWith(prefix) ? trimmed : `${prefix} ${trimmed}`;
+
+    if (this.smsByteLength(prefixed) > 90) {
+      throw new BadRequestException('상점명 접두어 포함 content는 SMS 기준 90byte를 초과할 수 없습니다.');
+    }
+
+    return prefixed;
+  }
+
+  private smsByteLength(content: string): number {
+    return Array.from(content).reduce((sum, ch) => {
+      return sum + (/[^\u0000-\u007f]/.test(ch) ? 2 : 1);
+    }, 0);
   }
 }

@@ -121,6 +121,7 @@ export type CreateInquiryCommentInput = {
   inquiryId: string;
   name: string;
   content: string;
+  notifyInquiryAuthorSms?: boolean;
 };
 
 export type ReviewComment = {
@@ -206,6 +207,7 @@ export type StoreConfig = {
   accountHolder: string;
   transferNote: string;
   detailDescription: string;
+  shippingRefundPolicy: string;
   storyImages: StoreStoryImage[];
   videoUrl: string;
   termsUrl: string;
@@ -223,6 +225,8 @@ export type StoreConfig = {
   memberBonusProductId: number | null;
   // 사은품 상품명 (응답 전용 파생 값, 저장하지 않음). 사은품이 없으면 null
   memberBonusProductName: string | null;
+  // 가입 시 자동 발급할 쿠폰 템플릿 ID (없으면 null)
+  signupCouponTemplateId: number | null;
   // 마일리지 적립률(%). 0이면 자동 적립 안 함
   mileageEarnRate: number;
   // 영업 상태 및 상태별 안내 문구

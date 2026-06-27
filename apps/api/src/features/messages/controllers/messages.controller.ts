@@ -9,6 +9,8 @@ type SendSmsBody = {
   adsYN?: boolean;
 };
 
+const DIRECT_SMS_MAX_CHARS = 45;
+
 @Controller('api/backoffice/messages')
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
@@ -50,8 +52,8 @@ export class MessagesController {
     if (!content) {
       throw new BadRequestException('content를 입력해주세요.');
     }
-    if (this.smsByteLength(content) > 90) {
-      throw new BadRequestException('content는 SMS 기준 90byte를 초과할 수 없습니다.');
+    if (this.smsCharLength(content) > DIRECT_SMS_MAX_CHARS) {
+      throw new BadRequestException(`content는 ${DIRECT_SMS_MAX_CHARS}자를 초과할 수 없습니다.`);
     }
     if (receiverName.length > 70) {
       throw new BadRequestException('receiverName은 70자를 초과할 수 없습니다.');
@@ -87,9 +89,7 @@ export class MessagesController {
     return /^\d{8,20}$/.test(value);
   }
 
-  private smsByteLength(content: string): number {
-    return Array.from(content).reduce((sum, ch) => {
-      return sum + (/[^\u0000-\u007f]/.test(ch) ? 2 : 1);
-    }, 0);
+  private smsCharLength(content: string): number {
+    return Array.from(content).length;
   }
 }

@@ -1018,16 +1018,6 @@ export default function Home() {
             {isLoggedIn && (
               <>
                 <p className="text-xs font-semibold text-amber-900">{session?.user?.name ?? "회원"}님</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMenuDrawer(false);
-                    setShowLogoutConfirmModal(true);
-                  }}
-                  className="rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800"
-                >
-                  로그아웃
-                </button>
               </>
             )}
             <button
@@ -1284,6 +1274,9 @@ export default function Home() {
               <article key={review.id} className="rounded-2xl border border-stone-200 p-4">
                 <p className="text-sm font-bold text-stone-900">{review.name}</p>
                 <p className="mt-1 text-sm text-stone-700">{review.content}</p>
+                <p className="mt-1 text-xs text-stone-500">
+                  작성일 {new Date(review.createdAt).toLocaleString("ko-KR")}
+                </p>
                 {review.comments.length > 0 && (
                   <div className="mt-3 rounded-xl bg-stone-50 p-3 text-sm text-stone-700">
                     <p className="flex items-center gap-1.5 text-xs font-bold text-stone-600">
@@ -1711,6 +1704,11 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => {
+                            if (isLoggedIn) {
+                              setShowPurchaseModal(false);
+                              setShowOrderConfirmModal(false);
+                              return;
+                            }
                             setPurchaseType(null);
                             setShowOrderConfirmModal(false);
                           }}
@@ -1987,8 +1985,11 @@ export default function Home() {
       )}
 
       {showMenuDrawer && (
-        <div className="fixed inset-0 z-50 bg-black/40">
-          <aside className="absolute right-0 top-0 h-full w-80 max-w-[86vw] border-l border-amber-200 bg-white p-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setShowMenuDrawer(false)}>
+          <aside
+            className="absolute right-0 top-0 h-full w-80 max-w-[86vw] border-l border-amber-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center justify-between">
               <h2 className="font-display text-3xl text-amber-800">메뉴</h2>
               <button
@@ -2001,7 +2002,9 @@ export default function Home() {
             </div>
 
             {isLoggedIn ? (
-              <p className="mt-3 text-sm font-semibold text-amber-900">{session?.user?.name ?? "회원"}님</p>
+              <div className="mt-3">
+                <p className="text-sm font-semibold text-amber-900">{session?.user?.name ?? "회원"}님</p>
+              </div>
             ) : (
               <button
                 type="button"
@@ -2024,6 +2027,22 @@ export default function Home() {
               >
                 주문내역
               </Link>
+              {isLoggedIn && (
+                <Link
+                  href="/account/coupon-mileage"
+                  onClick={() => setShowMenuDrawer(false)}
+                  className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+                >
+                  쿠폰/마일리지
+                </Link>
+              )}
+              <Link
+                href="/policy"
+                onClick={() => setShowMenuDrawer(false)}
+                className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+              >
+                배송/환불
+              </Link>
               <Link
                 href="/notices"
                 onClick={() => setShowMenuDrawer(false)}
@@ -2045,6 +2064,15 @@ export default function Home() {
               >
                 문의하기
               </button>
+              {isLoggedIn && (
+                <Link
+                  href="/account/shipping"
+                  onClick={() => setShowMenuDrawer(false)}
+                  className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+                >
+                  배송지 관리
+                </Link>
+              )}
               {storeConfig.termsUrl && (
                 <Link
                   href="/terms"
@@ -2054,30 +2082,9 @@ export default function Home() {
                   이용약관
                 </Link>
               )}
-              <Link
-                href="/policy"
-                onClick={() => setShowMenuDrawer(false)}
-                className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
-              >
-                배송/환불
-              </Link>
 
               {isLoggedIn && (
                 <>
-                  <Link
-                    href="/account#coupon-mileage"
-                    onClick={() => setShowMenuDrawer(false)}
-                    className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
-                  >
-                    쿠폰/마일리지
-                  </Link>
-                  <Link
-                    href="/account/shipping"
-                    onClick={() => setShowMenuDrawer(false)}
-                    className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
-                  >
-                    배송지 관리
-                  </Link>
                   <Link
                     href="/account"
                     onClick={() => setShowMenuDrawer(false)}
@@ -2085,6 +2092,16 @@ export default function Home() {
                   >
                     정보수정/탈퇴
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMenuDrawer(false);
+                      setShowLogoutConfirmModal(true);
+                    }}
+                    className="w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold text-amber-800"
+                  >
+                    로그아웃
+                  </button>
                 </>
               )}
             </div>

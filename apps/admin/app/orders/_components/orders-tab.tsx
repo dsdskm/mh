@@ -9,6 +9,11 @@ import { usePersistedPagination } from "../../_hooks/use-persisted-pagination";
 type DatePreset = "today" | "week" | "month1" | "month3" | "month6" | "year1" | "all" | "custom";
 
 const VIEW_MODE_STORAGE_KEY = "admin:orders:viewMode";
+const DIRECT_SMS_MAX_CHARS = 45;
+
+function smsCharLength(content: string): number {
+  return Array.from(content).length;
+}
 
 function formatDateInput(date: Date): string {
   const year = date.getFullYear();
@@ -357,6 +362,11 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
     const content = smsMessage.trim();
     if (!content) {
       setSmsError("메시지를 입력해주세요.");
+      return;
+    }
+
+    if (smsCharLength(content) > DIRECT_SMS_MAX_CHARS) {
+      setSmsError(`메시지는 ${DIRECT_SMS_MAX_CHARS}자 이하로 입력해주세요.`);
       return;
     }
 
@@ -1320,9 +1330,13 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
                 <textarea
                   value={smsMessage}
                   onChange={(e) => setSmsMessage(e.target.value)}
+                  maxLength={DIRECT_SMS_MAX_CHARS}
                   placeholder="전송할 메시지를 입력하세요."
                   className="h-32 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
                 />
+                <p className="mt-1 text-right text-xs text-stone-500">
+                  {smsCharLength(smsMessage)} / {DIRECT_SMS_MAX_CHARS}자
+                </p>
               </div>
               {smsError && (
                 <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{smsError}</p>

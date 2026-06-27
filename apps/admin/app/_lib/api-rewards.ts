@@ -59,6 +59,13 @@ export async function issueCouponByTemplateApi(
   return parseJsonOrThrow<{ issued: number }>(response, "쿠폰 발급에 실패했습니다.");
 }
 
+export async function deleteCouponTemplateApi(id: number): Promise<void> {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/coupon-templates/${id}`, {
+    method: "DELETE",
+  });
+  await parseJsonOrThrow<{ ok: boolean }>(response, "쿠폰 삭제에 실패했습니다.");
+}
+
 export async function revokeCouponApi(id: number): Promise<void> {
   const response = await adminFetch(`${API_BASE}/api/backoffice/coupons/${id}`, {
     method: "DELETE",

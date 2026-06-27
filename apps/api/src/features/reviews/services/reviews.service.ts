@@ -10,6 +10,8 @@ import {
 } from '../../../shared/store.types';
 import { FirestoreTriggerService } from '../../../shared/firestore-trigger.service';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { MessagesService } from '../../messages/services/messages.service';
+import { ConfigService } from '../../config/services/config.service';
 
 @Injectable()
 export class ReviewsService {
@@ -20,6 +22,8 @@ export class ReviewsService {
     private readonly reviewCommentRepository: Repository<ReviewCommentEntity>,
     private readonly firestoreTrigger: FirestoreTriggerService,
     private readonly notificationsService: NotificationsService,
+    private readonly messagesService: MessagesService,
+    private readonly configService: ConfigService,
   ) {}
 
   async getReviews(): Promise<Review[]> {
@@ -47,6 +51,7 @@ export class ReviewsService {
       url: '/reviews',
     });
 
+    void this.notifyAdminReviewCreatedSms();
     void this.firestoreTrigger.notify('reviews');
     return this.toReview(review);
   }
@@ -116,5 +121,24 @@ export class ReviewsService {
         createdAt: comment.createdAt.toISOString(),
       })),
     };
+  }
+
+  private async notifyAdminReviewCreatedSms(): Promise<void> {
+    try {
+      const config = await this.configService.getStoreConfig();
+      const receiver = (config.sellerPhone ?? '').replace(/\D/g, '');
+      if (!/^\d{8,20}$/.test(receiver)) {
+        return;
+      }
+
+      await this.messagesService.sendSms({
+        receiver,
+        content: '새 후기가 등록되었습니다.',
+      });
+    } catch (error) {
+      console.warn('[reviews] 관리자 후기 알림 문자 발송 실패', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }

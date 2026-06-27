@@ -2,7 +2,6 @@
   "name": "mh",
   "private": true,
   "scripts": {
-    "sync:icon": "node ./scripts/assets/sync-icon.mjs",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "dev:clear-cache": "sh ./scripts/dev/dev-clear-caches.sh",

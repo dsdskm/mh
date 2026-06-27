@@ -29,6 +29,7 @@ type Props = {
 };
 
 type HistoryRange = "all" | "today" | "7d" | "30d";
+const DIRECT_SMS_MAX_CHARS = 45;
 
 function normalizePhone(value: string): string {
   return value.replace(/\D/g, "");
@@ -41,6 +42,10 @@ function isValidPhone(value: string): boolean {
 
 function smsByteLength(content: string): number {
   return Array.from(content).reduce((sum, ch) => sum + (/[^\u0000-\u007f]/.test(ch) ? 2 : 1), 0);
+}
+
+function smsCharLength(content: string): number {
+  return Array.from(content).length;
 }
 
 function toAccountLabel(account: AdminUser): string {
@@ -315,8 +320,8 @@ export function MessagesTab({ accounts }: Props) {
     }
 
     const trimmedMessage = message.trim();
-    if (smsByteLength(trimmedMessage) > 90) {
-      setError("메시지 내용은 SMS 기준 90byte 이하여야 합니다.");
+    if (smsCharLength(trimmedMessage) > DIRECT_SMS_MAX_CHARS) {
+      setError(`메시지 내용은 ${DIRECT_SMS_MAX_CHARS}자 이하여야 합니다.`);
       return;
     }
 
@@ -547,12 +552,13 @@ export function MessagesTab({ accounts }: Props) {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={6}
+            maxLength={DIRECT_SMS_MAX_CHARS}
             placeholder="발송할 메시지를 입력하세요"
             className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
           />
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-stone-500">
-              {message.length}자 / {smsByteLength(message)}byte
+              {smsCharLength(message)} / {DIRECT_SMS_MAX_CHARS}자
             </p>
             <button
               type="submit"

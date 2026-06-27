@@ -23,6 +23,7 @@ import {
   listCouponsApi,
   listCouponTemplatesApi,
   createCouponTemplateApi,
+  deleteCouponTemplateApi,
   issueCouponApi,
   issueCouponByTemplateApi,
   revokeCouponApi,
@@ -90,6 +91,7 @@ export type AdminPageState = {
   accountHolder: string;
   transferNote: string;
   detailDescription: string;
+  shippingRefundPolicy: string;
   storyImages: Array<{ title: string; imageUrl: string }>;
   videoUrl: string;
   termsUrl: string;
@@ -98,6 +100,7 @@ export type AdminPageState = {
   deliveryFee: string;
   chargeDeliveryFee: boolean;
   memberBonusProductId: number | null;
+  signupCouponTemplateId: number | null;
   configSaved: boolean;
   setLoginUserId: (value: string) => void;
   setLoginPassword: (value: string) => void;
@@ -123,6 +126,7 @@ export type AdminPageState = {
   setAccountHolder: (value: string) => void;
   setTransferNote: (value: string) => void;
   setDetailDescription: (value: string) => void;
+  setShippingRefundPolicy: (value: string) => void;
   setStoryImages: (value: Array<{ title: string; imageUrl: string }>) => void;
   updateStoryImageTitle: (index: number, title: string) => void;
   addStoryImage: (imageUrl: string, title?: string) => void;
@@ -134,6 +138,7 @@ export type AdminPageState = {
   setDeliveryFee: (value: string) => void;
   setChargeDeliveryFee: (value: boolean) => void;
   setMemberBonusProductId: (value: number | null) => void;
+  setSignupCouponTemplateId: (value: number | null) => void;
   setConfigSaved: (value: boolean) => void;
   submitLogin: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   logout: () => void;
@@ -202,7 +207,8 @@ export type AdminPageState = {
   mileageEarnRate: string;
   setMileageEarnRate: (value: string) => void;
   createCouponTemplate: (input: CreateCouponTemplateInput) => Promise<boolean>;
-  issueCouponByTemplate: (input: IssueCouponByTemplateInput) => Promise<boolean>;
+  deleteCouponTemplate: (id: number) => Promise<boolean>;
+  issueCouponByTemplate: (input: IssueCouponByTemplateInput) => Promise<number>;
   issueCoupon: (input: IssueCouponInput) => Promise<boolean>;
   revokeCoupon: (id: number) => Promise<void>;
   getAccountMileage: (accountId: number) => Promise<MileageSummary | null>;
@@ -250,6 +256,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   const [accountHolder, setAccountHolder] = useState("");
   const [transferNote, setTransferNote] = useState("");
   const [detailDescription, setDetailDescription] = useState("");
+  const [shippingRefundPolicy, setShippingRefundPolicy] = useState("");
   const [storyImages, setStoryImages] = useState<Array<{ title: string; imageUrl: string }>>([]);
   const [videoUrl, setVideoUrl] = useState("");
   const [termsUrl, setTermsUrl] = useState("");
@@ -258,6 +265,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   const [deliveryFee, setDeliveryFee] = useState("0");
   const [chargeDeliveryFee, setChargeDeliveryFee] = useState(false);
   const [memberBonusProductId, setMemberBonusProductId] = useState<number | null>(null);
+  const [signupCouponTemplateId, setSignupCouponTemplateId] = useState<number | null>(null);
   const [mileageEarnRate, setMileageEarnRate] = useState("0");
   const [configSaved, setConfigSaved] = useState(false);
 
@@ -297,6 +305,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setAccountHolder(configValue.accountHolder ?? "");
     setTransferNote(configValue.transferNote ?? "");
     setDetailDescription(configValue.detailDescription ?? "");
+    setShippingRefundPolicy(configValue.shippingRefundPolicy ?? "");
     setStoryImages(Array.isArray(configValue.storyImages) ? configValue.storyImages : []);
     setVideoUrl(configValue.videoUrl ?? "");
     setTermsUrl(configValue.termsUrl ?? "");
@@ -305,6 +314,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setDeliveryFee(String(configValue.deliveryFee ?? 0));
     setChargeDeliveryFee(Boolean(configValue.chargeDeliveryFee));
     setMemberBonusProductId(configValue.memberBonusProductId ?? null);
+    setSignupCouponTemplateId(configValue.signupCouponTemplateId ?? null);
     setMileageEarnRate(String(configValue.mileageEarnRate ?? 0));
   }
 
@@ -355,7 +365,12 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         } else if (initialTab === "계정관리" || initialTab === "문자전송") {
           setAccounts(await listAdminAccountsApi());
         } else if (initialTab === "기본정보" || initialTab === "약관관리") {
-          setProducts(await listProductsApi());
+          const [products, templateRows] = await Promise.all([
+            listProductsApi(),
+            listCouponTemplatesApi(),
+          ]);
+          setProducts(products);
+          setCouponTemplates(templateRows);
         } else if (initialTab === "쿠폰·적립금") {
           const [accounts, couponRows, templateRows] = await Promise.all([
             listAdminAccountsApi(),
@@ -633,6 +648,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         accountHolder,
         transferNote,
         detailDescription,
+        shippingRefundPolicy,
         videoUrl: overrides?.videoUrl ?? videoUrl,
         storyImages: overrides?.storyImages ?? storyImages,
         termsUrl: overrides?.termsUrl ?? termsUrl,
@@ -648,17 +664,20 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         deliveryFee: Math.max(0, Math.floor(Number(deliveryFee) || 0)),
         chargeDeliveryFee,
         memberBonusProductId,
+        signupCouponTemplateId,
         mileageEarnRate: Math.max(0, Math.floor(Number(mileageEarnRate) || 0)),
       });
 
       setConfig(saved);
       setTermsUrl(saved.termsUrl ?? "");
       setPrivacyUrl(saved.privacyUrl ?? "");
+      setShippingRefundPolicy(saved.shippingRefundPolicy ?? "");
       setStoryImages(Array.isArray(saved.storyImages) ? saved.storyImages : []);
       setPaymentDueDays(String(saved.paymentDueDays ?? 0));
       setDeliveryFee(String(saved.deliveryFee ?? 0));
       setChargeDeliveryFee(Boolean(saved.chargeDeliveryFee));
       setMemberBonusProductId(saved.memberBonusProductId ?? null);
+      setSignupCouponTemplateId(saved.signupCouponTemplateId ?? null);
       setMileageEarnRate(String(saved.mileageEarnRate ?? 0));
       setNotice("기본정보를 저장했습니다.");
       setConfigSaved(true);
@@ -724,19 +743,33 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     }
   }
 
+  async function deleteCouponTemplate(id: number): Promise<boolean> {
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteCouponTemplateApi(id);
+      setCouponTemplates((prev) => prev.filter((t) => t.id !== id));
+      setNotice("쿠폰을 삭제했습니다.");
+      return true;
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "쿠폰 삭제에 실패했습니다.");
+      return false;
+    }
+  }
+
   async function issueCouponByTemplate(
     input: IssueCouponByTemplateInput,
-  ): Promise<boolean> {
+  ): Promise<number> {
     setError(null);
     setNotice(null);
     try {
       const result = await issueCouponByTemplateApi(input);
       setCoupons(await listCouponsApi());
       setNotice(`쿠폰 ${result.issued}건을 발급했습니다.`);
-      return true;
+      return result.issued;
     } catch (issueError) {
       setError(issueError instanceof Error ? issueError.message : "쿠폰 발급에 실패했습니다.");
-      return false;
+      throw issueError;
     }
   }
 
@@ -848,6 +881,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     accountHolder,
     transferNote,
     detailDescription,
+    shippingRefundPolicy,
     storyImages,
     videoUrl,
     termsUrl,
@@ -856,12 +890,14 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     deliveryFee,
     chargeDeliveryFee,
     memberBonusProductId,
+    signupCouponTemplateId,
     mileageEarnRate,
     configSaved,
     coupons,
     couponTemplates,
     setMileageEarnRate,
     createCouponTemplate,
+    deleteCouponTemplate,
     issueCouponByTemplate,
     issueCoupon,
     revokeCoupon,
@@ -890,6 +926,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setAccountHolder,
     setTransferNote,
     setDetailDescription,
+    setShippingRefundPolicy,
     setStoryImages,
     updateStoryImageTitle,
     addStoryImage,
@@ -901,6 +938,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setDeliveryFee,
     setChargeDeliveryFee,
     setMemberBonusProductId,
+    setSignupCouponTemplateId,
     setConfigSaved,
     submitLogin,
     logout,

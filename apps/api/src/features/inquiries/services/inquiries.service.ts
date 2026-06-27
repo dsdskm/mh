@@ -11,6 +11,8 @@ import {
 } from '../../../shared/store.types';
 import { FirestoreTriggerService } from '../../../shared/firestore-trigger.service';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { MessagesService } from '../../messages/services/messages.service';
+import { ConfigService } from '../../config/services/config.service';
 
 @Injectable()
 export class InquiriesService {
@@ -25,6 +27,8 @@ export class InquiriesService {
     private readonly inquiryCommentRepository: Repository<InquiryCommentEntity>,
     private readonly firestoreTrigger: FirestoreTriggerService,
     private readonly notificationsService: NotificationsService,
+    private readonly messagesService: MessagesService,
+    private readonly configService: ConfigService,
   ) {}
 
   async createInquiry(input: CreateInquiryInput): Promise<Inquiry> {
@@ -45,6 +49,7 @@ export class InquiriesService {
       url: '/inquiries',
     });
 
+    void this.notifyAdminInquiryCreatedSms();
     void this.firestoreTrigger.notify('inquiries');
     return this.toInquiry(inquiry);
   }
@@ -120,6 +125,10 @@ export class InquiriesService {
       url: '/inquiries',
     });
 
+    if (input.notifyInquiryAuthorSms) {
+      void this.notifyInquiryAuthorCommented(inquiry.phone);
+    }
+
     void this.firestoreTrigger.notify('inquiries');
     return this.toInquiry(updated);
   }
@@ -148,6 +157,44 @@ export class InquiriesService {
     }
 
     return `${now}${this.sameTickSequence}`;
+  }
+
+  private async notifyInquiryAuthorCommented(phoneRaw: string): Promise<void> {
+    const receiver = (phoneRaw ?? '').replace(/\D/g, '');
+    if (!/^\d{8,20}$/.test(receiver)) {
+      return;
+    }
+
+    try {
+      await this.messagesService.sendSms({
+        receiver,
+        content: '문의글에 댓글이 등록되었습니다.',
+      });
+    } catch (error) {
+      console.warn('[inquiries] 댓글 등록 안내 문자 발송 실패', {
+        receiver,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async notifyAdminInquiryCreatedSms(): Promise<void> {
+    try {
+      const config = await this.configService.getStoreConfig();
+      const receiver = (config.sellerPhone ?? '').replace(/\D/g, '');
+      if (!/^\d{8,20}$/.test(receiver)) {
+        return;
+      }
+
+      await this.messagesService.sendSms({
+        receiver,
+        content: '새 문의가 등록되었습니다.',
+      });
+    } catch (error) {
+      console.warn('[inquiries] 관리자 문의 알림 문자 발송 실패', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private toInquiry(inquiry: InquiryEntity): Inquiry {

@@ -62,6 +62,7 @@ export default function AccountPage() {
   const [newPassword, setNewPassword] = useState("");
   const [withdrawPassword, setWithdrawPassword] = useState("");
   const [withdrawReason, setWithdrawReason] = useState("");
+  const [withdrawReasonPreset, setWithdrawReasonPreset] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
@@ -319,12 +320,34 @@ export default function AccountPage() {
             placeholder="탈퇴 확인 비밀번호"
             className="mt-3 w-full rounded-xl border border-red-300 px-3 py-2 text-sm"
           />
-          <input
-            value={withdrawReason}
-            onChange={(event) => setWithdrawReason(event.target.value)}
-            placeholder="탈퇴 사유 (선택)"
-            className="mt-2 w-full rounded-xl border border-red-300 px-3 py-2 text-sm"
-          />
+          <select
+            value={withdrawReasonPreset}
+            onChange={(event) => {
+              const val = event.target.value;
+              setWithdrawReasonPreset(val);
+              if (val !== "직접 입력" && val !== "") {
+                setWithdrawReason(val);
+              } else if (val !== "직접 입력") {
+                setWithdrawReason("");
+              }
+            }}
+            className="mt-2 w-full rounded-xl border border-red-300 px-3 py-2 text-sm bg-white"
+          >
+            <option value="">탈퇴 사유 (선택)</option>
+            <option value="상품 불만족">상품 불만족</option>
+            <option value="배송 불만족">배송 불만족</option>
+            <option value="더 이상 구매할 의사가 없음">더 이상 구매할 의사가 없음</option>
+            <option value="기타">기타</option>
+            <option value="직접 입력">직접 입력</option>
+          </select>
+          {withdrawReasonPreset === "직접 입력" && (
+            <input
+              value={withdrawReason}
+              onChange={(event) => setWithdrawReason(event.target.value)}
+              placeholder="탈퇴 사유를 직접 입력해주세요"
+              className="mt-2 w-full rounded-xl border border-red-300 px-3 py-2 text-sm"
+            />
+          )}
           <button
             type="button"
             onClick={openWithdrawConfirmModal}

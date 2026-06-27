@@ -3,7 +3,8 @@ import { existsSync } from 'node:fs';
 import * as dotenv from 'dotenv';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { json, urlencoded } from 'express';
+import { randomUUID } from 'node:crypto';
+import { json, urlencoded, type NextFunction, type Request, type Response } from 'express';
 import { AppModule } from './app.module';
 
 const bootstrapLogger = new Logger('Bootstrap');
@@ -123,6 +124,40 @@ async function bootstrap() {
   logGcpIntegrationStatus();
 
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const requestId =
+      (typeof req.headers['x-request-id'] === 'string' &&
+        req.headers['x-request-id'].trim()) ||
+      randomUUID();
+    const startedAt = process.hrtime.bigint();
+    const ip = req.ip || req.socket.remoteAddress || '-';
+
+    res.setHeader('x-request-id', requestId);
+    bootstrapLogger.log(
+      `[api:req] id=${requestId} method=${req.method} path=${req.originalUrl} ip=${ip}`,
+    );
+
+    res.on('finish', () => {
+      const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+      const status = res.statusCode;
+      const message =
+        `[api:res] id=${requestId} method=${req.method} path=${req.originalUrl} status=${status} durationMs=${elapsedMs.toFixed(1)}`;
+
+      if (status >= 500) {
+        bootstrapLogger.error(message);
+        return;
+      }
+
+      if (status >= 400) {
+        bootstrapLogger.warn(message);
+        return;
+      }
+
+      bootstrapLogger.log(message);
+    });
+
+    next();
+  });
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
   app.enableCors();

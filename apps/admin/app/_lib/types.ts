@@ -202,6 +202,7 @@ export type StoreConfig = {
   accountHolder: string;
   transferNote: string;
   detailDescription: string;
+  shippingRefundPolicy: string;
   storyImages: Array<{ title: string; imageUrl: string }>;
   videoUrl: string;
   termsUrl: string;
@@ -219,6 +220,7 @@ export type StoreConfig = {
   deliveryFee: number;
   chargeDeliveryFee: boolean;
   memberBonusProductId: number | null;
+  signupCouponTemplateId: number | null;
   // 응답 전용 파생 값 (저장 시에는 무시됨)
   memberBonusProductName?: string | null;
   mileageEarnRate: number;

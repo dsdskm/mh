@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Bagel_Fat_One, Noto_Sans_KR } from "next/font/google";
+import sharedIcon from "@repo/ui/assets/icon.png";
 import WebSessionProvider from "./session-provider";
 import "./globals.css";
 
@@ -19,9 +20,9 @@ export const metadata: Metadata = {
   title: "Corn",
   description: "모바일/PC 최적화 옥수수 쇼핑몰",
   icons: {
-    icon: "/icon.png",
-    shortcut: "/icon.png",
-    apple: "/icon.png",
+    icon: sharedIcon.src,
+    shortcut: sharedIcon.src,
+    apple: sharedIcon.src,
   },
 };
 

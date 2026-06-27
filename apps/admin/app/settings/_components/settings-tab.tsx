@@ -54,6 +54,7 @@ export function SettingsTab({ state }: Props) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
+  const [selectedStoryImageFiles, setSelectedStoryImageFiles] = useState<Array<{ file: File; title: string }>>([]);
 
   useEffect(() => {
     console.log("[admin/settings] uploadingVideo changed", {
@@ -69,30 +70,36 @@ export function SettingsTab({ state }: Props) {
     });
   }, [state.configSaved]);
 
-  const videoPreview = useMemo(() => {
+  const normalizedVideoUrl = useMemo(() => {
     const normalized = normalizeUrl(state.videoUrl);
     if (!normalized) {
       return null;
     }
 
+    return normalized;
+  }, [state.videoUrl]);
+
+  const videoPreview = useMemo(() => {
+    if (!normalizedVideoUrl) {
+      return null;
+    }
+
     try {
-      const parsed = new URL(normalized);
+      const parsed = new URL(normalizedVideoUrl);
       const videoId = pickYouTubeVideoId(parsed);
       if (videoId) {
-        return {
-          type: "embed" as const,
-          src: `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&playsinline=1&rel=0`,
-        };
+        return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&playsinline=1&rel=0`;
       }
 
-      return {
-        type: "video" as const,
-        src: normalized,
-      };
+      return null;
     } catch {
       return null;
     }
-  }, [state.videoUrl]);
+  }, [normalizedVideoUrl]);
+
+  const showDirectVideoPreview = useMemo(() => {
+    return Boolean(normalizedVideoUrl) && !videoPreview;
+  }, [normalizedVideoUrl, videoPreview]);
 
   function handleVideoSelect(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -107,36 +114,30 @@ export function SettingsTab({ state }: Props) {
     });
   }
 
-  async function handleStoryImageSelect(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+  function handleStoryImageSelect(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files ? Array.from(event.target.files) : [];
     event.target.value = "";
-    if (!file) {
+    if (files.length === 0) {
       return;
     }
 
     setImageUploadError(null);
-    setUploadingImage(true);
-    try {
-      const { url } = await uploadAdminAssetApi(file, "products", "story");
-      const nextStoryImages = [
-        ...state.storyImages,
-        {
-          title: file.name.replace(/\.[^/.]+$/, "") || `상점 이미지 ${state.storyImages.length + 1}`,
-          imageUrl: url,
-        },
-      ];
-      state.setStoryImages(nextStoryImages);
-      state.setConfigSaved(false);
-      const saved = await state.saveConfigDirect({ storyImages: nextStoryImages });
-      if (!saved) {
-        setImageUploadError("상점 이미지 저장에 실패했습니다.");
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "이미지 업로드에 실패했습니다.";
-      setImageUploadError(message);
-    } finally {
-      setUploadingImage(false);
-    }
+    setSelectedStoryImageFiles((prev) => {
+      const baseIndex = state.storyImages.length + prev.length;
+      const nextItems = files.map((file, idx) => ({
+        file,
+        title: file.name.replace(/\.[^/.]+$/, "") || `상점 이미지 ${baseIndex + idx + 1}`,
+      }));
+      return [...prev, ...nextItems];
+    });
+  }
+
+  function handleSelectedStoryImageTitleChange(index: number, title: string) {
+    setSelectedStoryImageFiles((prev) => prev.map((item, idx) => (idx === index ? { ...item, title } : item)));
+  }
+
+  function handleSelectedStoryImageRemove(index: number) {
+    setSelectedStoryImageFiles((prev) => prev.filter((_, idx) => idx !== index));
   }
 
   function handleStoryImageTitleChange(index: number, title: string) {
@@ -164,22 +165,26 @@ export function SettingsTab({ state }: Props) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setUploadError(null);
+    setImageUploadError(null);
     const startedAt = Date.now();
+    const hasSelectedStoryImages = selectedStoryImageFiles.length > 0;
     console.log("[admin/settings] handleSubmit start", {
       hasSelectedVideoFile: Boolean(selectedVideoFile),
       selectedVideoFileName: selectedVideoFile?.name,
       selectedVideoFileSize: selectedVideoFile?.size,
+      selectedStoryImageCount: selectedStoryImageFiles.length,
       currentVideoUrl: state.videoUrl,
       at: new Date().toISOString(),
     });
 
-    if (!selectedVideoFile) {
-      console.log("[admin/settings] saveConfig only (no video upload)", {
+    if (!selectedVideoFile && !hasSelectedStoryImages) {
+      console.log("[admin/settings] saveConfig only (no asset upload)", {
         videoUrl: state.videoUrl,
+        storyImageCount: state.storyImages.length,
       });
       state.setConfigSaved(false);
-      const saved = await state.saveConfig(event, { videoUrl: state.videoUrl });
-      console.log("[admin/settings] saveConfig only result", {
+      const saved = await state.saveConfig(event, { videoUrl: state.videoUrl, storyImages: state.storyImages });
+      console.log("[admin/settings] saveConfig only result (no asset upload)", {
         saved,
         elapsedMs: Date.now() - startedAt,
       });
@@ -187,11 +192,15 @@ export function SettingsTab({ state }: Props) {
     }
 
     let nextVideoUrl = state.videoUrl;
+    let nextStoryImages = state.storyImages;
     setUploadingVideo(Boolean(selectedVideoFile));
-    console.log("[admin/settings] setUploadingVideo(true)", {
-      fileName: selectedVideoFile.name,
-      fileSize: selectedVideoFile.size,
-      fileType: selectedVideoFile.type,
+    setUploadingImage(hasSelectedStoryImages);
+    console.log("[admin/settings] asset upload state set", {
+      uploadingVideo: Boolean(selectedVideoFile),
+      uploadingImage: hasSelectedStoryImages,
+      fileName: selectedVideoFile?.name,
+      fileSize: selectedVideoFile?.size,
+      fileType: selectedVideoFile?.type,
     });
     try {
       if (selectedVideoFile) {
@@ -208,18 +217,49 @@ export function SettingsTab({ state }: Props) {
         });
       }
 
+      if (hasSelectedStoryImages) {
+        const uploadedStoryImages: Array<{ title: string; imageUrl: string }> = [];
+        for (const [index, item] of selectedStoryImageFiles.entries()) {
+          console.log("[admin/settings] story image upload start", {
+            index,
+            fileName: item.file.name,
+            fileSize: item.file.size,
+            fileType: item.file.type,
+          });
+          const { url } = await uploadAdminAssetApi(item.file, "products", "story");
+          uploadedStoryImages.push({
+            title: item.title.trim() || item.file.name.replace(/\.[^/.]+$/, "") || `상점 이미지 ${state.storyImages.length + index + 1}`,
+            imageUrl: url,
+          });
+          console.log("[admin/settings] story image upload success", {
+            index,
+            uploadedUrl: url,
+          });
+        }
+
+        nextStoryImages = [...state.storyImages, ...uploadedStoryImages];
+        state.setStoryImages(nextStoryImages);
+      }
+
       state.setConfigSaved(false);
-      console.log("[admin/settings] saveConfig with uploaded url start", {
+      console.log("[admin/settings] saveConfig with uploaded assets start", {
         nextVideoUrl,
+        nextStoryImageCount: nextStoryImages.length,
       });
-      const saved = await state.saveConfig(event, { videoUrl: nextVideoUrl });
-      console.log("[admin/settings] saveConfig with uploaded url result", {
+      const saved = await state.saveConfig(event, { videoUrl: nextVideoUrl, storyImages: nextStoryImages });
+      console.log("[admin/settings] saveConfig with uploaded assets result", {
         saved,
       });
       setSelectedVideoFile(null);
+      setSelectedStoryImageFiles([]);
     } catch (error) {
       const message = error instanceof Error ? error.message : "파일 업로드에 실패했습니다.";
-      setUploadError(message);
+      if (hasSelectedStoryImages) {
+        setImageUploadError(message);
+      }
+      if (selectedVideoFile) {
+        setUploadError(message);
+      }
       console.error("[admin/settings] handleSubmit error", {
         message,
         rawError: error,
@@ -227,6 +267,7 @@ export function SettingsTab({ state }: Props) {
       event.preventDefault();
     } finally {
       setUploadingVideo(false);
+      setUploadingImage(false);
       console.log("[admin/settings] setUploadingVideo(false)", {
         elapsedMs: Date.now() - startedAt,
         at: new Date().toISOString(),
@@ -437,18 +478,30 @@ export function SettingsTab({ state }: Props) {
               싶지 않으면 상품관리에서 비노출(숨김) 상태로 등록해도 사은품으로 사용할 수 있습니다.
             </span>
           </label>
+          <label className="grid gap-2 sm:grid-cols-[150px_220px_1fr] sm:items-start sm:gap-3">
+            <span className="pt-2 text-xs font-semibold text-stone-600">가입 쿠폰</span>
+            <select
+              value={state.signupCouponTemplateId ?? ""}
+              onChange={(e) => state.setSignupCouponTemplateId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            >
+              <option value="">없음</option>
+              {state.couponTemplates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+            <span className="pt-2 text-[11px] leading-5 text-stone-500">
+              회원 가입 완료 시 선택한 쿠폰이 자동으로 발급됩니다. 쿠폰은 쿠폰·적립금 탭에서 먼저 등록해주세요.
+            </span>
+          </label>
         </section>
 
         <section className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
           <h3 className="text-sm font-bold text-stone-900">콘텐츠</h3>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold text-stone-600">영상 URL</span>
-            <input
-              value={state.videoUrl}
-              onChange={(e) => state.setVideoUrl(e.target.value)}
-              placeholder="영상 URL"
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            />
+          <div className="block space-y-1">
+            <span className="text-xs font-semibold text-stone-600">영상 업로드</span>
             <input
               type="file"
               accept="video/*"
@@ -468,36 +521,73 @@ export function SettingsTab({ state }: Props) {
             {videoPreview && (
               <div className="mt-3 max-w-md overflow-hidden rounded-xl border border-stone-200 bg-white">
                 <div className="aspect-video w-full">
-                  {videoPreview.type === "embed" ? (
-                    <iframe
-                      src={videoPreview.src}
-                      title="영상 미리보기"
-                      className="h-full w-full"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                      referrerPolicy="strict-origin-when-cross-origin"
-                      allowFullScreen
-                    />
-                  ) : (
-                    <video src={videoPreview.src} className="h-full w-full object-cover" controls muted playsInline />
-                  )}
+                  <iframe
+                    src={videoPreview}
+                    title="영상 미리보기"
+                    className="h-full w-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    allowFullScreen
+                  />
                 </div>
               </div>
             )}
-          </label>
 
-          <label className="block space-y-2">
+            {showDirectVideoPreview && normalizedVideoUrl && (
+              <div className="mt-3 max-w-md overflow-hidden rounded-xl border border-stone-200 bg-white p-2">
+                <video
+                  src={normalizedVideoUrl}
+                  controls
+                  preload="metadata"
+                  playsInline
+                  className="aspect-video w-full rounded-lg bg-black"
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="block space-y-2">
             <span className="text-xs font-semibold text-stone-600">상점 이미지 (무제한)</span>
             <input
               type="file"
               accept="image/*"
-              onChange={(event) => void handleStoryImageSelect(event)}
+              multiple
+              onChange={handleStoryImageSelect}
               disabled={uploadingImage}
               className="block w-full text-xs text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-lime-600 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white disabled:opacity-60"
             />
             <p className="text-[11px] text-stone-500">
-              {uploadingImage ? "이미지 업로드 중..." : "여러 이미지를 계속 추가할 수 있습니다. 저장 후 web에 반영됩니다."}
+              {uploadingImage
+                ? "이미지 업로드 중..."
+                : selectedStoryImageFiles.length > 0
+                  ? `${selectedStoryImageFiles.length}개 파일 선택됨 (저장 시 업로드)`
+                  : "여러 이미지를 계속 추가할 수 있습니다. 파일 선택 후 저장 시 업로드됩니다."}
             </p>
             {imageUploadError && <p className="text-xs text-red-600">{imageUploadError}</p>}
+
+            {selectedStoryImageFiles.length > 0 && (
+              <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-2">
+                <p className="text-[11px] font-semibold text-amber-800">저장 대기 이미지</p>
+                {selectedStoryImageFiles.map((item, index) => (
+                  <div key={`${item.file.name}-${item.file.size}-${index}`} className="rounded-lg border border-amber-200 bg-white p-2">
+                    <p className="truncate text-[11px] text-stone-600">{item.file.name}</p>
+                    <input
+                      value={item.title}
+                      onChange={(e) => handleSelectedStoryImageTitleChange(index, e.target.value)}
+                      placeholder={`상점 이미지 ${state.storyImages.length + index + 1}`}
+                      className="mt-1 w-full rounded-lg border border-stone-300 px-2 py-1.5 text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSelectedStoryImageRemove(index)}
+                      className="mt-2 w-full rounded-lg border border-stone-200 bg-stone-50 px-2 py-1.5 text-xs font-semibold text-stone-700"
+                    >
+                      선택 취소
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {state.storyImages.length > 0 ? (
               <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
@@ -527,7 +617,7 @@ export function SettingsTab({ state }: Props) {
             ) : (
               <p className="text-xs text-stone-500">등록된 상점 이미지가 없습니다.</p>
             )}
-          </label>
+          </div>
 
           <label className="block space-y-1">
             <span className="text-xs font-semibold text-stone-600">상점 설명</span>
@@ -537,6 +627,17 @@ export function SettingsTab({ state }: Props) {
               placeholder="상점 설명"
               className="h-28 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
             />
+          </label>
+
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold text-stone-600">배송/환불 정책</span>
+            <textarea
+              value={state.shippingRefundPolicy}
+              onChange={(e) => state.setShippingRefundPolicy(e.target.value)}
+              placeholder="배송/환불 정책"
+              className="h-36 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            />
+            <p className="text-[11px] text-stone-500">web 배송/환불 정책 페이지에 그대로 노출됩니다.</p>
           </label>
         </section>
         <button
