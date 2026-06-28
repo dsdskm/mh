@@ -122,7 +122,7 @@ function isOperatorAuthor(name: string): boolean {
   return /운영자|관리자/.test(name);
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:9000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "");
 const MEMBER_PHONE_KEY = "cornmarket:member-phone";
 const NOTICE_DISMISS_KEY_PREFIX = "cornmarket:notice:dismissed:";
 const TERMS_SEEN_VERSION_KEY = "cornmarket:terms:seen-version";

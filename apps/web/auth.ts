@@ -2,7 +2,17 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import Kakao from "next-auth/providers/kakao";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:9000";
+const configuredApiBase =
+  process.env.INTERNAL_API_BASE_URL?.trim() ||
+  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ||
+  "";
+
+const API_BASE =
+  configuredApiBase.startsWith("http://") || configuredApiBase.startsWith("https://")
+    ? configuredApiBase.replace(/\/+$/, "")
+    : process.env.NODE_ENV === "development"
+      ? "http://localhost:9000"
+      : "http://api:9000";
 
 export const authOptions: NextAuthOptions = {
   providers: [

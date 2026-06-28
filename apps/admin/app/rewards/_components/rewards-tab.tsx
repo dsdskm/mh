@@ -82,7 +82,7 @@ export function RewardsTab({ state }: Props) {
   const [deleteTemplateTarget, setDeleteTemplateTarget] = useState<CouponTemplate | null>(null);
 
   // ----- 쿠폰 발급 폼 -----
-  const [selectedTemplateId, setSelectedTemplateId] = useState<number | "">("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [targetMode, setTargetMode] = useState<"all" | "select">("select");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [memberSearch, setMemberSearch] = useState("");
@@ -93,7 +93,7 @@ export function RewardsTab({ state }: Props) {
   const [revokeCouponTarget, setRevokeCouponTarget] = useState<{ id: number; name: string } | null>(null);
 
   const selectedTemplate = useMemo<CouponTemplate | null>(() => {
-    if (selectedTemplateId === "") {
+    if (selectedTemplateId === null) {
       return null;
     }
     return couponTemplates.find((template) => template.id === selectedTemplateId) ?? null;
@@ -173,7 +173,7 @@ export function RewardsTab({ state }: Props) {
     try {
       await state.deleteCouponTemplate(deleteTemplateTarget.id);
       if (selectedTemplateId === deleteTemplateTarget.id) {
-        setSelectedTemplateId("");
+        setSelectedTemplateId(null);
       }
       setDeleteTemplateTarget(null);
     } finally {
@@ -198,7 +198,7 @@ export function RewardsTab({ state }: Props) {
     setIssueFeedback(null);
     setIssueError(null);
 
-    if (selectedTemplateId === "") {
+    if (selectedTemplateId === null) {
       setIssueError("발급할 쿠폰을 선택해주세요.");
       return;
     }
@@ -213,10 +213,16 @@ export function RewardsTab({ state }: Props) {
   async function handleIssueByTemplate() {
     setShowIssueConfirmModal(false);
 
+    if (selectedTemplateId === null) {
+      setIssueError("발급할 쿠폰을 선택해주세요.");
+      return;
+    }
+
     setIssuing(true);
     try {
+      const templateId = selectedTemplateId;
       const issued = await state.issueCouponByTemplate({
-        couponTemplateId: selectedTemplateId,
+        couponTemplateId: templateId,
         accountIds: targetMode === "all" ? "all" : selectedIds,
       });
       setSelectedIds([]);
@@ -365,9 +371,9 @@ export function RewardsTab({ state }: Props) {
           <label className="space-y-1">
             <span className="text-xs font-semibold text-stone-600">발급 쿠폰</span>
             <select
-              value={selectedTemplateId}
+              value={selectedTemplateId ?? ""}
               onChange={(e) =>
-                setSelectedTemplateId(e.target.value ? Number(e.target.value) : "")
+                setSelectedTemplateId(e.target.value ? Number(e.target.value) : null)
               }
               className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
             >
@@ -455,7 +461,7 @@ export function RewardsTab({ state }: Props) {
             onClick={openIssueConfirmModal}
             disabled={
               issuing ||
-              selectedTemplateId === "" ||
+              selectedTemplateId === null ||
               (targetMode === "select" && selectedIds.length === 0)
             }
             className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"

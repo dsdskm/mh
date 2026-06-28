@@ -11,6 +11,14 @@ const nextConfig = {
 	outputFileTracingRoot: path.join(__dirname, "../../"),
 	// 워크스페이스 소스 패키지를 빌드 시 트랜스파일
 	transpilePackages: ["@repo/ui", "@repo/shared-types"],
+	async rewrites() {
+		return [
+			{
+				source: "/api/:path*",
+				destination: "http://api:9000/api/:path*",
+			},
+		];
+	},
 	images: {
 		remotePatterns: [
 			{

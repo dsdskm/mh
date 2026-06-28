@@ -38,7 +38,7 @@ type Order = {
   statusHistory?: Array<{ status: OrderStatus; at: string }>;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:9000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "");
 const GUEST_LOOKUP_PHONE_KEY = "cornmarket:guest-lookup-phone";
 const GUEST_LOOKUP_TOKEN_KEY = "cornmarket:guest-lookup-token";
 const STATUS_FLOW: Order["status"][] = ORDER_STATUS_FLOW;

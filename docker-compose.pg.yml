@@ -3,21 +3,73 @@ name: corn-app
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: corn-app
+    container_name: corn-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: main
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: root
+      POSTGRES_DB: ${POSTGRES_DB:-main}
+      POSTGRES_USER: ${POSTGRES_USER:-root}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d main"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-root} -d ${POSTGRES_DB:-main}"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  api:
+    image: ${API_IMAGE:-}
+    container_name: corn-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      APP_ENV: ${APP_ENV:-prod}
+      PORT: 9000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-root}:${POSTGRES_PASSWORD:-root}@postgres:5432/${POSTGRES_DB:-main}}
+      ADMIN_AUTH_SECRET: ${ADMIN_AUTH_SECRET:-}
+    expose:
+      - "9000"
+
+  web:
+    image: ${WEB_IMAGE:-}
+    container_name: corn-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      APP_ENV: ${APP_ENV:-prod}
+      NEXT_PUBLIC_APP_ENV: ${APP_ENV:-prod}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:${WEB_PORT:-3000}}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-}
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID:-}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+
+  admin:
+    image: ${ADMIN_IMAGE:-}
+    container_name: corn-admin
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      APP_ENV: ${APP_ENV:-prod}
+      NEXT_PUBLIC_APP_ENV: ${APP_ENV:-prod}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+      PORT: 3100
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "${ADMIN_PORT:-3100}:3100"
 
 volumes:
   pgdata:
