@@ -9,7 +9,7 @@ export default function ReviewsPage() {
 
   return (
     <AdminShell activeTab="후기" state={state}>
-      <ReviewsTab reviews={state.reviews} />
+      <ReviewsTab reviews={state.reviews} deleteReview={state.deleteReview} />
     </AdminShell>
   );
 }

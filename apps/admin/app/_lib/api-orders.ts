@@ -37,3 +37,11 @@ export async function updateBackofficeOrderApi(orderId: number, payload: AdminOr
 
   return parseJsonOrThrow<Order>(response, "주문 수정에 실패했습니다.");
 }
+
+export async function deleteBackofficeOrderApi(orderId: number): Promise<void> {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/orders/${orderId}`, {
+    method: "DELETE",
+  });
+
+  await parseJsonOrThrow<{ ok: boolean }>(response, "주문 삭제에 실패했습니다.");
+}

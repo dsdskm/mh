@@ -41,3 +41,4 @@ yarn-error.log*
 .env.prd
 apps/api/.env.prd
 apps/api/.env.prd
+apps/api/firebase-service-account.local.json

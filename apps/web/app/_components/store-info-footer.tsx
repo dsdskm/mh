@@ -71,7 +71,7 @@ export default async function StoreInfoFooter() {
           <p>판매자: {config.sellerName}</p>
           <p>연락처: {formattedPhone}</p>
           <p>원산지: {config.origin}</p>
-          <p className="pt-2 text-[11px] font-bold uppercase tracking-[0.12em]">위탁 사업자 정보</p>
+          <p className="pt-2 text-[11px] font-bold uppercase tracking-[0.12em]">온라인 서비스 위탁 사업자 정보</p>
           <p>사업자명: {config.trusteeBusinessName || "-"}</p>
           <p>사업자등록번호: {config.trusteeBusinessNumber || "-"}</p>
           <p>대표: {config.trusteeRepresentative || "-"}</p>

@@ -132,4 +132,19 @@ export class InquiriesController {
       notifyInquiryAuthorSms: true,
     });
   }
+
+  @Delete('backoffice/inquiries/:id')
+  async deleteBackofficeInquiry(@Param('id') id: string) {
+    const inquiryId = id.trim();
+    if (!inquiryId) {
+      throw new BadRequestException('문의 id가 필요합니다.');
+    }
+
+    const deleted = await this.inquiriesService.deleteInquiry(inquiryId);
+    if (!deleted) {
+      throw new NotFoundException('문의를 찾을 수 없습니다.');
+    }
+
+    return { ok: true };
+  }
 }

@@ -9,7 +9,11 @@ export default function InquiriesPage() {
 
   return (
     <AdminShell activeTab="문의내역" state={state}>
-      <InquiriesTab inquiries={state.inquiries} notifications={state.notifications} />
+      <InquiriesTab
+        inquiries={state.inquiries}
+        notifications={state.notifications}
+        deleteInquiry={state.deleteInquiry}
+      />
     </AdminShell>
   );
 }

@@ -501,6 +501,32 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     return this.toOrder(updated);
   }
 
+  async deleteBackofficeOrder(id: number): Promise<{ ok: true }> {
+    await this.dataSource.transaction(async (manager) => {
+      const orderRepository = manager.getRepository(OrderEntity);
+
+      const order = await orderRepository.findOne({
+        where: { id },
+        relations: { items: true },
+      });
+
+      if (!order) {
+        throw new NotFoundException('주문을 찾을 수 없습니다.');
+      }
+
+      if (this.normalizeOrderStatus(order.status) !== ORDER_STATUS.CANCEL_COMPLETED) {
+        await this.revertCancelledOrderEffects(manager, order);
+      }
+
+      await orderRepository.delete({ id: order.id });
+    });
+
+    await this.notificationsService.deleteOrderNotifications(id);
+    void this.firestoreTrigger.notify('orders');
+
+    return { ok: true };
+  }
+
   async getOrders(phone?: string): Promise<Order[]> {
     const orders = phone
       ? await this.orderRepository.find({

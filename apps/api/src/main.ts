@@ -10,17 +10,30 @@ import { AppModule } from './app.module';
 const bootstrapLogger = new Logger('Bootstrap');
 
 function loadEnvFiles() {
-  const candidates = [
-    path.resolve(process.cwd(), 'apps/api/.env'),
-    path.resolve(process.cwd(), '.env'),
-    path.resolve(__dirname, '../.env'),
-    path.resolve(__dirname, '../../../.env'),
-  ];
+  const seen = new Set<string>();
+  const searchRoots = [process.cwd(), __dirname];
+  const candidates: string[] = [];
 
-  for (const filePath of candidates) {
-    if (existsSync(filePath)) {
-      dotenv.config({ path: filePath, override: false });
+  for (const root of searchRoots) {
+    let current = path.resolve(root);
+
+    while (!seen.has(current)) {
+      seen.add(current);
+      candidates.push(path.join(current, '.env'));
+
+      const parent = path.dirname(current);
+      if (parent === current) {
+        break;
+      }
+
+      current = parent;
     }
+  }
+
+  const filePath = candidates.find((candidate) => existsSync(candidate));
+
+  if (filePath) {
+    dotenv.config({ path: filePath, override: false });
   }
 }
 

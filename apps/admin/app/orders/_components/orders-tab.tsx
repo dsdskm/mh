@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { formatCurrency, formatPhone, STATUS_OPTIONS, getOrderStatusLabelKo } from "../../_lib/constants";
 import { AdminOrderCreatePayload, AdminOrderUpdatePayload, AdminUser, Order, OrderStatus, Product } from "../../_lib/types";
 import { sendAdminSmsApi } from "../../_lib/api-messages";
@@ -61,9 +62,11 @@ type Props = {
   updateOrderStatus: (orderId: number, status: OrderStatus) => Promise<void>;
   createOrder: (payload: AdminOrderCreatePayload) => Promise<void>;
   updateOrder: (orderId: number, payload: AdminOrderUpdatePayload) => Promise<void>;
+  deleteOrder: (orderId: number) => Promise<void>;
 };
 
-export function OrdersTab({ orders, products, accounts, updateOrderStatus, createOrder, updateOrder }: Props) {
+export function OrdersTab({ orders, products, accounts, updateOrderStatus, createOrder, updateOrder, deleteOrder }: Props) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all");
   const initialWeekRange = getPresetRange("week");
@@ -106,6 +109,9 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
   const [editShippingAddress, setEditShippingAddress] = useState("");
   const [editRequestNote, setEditRequestNote] = useState("");
   const [editCancelReason, setEditCancelReason] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Order | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<number | null>(null);
 
   const [viewMode, setViewMode] = useState<"basic" | "simple" | "calendar">(() => {
     if (typeof window === "undefined") {
@@ -412,6 +418,39 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
     setEditRequestNote(order.requestNote ?? "");
     setEditCancelReason(order.cancelReason ?? "");
     setUpdateError(null);
+  }
+
+  function requestDeleteOrder(order: Order) {
+    setDeleteTarget(order);
+    setDeleteError(null);
+  }
+
+  async function confirmDeleteOrder() {
+    if (!deleteTarget) {
+      return;
+    }
+
+    setDeletingOrderId(deleteTarget.id);
+    setDeleteError(null);
+    try {
+      await deleteOrder(deleteTarget.id);
+      router.refresh();
+      setDetailOrderId((prev) => (prev === String(deleteTarget.id) ? null : prev));
+      setEditOrderId((prev) => (prev === deleteTarget.id ? null : prev));
+      setDayPopup((prev) => {
+        if (!prev) {
+          return prev;
+        }
+
+        const nextOrders = prev.orders.filter((order) => order.id !== deleteTarget.id);
+        return nextOrders.length > 0 ? { ...prev, orders: nextOrders } : null;
+      });
+      setDeleteTarget(null);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "주문 삭제에 실패했습니다.");
+    } finally {
+      setDeletingOrderId(null);
+    }
   }
 
   async function submitCreateOrder(event: FormEvent<HTMLFormElement>) {
@@ -873,6 +912,14 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
                     >
                       문자 전송
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => requestDeleteOrder(order)}
+                      disabled={deletingOrderId === order.id}
+                      className="w-full rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-60"
+                    >
+                      {deletingOrderId === order.id ? "삭제 중..." : "주문 삭제"}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -966,6 +1013,14 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
                           className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700"
                         >
                           문자
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => requestDeleteOrder(order)}
+                          disabled={deletingOrderId === order.id}
+                          className="rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 disabled:opacity-60"
+                        >
+                          삭제
                         </button>
                       </div>
                     </td>
@@ -1204,6 +1259,49 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
                 className="flex-1 rounded-xl bg-lime-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
               >
                 {submittingOrderId ? "처리 중..." : "확인"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-[82] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => {
+            if (!deletingOrderId) {
+              setDeleteTarget(null);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-base font-bold text-stone-900">주문 삭제 확인</h3>
+            <p className="mt-2 text-sm text-stone-700">주문번호 {deleteTarget.id}을(를) 삭제할까요?</p>
+            <p className="mt-1 text-xs text-stone-500">취소 완료 전 주문은 삭제 시 재고와 사용 혜택이 복구됩니다.</p>
+            {deleteError && (
+              <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                {deleteError}
+              </p>
+            )}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={Boolean(deletingOrderId)}
+                className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700 disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDeleteOrder()}
+                disabled={Boolean(deletingOrderId)}
+                className="flex-1 rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {deletingOrderId ? "삭제 중..." : "삭제"}
               </button>
             </div>
           </div>

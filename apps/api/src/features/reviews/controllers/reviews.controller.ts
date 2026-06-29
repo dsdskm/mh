@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, NotFoundException, Param, Post } from '@nestjs/common';
 import { ReviewsService } from '../services/reviews.service';
 
 type CreateReviewBody = {
@@ -77,5 +77,15 @@ export class ReviewsController {
       name,
       content,
     });
+  }
+
+  @Delete('backoffice/reviews/:id')
+  async deleteBackofficeReview(@Param('id') reviewId: string) {
+    const deleted = await this.reviewsService.deleteReview(reviewId);
+    if (!deleted) {
+      throw new NotFoundException('후기를 찾을 수 없습니다.');
+    }
+
+    return { ok: true };
   }
 }

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Like, Repository } from 'typeorm';
 import { NotificationEntity, NotificationType } from '../../../database/entities/notification.entity';
 import { AdminNotification } from '../../../shared/store.types';
 
@@ -58,6 +58,14 @@ export class NotificationsService {
     }
 
     return { ok: true, removed: false };
+  }
+
+  async deleteOrderNotifications(orderId: number): Promise<void> {
+    await this.notificationRepository.delete({
+      type: 'order',
+      url: '/orders',
+      content: Like(`%주문 ${orderId}%`),
+    });
   }
 
   private toAdminNotification(notification: NotificationEntity): AdminNotification {

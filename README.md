@@ -59,7 +59,7 @@ docker run --rm --network corn-app_default curlimages/curl:8.10.1 -i http://corn
 gcloud compute ssh corn-vm-instance --zone asia-northeast3-a -- -L 5432:localhost:5432
 
 # restore
-PGPASSWORD=root /opt/homebrew/opt/postgresql@17/bin/pg_restore \
+/opt/homebrew/opt/postgresql@17/bin/pg_restore \
   -h localhost \
   -p 5432 \
   -U root \
@@ -69,5 +69,4 @@ PGPASSWORD=root /opt/homebrew/opt/postgresql@17/bin/pg_restore \
   --no-owner \
   --no-privileges \
   --role=root \
-  --exit-on-error=0 \
   /Users/kkh/workspace/kkh/corn/backup

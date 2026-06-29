@@ -16,6 +16,7 @@ export default function OrdersPage() {
         updateOrderStatus={state.updateOrderStatus}
         createOrder={state.createOrder}
         updateOrder={state.updateOrder}
+        deleteOrder={state.deleteOrder}
       />
     </AdminShell>
   );

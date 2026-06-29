@@ -7,6 +7,9 @@ import {
   createBackofficeOrderApi,
   createProductApi,
   deleteAdminAccountApi,
+  deleteAdminInquiryApi,
+  deleteBackofficeOrderApi,
+  deleteAdminReviewApi,
   deleteProductApi,
   fetchAdminInquiriesApi,
   fetchAdminOrdersApi,
@@ -145,6 +148,9 @@ export type AdminPageState = {
   updateOrderStatus: (orderId: number, status: OrderStatus) => Promise<void>;
   createOrder: (payload: AdminOrderCreatePayload) => Promise<void>;
   updateOrder: (orderId: number, payload: AdminOrderUpdatePayload) => Promise<void>;
+  deleteOrder: (id: number) => Promise<void>;
+  deleteReview: (reviewId: string) => Promise<void>;
+  deleteInquiry: (inquiryId: string) => Promise<void>;
   submitProduct: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   createProduct: (payload: {
     name: string;
@@ -505,6 +511,44 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "주문 수정에 실패했습니다.");
       throw updateError;
+    }
+  }
+
+  async function deleteOrder(id: number) {
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteBackofficeOrderApi(id);
+      setNotice("주문을 삭제했습니다.");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "주문 삭제에 실패했습니다.");
+      throw deleteError;
+    }
+  }
+
+  async function deleteReview(reviewId: string) {
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteAdminReviewApi(reviewId);
+      setReviews((prev) => prev.filter((review) => review.id !== reviewId));
+      setNotice("후기를 삭제했습니다.");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "후기 삭제에 실패했습니다.");
+      throw deleteError;
+    }
+  }
+
+  async function deleteInquiry(inquiryId: string) {
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteAdminInquiryApi(inquiryId);
+      setInquiries((prev) => prev.filter((inquiry) => inquiry.id !== inquiryId));
+      setNotice("문의를 삭제했습니다.");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "문의 삭제에 실패했습니다.");
+      throw deleteError;
     }
   }
 
@@ -945,6 +989,9 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     updateOrderStatus,
     createOrder,
     updateOrder,
+    deleteOrder,
+    deleteReview,
+    deleteInquiry,
     submitProduct,
     createProduct,
     updateProduct,

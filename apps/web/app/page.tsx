@@ -122,6 +122,24 @@ function isOperatorAuthor(name: string): boolean {
   return /운영자|관리자/.test(name);
 }
 
+function formatKoreanDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "");
 const MEMBER_PHONE_KEY = "cornmarket:member-phone";
 const NOTICE_DISMISS_KEY_PREFIX = "cornmarket:notice:dismissed:";
@@ -129,8 +147,9 @@ const TERMS_SEEN_VERSION_KEY = "cornmarket:terms:seen-version";
 
 export default function Home() {
   const { data: session, status } = useSession();
-  const isLoggedIn = status === "authenticated";
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+  const isLoggedIn = mounted && status === "authenticated";
 
   const [products, setProducts] = useState<Product[]>([]);
   const [storeConfig, setStoreConfig] = useState<StoreConfig>({
@@ -216,6 +235,10 @@ export default function Home() {
   const [guestOrderVerifyingCode, setGuestOrderVerifyingCode] = useState(false);
   const [guestHasRegisteredAccount, setGuestHasRegisteredAccount] = useState(false);
   const videoIframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const savedPhone = localStorage.getItem(MEMBER_PHONE_KEY);
@@ -1275,7 +1298,7 @@ export default function Home() {
                 <p className="text-sm font-bold text-stone-900">{review.name}</p>
                 <p className="mt-1 text-sm text-stone-700">{review.content}</p>
                 <p className="mt-1 text-xs text-stone-500">
-                  작성일 {new Date(review.createdAt).toLocaleString("ko-KR")}
+                  작성일 {formatKoreanDateTime(review.createdAt)}
                 </p>
                 {review.comments.length > 0 && (
                   <div className="mt-3 rounded-xl bg-stone-50 p-3 text-sm text-stone-700">
@@ -1370,14 +1393,14 @@ export default function Home() {
         </div>
       </div>
 
-      <footer className="border-t border-stone-200 bg-white px-3 py-5 text-stone-900 sm:px-4 sm:py-6">
+      <footer className="mt-6 border-t border-stone-200 bg-white px-3 py-5 pt-5 text-stone-900 sm:px-4 sm:py-6 sm:pt-6">
         <div className="mx-auto w-full max-w-3xl space-y-3">
           <div className="space-y-1 text-sm text-stone-900">
             <p className="text-[11px] font-bold uppercase tracking-[0.12em]">사업자 정보</p>
             <p>판매자: {storeConfig.sellerName || "-"}</p>
             <p>연락처: {storeConfig.sellerPhone ? formatPhone(storeConfig.sellerPhone) : "-"}</p>
             <p>원산지: {storeConfig.origin || "-"}</p>
-            <p className="pt-2 text-[11px] font-bold uppercase tracking-[0.12em]">위탁 사업자 정보</p>
+            <p className="pt-2 text-[11px] font-bold uppercase tracking-[0.12em]">온라인 서비스 위탁 사업자 정보</p>
             <p>사업자명: {storeConfig.trusteeBusinessName || "-"}</p>
             <p>사업자등록번호: {storeConfig.trusteeBusinessNumber || "-"}</p>
             <p>대표: {storeConfig.trusteeRepresentative || "-"}</p>
@@ -1764,7 +1787,7 @@ export default function Home() {
                   <p>{orderDone.transfer.accountHolder}</p>
                   {orderDone.order.paymentDueAt && (
                     <p className="mt-2 rounded-lg bg-white/70 px-2 py-1 text-xs font-bold text-rose-700">
-                      입금 기한: {new Date(orderDone.order.paymentDueAt).toLocaleString()} 까지
+                      입금 기한: {formatKoreanDateTime(orderDone.order.paymentDueAt)} 까지
                       <br />
                       기한 내 미입금 시 주문이 자동 취소됩니다.
                     </p>
@@ -2153,7 +2176,7 @@ export default function Home() {
             <h3 className="mt-2 text-xl font-bold text-stone-900">이용약관이 업데이트되었습니다</h3>
             {storeConfig.termsUpdatedAt && (
               <p className="mt-1 text-xs text-stone-500">
-                변경 시각: {new Date(storeConfig.termsUpdatedAt).toLocaleString("ko-KR")}
+                변경 시각: {formatKoreanDateTime(storeConfig.termsUpdatedAt)}
               </p>
             )}
             <p className="mt-3 text-sm text-stone-700">서비스 이용 전 최신 이용약관을 확인해주세요.</p>

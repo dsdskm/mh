@@ -9,6 +9,7 @@ import { usePersistedPagination } from "../../_hooks/use-persisted-pagination";
 
 type Props = {
   reviews: Review[];
+  deleteReview: (reviewId: string) => Promise<void>;
 };
 
 function isOperatorAuthor(name: string): boolean {
@@ -34,7 +35,7 @@ function formatDateTime(value: string): string {
   return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
 }
 
-export function ReviewsTab({ reviews }: Props) {
+export function ReviewsTab({ reviews, deleteReview }: Props) {
   const { markAlertAsRead } = useAdminAlert();
   const [items, setItems] = useState<Review[]>(reviews);
   const [detailReviewId, setDetailReviewId] = useState<string | null>(null);
@@ -42,6 +43,9 @@ export function ReviewsTab({ reviews }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Review | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     setItems(reviews);
@@ -119,6 +123,44 @@ export function ReviewsTab({ reviews }: Props) {
     }
   }
 
+  async function confirmDeleteReview() {
+    if (!detailReview) {
+      return;
+    }
+
+    setDeletingReviewId(detailReview.id);
+    setDeleteError(null);
+    try {
+      await deleteReview(detailReview.id);
+      setDetailReviewId(null);
+      setCommentContent("");
+    } catch (deleteError) {
+      setDeleteError(deleteError instanceof Error ? deleteError.message : "후기 삭제에 실패했습니다.");
+    } finally {
+      setDeletingReviewId(null);
+    }
+  }
+
+  async function requestDeleteReview(review: Review) {
+    setDeleteError(null);
+    setDeleteTarget(review);
+  }
+
+  async function performDeleteReview(review: Review) {
+    setDeletingReviewId(review.id);
+    setDeleteError(null);
+    try {
+      await deleteReview(review.id);
+      setDetailReviewId((prev) => (prev === review.id ? null : prev));
+      setCommentContent("");
+      setDeleteTarget(null);
+    } catch (deleteError) {
+      setDeleteError(deleteError instanceof Error ? deleteError.message : "후기 삭제에 실패했습니다.");
+    } finally {
+      setDeletingReviewId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <h2 className="font-display text-3xl text-lime-800">후기</h2>
@@ -142,12 +184,13 @@ export function ReviewsTab({ reviews }: Props) {
               <th className="px-3 py-2 text-left">내용</th>
               <th className="px-3 py-2 text-left">댓글</th>
               <th className="px-3 py-2 text-left">수정일시</th>
+              <th className="px-3 py-2 text-left">관리</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100 bg-white">
             {paginatedReviews.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-stone-400">
+                <td colSpan={5} className="px-3 py-6 text-center text-stone-400">
                   {filteredReviews.length === 0 && searchQuery ? "검색 결과 없음" : "등록된 후기가 없습니다"}
                 </td>
               </tr>
@@ -177,6 +220,19 @@ export function ReviewsTab({ reviews }: Props) {
                     </span>
                   </td>
                   <td className="px-3 py-3 text-stone-500 text-xs">{formatDateTime(review.updatedAt ?? review.createdAt)}</td>
+                  <td className="px-3 py-3">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void requestDeleteReview(review);
+                      }}
+                      disabled={deletingReviewId === review.id}
+                      className="rounded-lg border border-red-300 px-2 py-1 text-[11px] font-semibold text-red-700 disabled:opacity-60"
+                    >
+                      {deletingReviewId === review.id ? "삭제 중..." : "삭제"}
+                    </button>
+                  </td>
                 </tr>
               );
             })}
@@ -210,14 +266,28 @@ export function ReviewsTab({ reviews }: Props) {
                 <h3 className="text-xl font-bold text-stone-900">후기 상세</h3>
                 <p className="mt-0.5 text-xs text-stone-500">{detailReview.name}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setDetailReviewId(null)}
-                className="rounded-lg border border-stone-300 px-3 py-1 text-xs font-semibold text-stone-600"
-              >
-                닫기
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void confirmDeleteReview()}
+                  disabled={deletingReviewId === detailReview.id || submitting}
+                  className="rounded-lg border border-red-300 px-3 py-1 text-xs font-semibold text-red-700 disabled:opacity-60"
+                >
+                  {deletingReviewId === detailReview.id ? "삭제 중..." : "삭제"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailReviewId(null)}
+                  className="rounded-lg border border-stone-300 px-3 py-1 text-xs font-semibold text-stone-600"
+                >
+                  닫기
+                </button>
+              </div>
             </div>
+
+            {deleteError && (
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{deleteError}</p>
+            )}
 
             <div className="mt-4 rounded-xl bg-stone-50 p-3">
               <p className="whitespace-pre-wrap text-sm text-stone-700">{detailReview.content}</p>
@@ -271,6 +341,41 @@ export function ReviewsTab({ reviews }: Props) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4">
+          <div
+            className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-base font-bold text-stone-900">후기 삭제 확인</h3>
+            <p className="mt-2 text-sm text-stone-700">
+              후기 "{deleteTarget.content.slice(0, 20)}{deleteTarget.content.length > 20 ? "..." : ""}"을(를) 삭제할까요?
+            </p>
+            {deleteError && (
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{deleteError}</p>
+            )}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deletingReviewId === deleteTarget.id}
+                className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700 disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void performDeleteReview(deleteTarget)}
+                disabled={deletingReviewId === deleteTarget.id}
+                className="flex-1 rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {deletingReviewId === deleteTarget.id ? "삭제 중..." : "삭제"}
+              </button>
+            </div>
           </div>
         </div>
       )}

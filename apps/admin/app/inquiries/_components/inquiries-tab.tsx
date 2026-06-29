@@ -11,6 +11,7 @@ import { usePersistedPagination } from "../../_hooks/use-persisted-pagination";
 type Props = {
   inquiries: Inquiry[];
   notifications: AdminNotification[];
+  deleteInquiry: (inquiryId: string) => Promise<void>;
 };
 
 function isOperatorAuthor(name: string): boolean {
@@ -40,14 +41,17 @@ function formatDateTime(value: string): string {
   return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
 }
 
-export function InquiriesTab({ inquiries, notifications }: Props) {
+export function InquiriesTab({ inquiries, notifications, deleteInquiry }: Props) {
   const { markAlertAsRead } = useAdminAlert();
   const [items, setItems] = useState<Inquiry[]>(inquiries);
   const [locallyReadNotificationIds, setLocallyReadNotificationIds] = useState<Set<number>>(new Set());
   const [detailInquiryId, setDetailInquiryId] = useState<string | null>(null);
   const [commentContent, setCommentContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deletingInquiryId, setDeletingInquiryId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Inquiry | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
@@ -127,6 +131,26 @@ export function InquiriesTab({ inquiries, notifications }: Props) {
     }
   }
 
+  async function performDeleteInquiry(inquiry: Inquiry) {
+    setDeletingInquiryId(inquiry.id);
+    setDeleteError(null);
+    try {
+      await deleteInquiry(inquiry.id);
+      setDetailInquiryId((prev) => (prev === inquiry.id ? null : prev));
+      setCommentContent("");
+      setDeleteTarget(null);
+    } catch (deleteError) {
+      setDeleteError(deleteError instanceof Error ? deleteError.message : "문의 삭제에 실패했습니다.");
+    } finally {
+      setDeletingInquiryId(null);
+    }
+  }
+
+  function requestDeleteInquiry(inquiry: Inquiry) {
+    setDeleteError(null);
+    setDeleteTarget(inquiry);
+  }
+
   function getUnreadInquiryNotificationIds(inquiry: Inquiry): number[] {
     return notifications
       .filter((notification) => notification.type === "inquiry")
@@ -162,12 +186,13 @@ export function InquiriesTab({ inquiries, notifications }: Props) {
               <th className="px-3 py-2 text-left">제목</th>
               <th className="px-3 py-2 text-left">댓글</th>
               <th className="px-3 py-2 text-left">수정일시</th>
+              <th className="px-3 py-2 text-left">관리</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100 bg-white">
             {paginatedInquiries.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-stone-400">
+                <td colSpan={5} className="px-3 py-6 text-center text-stone-400">
                   {filteredInquiries.length === 0 && searchQuery ? "검색 결과 없음" : "등록된 문의가 없습니다"}
                 </td>
               </tr>
@@ -213,6 +238,19 @@ export function InquiriesTab({ inquiries, notifications }: Props) {
                     </span>
                   </td>
                   <td className="px-3 py-3 text-stone-500 text-xs">{formatDateTime(inquiry.updatedAt ?? inquiry.createdAt)}</td>
+                  <td className="px-3 py-3">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void requestDeleteInquiry(inquiry);
+                      }}
+                      disabled={deletingInquiryId === inquiry.id}
+                      className="rounded-lg border border-red-300 px-2 py-1 text-[11px] font-semibold text-red-700 disabled:opacity-60"
+                    >
+                      {deletingInquiryId === inquiry.id ? "삭제 중..." : "삭제"}
+                    </button>
+                  </td>
                 </tr>
               );
             })}
@@ -255,14 +293,28 @@ export function InquiriesTab({ inquiries, notifications }: Props) {
                   {detailInquiry.name} · {formatPhone(detailInquiry.phone)}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setDetailInquiryId(null)}
-                className="rounded-lg border border-stone-300 px-3 py-1 text-xs font-semibold text-stone-600"
-              >
-                닫기
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void requestDeleteInquiry(detailInquiry)}
+                  disabled={deletingInquiryId === detailInquiry.id || submitting}
+                  className="rounded-lg border border-red-300 px-3 py-1 text-xs font-semibold text-red-700 disabled:opacity-60"
+                >
+                  {deletingInquiryId === detailInquiry.id ? "삭제 중..." : "삭제"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailInquiryId(null)}
+                  className="rounded-lg border border-stone-300 px-3 py-1 text-xs font-semibold text-stone-600"
+                >
+                  닫기
+                </button>
+              </div>
             </div>
+
+            {deleteError && (
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{deleteError}</p>
+            )}
 
             <div className="mt-4 rounded-xl bg-stone-50 p-3">
               <p className="text-sm font-semibold text-stone-900">{detailInquiry.title}</p>
@@ -317,6 +369,39 @@ export function InquiriesTab({ inquiries, notifications }: Props) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4">
+          <div
+            className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-base font-bold text-stone-900">문의 삭제 확인</h3>
+            <p className="mt-2 text-sm text-stone-700">문의 "{deleteTarget.title}"을(를) 삭제할까요?</p>
+            {deleteError && (
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{deleteError}</p>
+            )}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deletingInquiryId === deleteTarget.id}
+                className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700 disabled:opacity-60"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void performDeleteInquiry(deleteTarget)}
+                disabled={deletingInquiryId === deleteTarget.id}
+                className="flex-1 rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {deletingInquiryId === deleteTarget.id ? "삭제 중..." : "삭제"}
+              </button>
+            </div>
           </div>
         </div>
       )}

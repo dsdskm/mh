@@ -59,24 +59,40 @@ import { DatabaseSyncController } from './features/database-sync/database-sync.c
 import { DatabaseSyncService } from './features/database-sync/database-sync.service';
 
 function loadEnvFiles() {
-  const candidates = [
-    path.resolve(process.cwd(), 'apps/api/.env'),
-    path.resolve(process.cwd(), '.env'),
-    path.resolve(__dirname, '../.env'),
-    path.resolve(__dirname, '../../../.env'),
-  ];
+  const seen = new Set<string>();
+  const searchRoots = [process.cwd(), __dirname];
+  const candidates: string[] = [];
 
-  for (const filePath of candidates) {
-    if (existsSync(filePath)) {
-      dotenv.config({ path: filePath, override: false });
+  for (const root of searchRoots) {
+    let current = path.resolve(root);
+
+    while (!seen.has(current)) {
+      seen.add(current);
+      candidates.push(path.join(current, '.env'));
+
+      const parent = path.dirname(current);
+      if (parent === current) {
+        break;
+      }
+
+      current = parent;
     }
+  }
+
+  const filePath = candidates.find((candidate) => existsSync(candidate));
+
+  if (filePath) {
+    dotenv.config({ path: filePath, override: false });
   }
 }
 
 loadEnvFiles();
 
-const databaseUrl =
-  process.env.DATABASE_URL ?? 'postgresql://root:root@localhost:5432/main';
+const databaseUrl = process.env.DATABASE_URL?.trim();
+
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL is required');
+}
 
 @Module({
   imports: [

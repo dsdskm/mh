@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -274,6 +275,11 @@ export class OrdersController {
     }
 
     return this.ordersService.updateOrderStatus(this.parseOrderId(id), body.status);
+  }
+
+  @Delete('backoffice/orders/:id')
+  async deleteBackofficeOrder(@Param('id') id: string) {
+    return this.ordersService.deleteBackofficeOrder(this.parseOrderId(id));
   }
 
   private parseOrderId(id: string): number {

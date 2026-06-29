@@ -97,6 +97,16 @@ export class ReviewsService {
     return this.toReview(updated);
   }
 
+  async deleteReview(reviewId: string): Promise<boolean> {
+    const result = await this.reviewRepository.delete({ id: reviewId });
+    if ((result.affected ?? 0) > 0) {
+      void this.firestoreTrigger.notify('reviews');
+      return true;
+    }
+
+    return false;
+  }
+
   private createReviewId(): string {
     return `REV-${Date.now().toString(36).toUpperCase()}`;
   }

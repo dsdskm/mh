@@ -36,3 +36,19 @@ export async function createAdminReviewCommentApi(
 
   return parseJsonOrThrow<Review>(response, "후기 댓글 등록에 실패했습니다.");
 }
+
+export async function deleteAdminReviewApi(reviewId: string): Promise<void> {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/reviews/${reviewId}`, {
+    method: "DELETE",
+  });
+
+  await parseJsonOrThrow<{ ok: boolean }>(response, "후기 삭제에 실패했습니다.");
+}
+
+export async function deleteAdminInquiryApi(inquiryId: string): Promise<void> {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/inquiries/${inquiryId}`, {
+    method: "DELETE",
+  });
+
+  await parseJsonOrThrow<{ ok: boolean }>(response, "문의 삭제에 실패했습니다.");
+}

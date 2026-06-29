@@ -137,6 +137,7 @@ type Props = {
 
 export function AdminShell({ activeTab, state, children }: Props) {
   const [readAlertIds, setReadAlertIds] = useState<Set<string>>(new Set());
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showBusinessTextModal, setShowBusinessTextModal] = useState(false);
   const [showBusinessStatusConfirmModal, setShowBusinessStatusConfirmModal] = useState(false);
   const [pendingBusinessStatus, setPendingBusinessStatus] = useState<"open" | "standby" | "closed" | null>(null);
@@ -321,17 +322,43 @@ export function AdminShell({ activeTab, state, children }: Props) {
   }
 
   return (
-    <div className="flex min-h-screen bg-admin-pattern text-stone-900">
-      {/* 좌측 메뉴 - 고정 */}
-      <aside className="fixed left-0 top-0 h-screen w-60 border-r border-lime-200 bg-white/95 shadow-xl">
+    <div className="min-h-screen bg-admin-pattern text-stone-900 lg:flex">
+      <header className="sticky top-0 z-40 border-b border-lime-200 bg-white/95 px-3 py-3 backdrop-blur lg:hidden">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-lime-700">Admin</p>
+            <p className="truncate font-display text-xl text-lime-800">{activeTab}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowMobileMenu(true)}
+            className="rounded-xl border border-lime-300 bg-lime-50 px-3 py-2 text-sm font-bold text-lime-800"
+          >
+            메뉴
+          </button>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <span
+            className={`rounded-full border px-2 py-0.5 font-bold ${getBusinessStatusBadgeClass(
+              state.config?.businessStatus ?? "open",
+            )}`}
+          >
+            {getBusinessStatusLabel(state.config?.businessStatus ?? "open")}
+          </span>
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 font-bold text-amber-800">
+            알림 {commonAlerts.length}건
+          </span>
+        </div>
+      </header>
+
+      <aside className="fixed left-0 top-0 hidden h-screen w-60 border-r border-lime-200 bg-white/95 shadow-xl lg:block">
         <div className="h-full overflow-auto p-4">
           <AdminSidebar tabs={TABS} activeTab={activeTab} onLogout={state.logout} />
         </div>
       </aside>
 
-      {/* 중앙 화면 - 스크롤 가능 */}
-      <main className="ml-60 flex-1 overflow-auto pb-10 pr-80">
-        <div className="fixed left-60 right-80 top-0 z-30 border-b border-lime-200 bg-white/90 px-3 py-3 backdrop-blur sm:px-4 lg:px-6">
+      <main className="flex-1 pb-10 lg:ml-60 lg:mr-80">
+        <div className="sticky top-0 z-30 hidden border-b border-lime-200 bg-white/90 px-3 py-3 backdrop-blur sm:px-4 lg:block lg:fixed lg:left-60 lg:right-80 lg:top-0 lg:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <p className="text-sm font-extrabold text-stone-900">운영 상태</p>
@@ -380,7 +407,7 @@ export function AdminShell({ activeTab, state, children }: Props) {
           )}
         </div>
 
-        <div className="px-3 pt-28 sm:px-4 lg:px-6">
+        <div className="px-3 pt-4 sm:px-4 lg:px-6 lg:pt-28">
           {state.loading && <p className="text-sm text-stone-600">데이터 불러오는 중...</p>}
           {state.error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
           {state.notice && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{state.notice}</p>}
@@ -390,8 +417,7 @@ export function AdminShell({ activeTab, state, children }: Props) {
         </div>
       </main>
 
-      {/* 우측 알림 영역 - 고정 */}
-      <aside className="fixed right-0 top-0 h-screen w-80 border-l border-amber-200 bg-white/95 shadow-xl">
+      <aside className="fixed right-0 top-0 hidden h-screen w-80 border-l border-amber-200 bg-white/95 shadow-xl lg:block">
         <div className="h-full overflow-auto p-4">
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
@@ -438,6 +464,42 @@ export function AdminShell({ activeTab, state, children }: Props) {
           </div>
         </div>
       </aside>
+
+      {showMobileMenu && (
+        <div className="fixed inset-0 z-50 bg-black/40 lg:hidden" onClick={() => setShowMobileMenu(false)}>
+          <div
+            className="absolute left-0 top-0 h-full w-[86vw] max-w-sm overflow-auto bg-white p-4 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-lime-700">Admin</p>
+                <p className="font-display text-2xl text-lime-800">운영센터</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMobileMenu(false)}
+                className="rounded-xl border border-stone-300 px-3 py-2 text-xs font-semibold text-stone-700"
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <AdminSidebar
+                tabs={TABS}
+                activeTab={activeTab}
+                onLogout={() => {
+                  setShowMobileMenu(false);
+                  state.logout();
+                }}
+                onNavigate={() => setShowMobileMenu(false)}
+                className="w-full rounded-2xl"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {showBusinessTextModal && (
         <div

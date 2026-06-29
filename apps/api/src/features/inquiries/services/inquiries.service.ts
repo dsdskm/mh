@@ -135,7 +135,12 @@ export class InquiriesService {
 
   async deleteInquiry(id: string): Promise<boolean> {
     const result = await this.inquiryRepository.delete({ id });
-    return (result.affected ?? 0) > 0;
+    const deleted = (result.affected ?? 0) > 0;
+    if (deleted) {
+      void this.firestoreTrigger.notify('inquiries');
+    }
+
+    return deleted;
   }
 
   private createInquiryId(): string {

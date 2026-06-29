@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import OrdersPage from "./orders/page";
 
 export default function AdminIndexPage() {
-  redirect("/orders");
+  return <OrdersPage />;
 }
