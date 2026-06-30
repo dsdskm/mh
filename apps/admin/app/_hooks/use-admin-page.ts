@@ -57,6 +57,7 @@ import {
 } from "../_lib/types";
 
 export type AdminPageState = {
+  authReady: boolean;
   isAuthed: boolean;
   loginUserId: string;
   loginPassword: string;
@@ -222,6 +223,7 @@ export type AdminPageState = {
 
 export function useAdminPage(initialTab: AdminTab): AdminPageState {
 
+  const [authReady, setAuthReady] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
   const [loginUserId, setLoginUserId] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -330,13 +332,12 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
 
   useEffect(() => {
     const token = getAdminAccessToken();
-    if (token) {
-      setIsAuthed(true);
-    }
+    setIsAuthed(Boolean(token));
+    setAuthReady(true);
   }, []);
 
   useEffect(() => {
-    if (!isAuthed) {
+    if (!authReady || !isAuthed) {
       return;
     }
 
@@ -399,7 +400,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     }
 
     void loadAdminData();
-  }, [isAuthed]);
+  }, [authReady, isAuthed]);
 
   const refreshOrders = useCallback(async () => {
     try {
@@ -888,6 +889,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   }
 
   return {
+    authReady,
     isAuthed,
     loginUserId,
     loginPassword,

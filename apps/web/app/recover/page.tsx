@@ -1,13 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
   findUserIdApi,
   requestRecoverPhoneVerificationApi,
   resetPasswordApi,
   verifyRecoverPhoneCodeApi,
 } from "./api/recover.api";
+
+function formatCountdown(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = Math.max(0, totalSeconds % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
 
 export default function RecoverPage() {
   const [name, setName] = useState("");
@@ -20,6 +30,8 @@ export default function RecoverPage() {
   const [findVerificationToken, setFindVerificationToken] = useState<string | null>(null);
   const [findSendingCode, setFindSendingCode] = useState(false);
   const [findVerifyingCode, setFindVerifyingCode] = useState(false);
+  const [findCodeExpiresAt, setFindCodeExpiresAt] = useState<number | null>(null);
+  const [findCodeRemainingSec, setFindCodeRemainingSec] = useState(0);
 
   const [resetUserId, setResetUserId] = useState("");
   const [resetPhone, setResetPhone] = useState("");
@@ -31,9 +43,63 @@ export default function RecoverPage() {
   const [resetVerificationToken, setResetVerificationToken] = useState<string | null>(null);
   const [resetSendingCode, setResetSendingCode] = useState(false);
   const [resetVerifyingCode, setResetVerifyingCode] = useState(false);
+  const [resetCodeExpiresAt, setResetCodeExpiresAt] = useState<number | null>(null);
+  const [resetCodeRemainingSec, setResetCodeRemainingSec] = useState(0);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!findCodeSent || findPhoneVerified || !findCodeExpiresAt) {
+      setFindCodeRemainingSec(0);
+      return;
+    }
+
+    const updateRemaining = () => {
+      const nextRemaining = Math.max(
+        0,
+        Math.ceil((findCodeExpiresAt - Date.now()) / 1000),
+      );
+      setFindCodeRemainingSec(nextRemaining);
+
+      if (nextRemaining <= 0) {
+        setFindCodeSent(false);
+        setFindPhoneVerified(false);
+        setFindVerificationToken(null);
+        setFindCodeExpiresAt(null);
+      }
+    };
+
+    updateRemaining();
+    const timer = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(timer);
+  }, [findCodeSent, findPhoneVerified, findCodeExpiresAt]);
+
+  useEffect(() => {
+    if (!resetCodeSent || resetPhoneVerified || !resetCodeExpiresAt) {
+      setResetCodeRemainingSec(0);
+      return;
+    }
+
+    const updateRemaining = () => {
+      const nextRemaining = Math.max(
+        0,
+        Math.ceil((resetCodeExpiresAt - Date.now()) / 1000),
+      );
+      setResetCodeRemainingSec(nextRemaining);
+
+      if (nextRemaining <= 0) {
+        setResetCodeSent(false);
+        setResetPhoneVerified(false);
+        setResetVerificationToken(null);
+        setResetCodeExpiresAt(null);
+      }
+    };
+
+    updateRemaining();
+    const timer = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(timer);
+  }, [resetCodeSent, resetPhoneVerified, resetCodeExpiresAt]);
 
   async function requestFindPhoneCode() {
     const normalizedPhone = findPhone.replace(/\D/g, "");
@@ -47,9 +113,11 @@ export default function RecoverPage() {
     setSuccess(null);
     try {
       await requestRecoverPhoneVerificationApi({ phone: normalizedPhone });
+      const expiresAtMs = Date.now() + 3 * 60 * 1000;
       setFindCodeSent(true);
       setFindPhoneVerified(false);
       setFindVerificationToken(null);
+      setFindCodeExpiresAt(Number.isFinite(expiresAtMs) ? expiresAtMs : null);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "인증번호 요청 실패");
     } finally {
@@ -66,6 +134,11 @@ export default function RecoverPage() {
       return;
     }
 
+    if (findCodeRemainingSec <= 0) {
+      setError("인증번호가 만료되었습니다. 다시 요청해주세요.");
+      return;
+    }
+
     setFindVerifyingCode(true);
     setError(null);
     setSuccess(null);
@@ -76,6 +149,7 @@ export default function RecoverPage() {
       });
       setFindVerificationToken(result.verificationToken);
       setFindPhoneVerified(true);
+      setFindCodeRemainingSec(0);
       setSuccess("아이디 찾기용 문자 인증이 완료되었습니다.");
     } catch (verifyError) {
       setFindVerificationToken(null);
@@ -98,9 +172,11 @@ export default function RecoverPage() {
     setSuccess(null);
     try {
       await requestRecoverPhoneVerificationApi({ phone: normalizedPhone });
+      const expiresAtMs = Date.now() + 3 * 60 * 1000;
       setResetCodeSent(true);
       setResetPhoneVerified(false);
       setResetVerificationToken(null);
+      setResetCodeExpiresAt(Number.isFinite(expiresAtMs) ? expiresAtMs : null);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "인증번호 요청 실패");
     } finally {
@@ -117,6 +193,11 @@ export default function RecoverPage() {
       return;
     }
 
+    if (resetCodeRemainingSec <= 0) {
+      setError("인증번호가 만료되었습니다. 다시 요청해주세요.");
+      return;
+    }
+
     setResetVerifyingCode(true);
     setError(null);
     setSuccess(null);
@@ -127,6 +208,7 @@ export default function RecoverPage() {
       });
       setResetVerificationToken(result.verificationToken);
       setResetPhoneVerified(true);
+      setResetCodeRemainingSec(0);
       setSuccess("비밀번호 재설정용 문자 인증이 완료되었습니다.");
     } catch (verifyError) {
       setResetVerificationToken(null);
@@ -220,10 +302,13 @@ export default function RecoverPage() {
               value={findPhone}
               onChange={(event) => {
                 setFindPhone(event.target.value.replace(/\D/g, ""));
+                setFindCodeSent(false);
                 setFindPhoneVerified(false);
                 setFindVerificationToken(null);
+                setFindCodeExpiresAt(null);
+                setFindCodeRemainingSec(0);
               }}
-              placeholder="전화번호 (숫자만)"
+              placeholder="전화번호 (숫자만 입력)"
               className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               inputMode="numeric"
               required
@@ -248,12 +333,17 @@ export default function RecoverPage() {
                 <button
                   type="button"
                   onClick={() => void verifyFindPhoneCode()}
-                  disabled={findVerifyingCode || !findCodeSent}
+                  disabled={findVerifyingCode || !findCodeSent || findCodeRemainingSec <= 0}
                   className="rounded-xl bg-lime-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
                 >
                   {findVerifyingCode ? "확인 중..." : "확인"}
                 </button>
               </div>
+              {findCodeSent && !findPhoneVerified && (
+                <p className={`text-xs font-semibold ${findCodeRemainingSec > 0 ? "text-amber-700" : "text-red-600"}`}>
+                  인증번호 유효시간: {formatCountdown(findCodeRemainingSec)}
+                </p>
+              )}
               <p className={`text-xs font-semibold ${findPhoneVerified ? "text-lime-700" : "text-stone-500"}`}>
                 {findPhoneVerified ? "문자 인증 완료" : "문자 인증 필요"}
               </p>
@@ -285,10 +375,13 @@ export default function RecoverPage() {
               value={resetPhone}
               onChange={(event) => {
                 setResetPhone(event.target.value.replace(/\D/g, ""));
+                setResetCodeSent(false);
                 setResetPhoneVerified(false);
                 setResetVerificationToken(null);
+                setResetCodeExpiresAt(null);
+                setResetCodeRemainingSec(0);
               }}
-              placeholder="전화번호 (숫자만)"
+              placeholder="전화번호 (숫자만 입력)"
               className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               inputMode="numeric"
               required
@@ -313,12 +406,17 @@ export default function RecoverPage() {
                 <button
                   type="button"
                   onClick={() => void verifyResetPhoneCode()}
-                  disabled={resetVerifyingCode || !resetCodeSent}
+                  disabled={resetVerifyingCode || !resetCodeSent || resetCodeRemainingSec <= 0}
                   className="rounded-xl bg-lime-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
                 >
                   {resetVerifyingCode ? "확인 중..." : "확인"}
                 </button>
               </div>
+              {resetCodeSent && !resetPhoneVerified && (
+                <p className={`text-xs font-semibold ${resetCodeRemainingSec > 0 ? "text-amber-700" : "text-red-600"}`}>
+                  인증번호 유효시간: {formatCountdown(resetCodeRemainingSec)}
+                </p>
+              )}
               <p className={`text-xs font-semibold ${resetPhoneVerified ? "text-lime-700" : "text-stone-500"}`}>
                 {resetPhoneVerified ? "문자 인증 완료" : "문자 인증 필요"}
               </p>

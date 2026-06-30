@@ -67,6 +67,8 @@ export type CreateOrderInput = {
   requestNote?: string;
   depositorName: string;
   purchaseType?: 'member' | 'guest';
+  // 회원 주문 시 사은품 자동 추가를 제외할지 여부
+  excludeMemberBonus?: boolean;
   lookupToken?: string;
   // 관리자 직접 등록처럼 휴대폰 인증 없이 비회원 주문을 생성할 때 사용합니다.
   skipGuestVerification?: boolean;

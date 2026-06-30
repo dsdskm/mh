@@ -8,6 +8,20 @@ type AdminFetchInit = RequestInit & {
 
 const ADMIN_AUTH_TOKEN_KEY = "admin-access-token";
 
+function redirectToAdminLogin(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const loginPath = "/";
+  if (window.location.pathname !== loginPath) {
+    window.location.replace(loginPath);
+    return;
+  }
+
+  window.location.reload();
+}
+
 export function getAdminAccessToken(): string | null {
   if (typeof window === "undefined") {
     return null;
@@ -36,6 +50,11 @@ export function clearAdminAccessToken(): void {
 export async function adminFetch(url: string, init?: AdminFetchInit): Promise<Response> {
   const token = getAdminAccessToken();
   if (!token) {
+    clearAdminAccessToken();
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("admin-authed");
+    }
+    redirectToAdminLogin();
     throw new Error("관리자 인증이 필요합니다. 다시 로그인해주세요.");
   }
 
@@ -84,6 +103,7 @@ export async function adminFetch(url: string, init?: AdminFetchInit): Promise<Re
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("admin-authed");
     }
+    redirectToAdminLogin();
 
     throw new Error("인증이 만료되었습니다. 다시 로그인해주세요.");
   }

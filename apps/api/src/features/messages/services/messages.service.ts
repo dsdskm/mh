@@ -20,6 +20,9 @@ type FixedSmsConfig = {
   userID?: string;
 };
 
+const WEBHOOK_HISTORY_CORP_NUM = '0000000000';
+const WEBHOOK_HISTORY_SENDER = 'WEBHOOK';
+
 type GetAdminSmsHistoryInput = {
   page: number;
   pageSize: number;
@@ -96,31 +99,68 @@ export class MessagesService {
   }
 
   async sendSms(input: SendSmsInput): Promise<{ receiptNum: string }> {
-    const fixedConfig = this.getFixedSmsConfig();
-    const prefixedContent = await this.applyShopNamePrefix(input.content);
+    let fixedConfig: FixedSmsConfig | null = null;
+    let prefixedContent = input.content.trim();
+    let usingPopbill = false;
 
     try {
-      await this.popbillSmsClient.checkSenderNumber({
-        corpNum: fixedConfig.corpNum,
-        sender: fixedConfig.sender,
-        userID: fixedConfig.userID,
-      });
-      console.info(
-        `[POPBILL_SENDER_CHECK] ok corpNum=${fixedConfig.corpNum} sender=${fixedConfig.sender}`,
-      );
+      fixedConfig = this.getOptionalSmsConfig();
+      prefixedContent = await this.applyShopNamePrefix(input.content);
+      usingPopbill = Boolean(fixedConfig);
 
-      const receiptNum = await this.popbillSmsClient.sendSms({
-        ...fixedConfig,
-        ...input,
-        content: prefixedContent,
-      });
+      if (!usingPopbill && input.reserveDT) {
+        throw new BadRequestException('예약 문자는 POPBILL 설정이 필요합니다.');
+      }
+
+      let receiptNum = '';
+
+      if (fixedConfig) {
+        await this.popbillSmsClient.checkSenderNumber({
+          corpNum: fixedConfig.corpNum,
+          sender: fixedConfig.sender,
+          userID: fixedConfig.userID,
+        });
+        console.info(
+          `[POPBILL_SENDER_CHECK] ok corpNum=${fixedConfig.corpNum} sender=${fixedConfig.sender}`,
+        );
+
+        receiptNum = await this.popbillSmsClient.sendSms({
+          ...fixedConfig,
+          ...input,
+          content: prefixedContent,
+        });
+
+        console.log(`[POPBILL_SMS_SEND] success corpNum=${fixedConfig.corpNum} sender=${fixedConfig.sender} receiptNum=${receiptNum}`);
+      } else {
+        const webhookUrl = process.env.SMS_WEBHOOK_URL?.trim();
+        if (!webhookUrl) {
+          throw new BadRequestException('문자 발송 설정이 누락되었습니다. 관리자에게 문의해주세요.');
+        }
+
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            to: input.receiver,
+            message: prefixedContent,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new BadRequestException('문자 발송에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        }
+
+        receiptNum = `webhook-${Date.now()}`;
+      }
 
       await this.adminSmsHistoryRepository.save(
         this.adminSmsHistoryRepository.create({
-          corpNum: fixedConfig.corpNum,
-          sender: fixedConfig.sender,
-          senderName: fixedConfig.senderName ?? null,
-          userID: fixedConfig.userID ?? null,
+          corpNum: fixedConfig?.corpNum ?? WEBHOOK_HISTORY_CORP_NUM,
+          sender: fixedConfig?.sender ?? WEBHOOK_HISTORY_SENDER,
+          senderName: fixedConfig?.senderName ?? null,
+          userID: fixedConfig?.userID ?? null,
           receiver: input.receiver,
           receiverName: input.receiverName ?? null,
           content: prefixedContent,
@@ -135,16 +175,18 @@ export class MessagesService {
       return { receiptNum };
     } catch (error) {
       const message = error instanceof Error ? error.message : '문자 발송 중 알 수 없는 오류가 발생했습니다.';
-      console.error(
-        `[POPBILL_SENDER_CHECK] failed corpNum=${fixedConfig.corpNum} sender=${fixedConfig.sender} message=${message}`,
-      );
+      if (usingPopbill && fixedConfig) {
+        console.error(
+          `[POPBILL_SENDER_CHECK] failed corpNum=${fixedConfig.corpNum} sender=${fixedConfig.sender} message=${message}`,
+        );
+      }
 
       await this.adminSmsHistoryRepository.save(
         this.adminSmsHistoryRepository.create({
-          corpNum: fixedConfig.corpNum,
-          sender: fixedConfig.sender,
-          senderName: fixedConfig.senderName ?? null,
-          userID: fixedConfig.userID ?? null,
+          corpNum: fixedConfig?.corpNum ?? WEBHOOK_HISTORY_CORP_NUM,
+          sender: fixedConfig?.sender ?? WEBHOOK_HISTORY_SENDER,
+          senderName: fixedConfig?.senderName ?? null,
+          userID: fixedConfig?.userID ?? null,
           receiver: input.receiver,
           receiverName: input.receiverName ?? null,
           content: prefixedContent,
@@ -226,6 +268,17 @@ export class MessagesService {
       senderName: senderName || undefined,
       userID: userID || undefined,
     };
+  }
+
+  private getOptionalSmsConfig(): FixedSmsConfig | null {
+    const corpNum = (process.env.POPBILL_CORP_NUM ?? '').trim();
+    const sender = (process.env.POPBILL_SENDER ?? '').replace(/\D/g, '');
+
+    if (!corpNum && !sender) {
+      return null;
+    }
+
+    return this.getFixedSmsConfig();
   }
 
   private async applyShopNamePrefix(content: string): Promise<string> {

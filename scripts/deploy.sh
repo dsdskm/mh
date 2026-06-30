@@ -20,6 +20,10 @@ REPOSITORY=${REPOSITORY:-mh}
 REMOTE_DIR=${REMOTE_DIR:-/tmp/corn-app}
 PUBLIC_IP=${PUBLIC_IP:-8.230.10.189}
 
+if [[ "$ENV" == "prd" ]]; then
+  ENV="prod"
+fi
+
 if [[ "$ENV" != "dev" && "$ENV" != "prod" ]]; then
   echo "Error: ENV must be 'dev' or 'prod', got '$ENV'"
   exit 1
@@ -28,8 +32,11 @@ fi
 POSITIONAL_TARGETS=()
 for arg in "$@"; do
   case "$arg" in
-    dev|prod)
+    dev|prod|prd)
       ENV="$arg"
+      if [[ "$ENV" == "prd" ]]; then
+        ENV="prod"
+      fi
       ;;
     api|web|admin|all)
       POSITIONAL_TARGETS+=("$arg")
@@ -88,14 +95,67 @@ get_env_file_value() {
   grep -E "^${key}=" "$file_path" | tail -n1 | sed -E "s/^${key}=//; s/^['\"]//; s/['\"]$//"
 }
 
+resolve_existing_path() {
+  local raw_path="$1"
+
+  if [[ -z "$raw_path" ]]; then
+    return 0
+  fi
+
+  if [[ "$raw_path" = /* && -f "$raw_path" ]]; then
+    echo "$raw_path"
+    return 0
+  fi
+
+  local candidates=(
+    "$ROOT_DIR/$raw_path"
+    "$ROOT_DIR/apps/api/$raw_path"
+    "$ROOT_DIR/apps/api/${raw_path##*/}"
+  )
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  return 0
+}
+
 if [[ "$ENV" == "prod" ]]; then
   ROOT_ENV_FILE=${ROOT_ENV_FILE:-$ROOT_DIR/.env.prd}
   API_ENV_FILE=${API_ENV_FILE:-$ROOT_DIR/apps/api/.env.prd}
   WEB_ENV_FILE=${WEB_ENV_FILE:-$ROOT_DIR/apps/web/.env.prd}
+
+  # prod 전용 env 파일이 없으면 공통 .env를 기본값으로 사용
+  if [[ ! -f "$ROOT_ENV_FILE" && -f "$ROOT_DIR/.env" ]]; then
+    ROOT_ENV_FILE="$ROOT_DIR/.env"
+    echo "Info: .env.prd not found. Falling back to .env"
+  fi
+  if [[ ! -f "$API_ENV_FILE" && -f "$ROOT_DIR/apps/api/.env" ]]; then
+    API_ENV_FILE="$ROOT_DIR/apps/api/.env"
+    echo "Info: apps/api/.env.prd not found. Falling back to apps/api/.env"
+  fi
+  if [[ ! -f "$WEB_ENV_FILE" && -f "$ROOT_DIR/apps/web/.env" ]]; then
+    WEB_ENV_FILE="$ROOT_DIR/apps/web/.env"
+    echo "Info: apps/web/.env.prd not found. Falling back to apps/web/.env"
+  fi
 else
   ROOT_ENV_FILE=${ROOT_ENV_FILE:-$ROOT_DIR/.env}
   API_ENV_FILE=${API_ENV_FILE:-$ROOT_DIR/apps/api/.env}
   WEB_ENV_FILE=${WEB_ENV_FILE:-$ROOT_DIR/apps/web/.env}
+fi
+
+ROOT_FALLBACK_ENV_FILE=${ROOT_FALLBACK_ENV_FILE:-}
+API_FALLBACK_ENV_FILE=${API_FALLBACK_ENV_FILE:-}
+WEB_FALLBACK_ENV_FILE=${WEB_FALLBACK_ENV_FILE:-}
+
+if [[ "$ENV" == "prod" ]]; then
+  [[ -f "$ROOT_DIR/.env" ]] && ROOT_FALLBACK_ENV_FILE="$ROOT_DIR/.env"
+  [[ -f "$ROOT_DIR/apps/api/.env" ]] && API_FALLBACK_ENV_FILE="$ROOT_DIR/apps/api/.env"
+  [[ -f "$ROOT_DIR/apps/web/.env" ]] && WEB_FALLBACK_ENV_FILE="$ROOT_DIR/apps/web/.env"
 fi
 
 if [[ ! -f "$ROOT_ENV_FILE" ]]; then
@@ -105,12 +165,19 @@ fi
 
 get_merged_env_value() {
   local app_file="$1"
-  local key="$2"
+  local app_fallback_file="$2"
+  local key="$3"
   local value=""
 
   value=$(get_env_file_value "$app_file" "$key" || true)
   if [[ -z "$value" ]]; then
     value=$(get_env_file_value "$ROOT_ENV_FILE" "$key" || true)
+  fi
+  if [[ -z "$value" && -n "$app_fallback_file" ]]; then
+    value=$(get_env_file_value "$app_fallback_file" "$key" || true)
+  fi
+  if [[ -z "$value" && -n "$ROOT_FALLBACK_ENV_FILE" ]]; then
+    value=$(get_env_file_value "$ROOT_FALLBACK_ENV_FILE" "$key" || true)
   fi
 
   echo "$value"
@@ -140,10 +207,42 @@ API_PORT=${API_PORT:-9000}
 WEB_PORT=${WEB_PORT:-3000}
 ADMIN_PORT=${ADMIN_PORT:-3100}
 
-ADMIN_AUTH_SECRET=${ADMIN_AUTH_SECRET:-$(get_merged_env_value "$API_ENV_FILE" "ADMIN_AUTH_SECRET")}
-NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-$(get_merged_env_value "$WEB_ENV_FILE" "NEXTAUTH_SECRET")}
-KAKAO_CLIENT_ID=${KAKAO_CLIENT_ID:-$(get_merged_env_value "$WEB_ENV_FILE" "KAKAO_CLIENT_ID")}
-KAKAO_CLIENT_SECRET=${KAKAO_CLIENT_SECRET:-$(get_merged_env_value "$WEB_ENV_FILE" "KAKAO_CLIENT_SECRET")}
+ADMIN_AUTH_SECRET=${ADMIN_AUTH_SECRET:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "ADMIN_AUTH_SECRET")}
+NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-$(get_merged_env_value "$WEB_ENV_FILE" "$WEB_FALLBACK_ENV_FILE" "NEXTAUTH_SECRET")}
+KAKAO_CLIENT_ID=${KAKAO_CLIENT_ID:-$(get_merged_env_value "$WEB_ENV_FILE" "$WEB_FALLBACK_ENV_FILE" "KAKAO_CLIENT_ID")}
+KAKAO_CLIENT_SECRET=${KAKAO_CLIENT_SECRET:-$(get_merged_env_value "$WEB_ENV_FILE" "$WEB_FALLBACK_ENV_FILE" "KAKAO_CLIENT_SECRET")}
+LINK_ID=${LINK_ID:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "LINK_ID")}
+SECRET_KEY=${SECRET_KEY:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "SECRET_KEY")}
+POPBILL_IS_TEST=${POPBILL_IS_TEST:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "POPBILL_IS_TEST")}
+POPBILL_CORP_NUM=${POPBILL_CORP_NUM:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "POPBILL_CORP_NUM")}
+POPBILL_SENDER=${POPBILL_SENDER:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "POPBILL_SENDER")}
+POPBILL_SENDER_NAME=${POPBILL_SENDER_NAME:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "POPBILL_SENDER_NAME")}
+POPBILL_USER_ID=${POPBILL_USER_ID:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "POPBILL_USER_ID")}
+FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "FIREBASE_STORAGE_BUCKET")}
+FIREBASE_SERVICE_ACCOUNT_PATH=${FIREBASE_SERVICE_ACCOUNT_PATH:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "FIREBASE_SERVICE_ACCOUNT_PATH")}
+FIREBASE_SERVICE_ACCOUNT_KEY=${FIREBASE_SERVICE_ACCOUNT_KEY:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "FIREBASE_SERVICE_ACCOUNT_KEY")}
+FIREBASE_SERVICE_ACCOUNT_BASE64=${FIREBASE_SERVICE_ACCOUNT_BASE64:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "FIREBASE_SERVICE_ACCOUNT_BASE64")}
+GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "GOOGLE_APPLICATION_CREDENTIALS")}
+
+# 경로 기반 인증만 설정돼 있으면, 배포 시 컨테이너 내부 경로 불일치를 피하기 위해 base64로 변환해 함께 전달합니다.
+if [[ -z "$FIREBASE_SERVICE_ACCOUNT_KEY" && -z "$FIREBASE_SERVICE_ACCOUNT_BASE64" ]]; then
+  RESOLVED_FIREBASE_KEY_FILE=$(resolve_existing_path "$FIREBASE_SERVICE_ACCOUNT_PATH")
+  if [[ -z "$RESOLVED_FIREBASE_KEY_FILE" ]]; then
+    RESOLVED_FIREBASE_KEY_FILE=$(resolve_existing_path "apps/api/firebase-service-account.local.json")
+  fi
+
+  if [[ -n "$RESOLVED_FIREBASE_KEY_FILE" ]]; then
+    FIREBASE_SERVICE_ACCOUNT_BASE64=$(base64 < "$RESOLVED_FIREBASE_KEY_FILE" | tr -d '\n')
+    echo "Info: Firebase service account file encoded to FIREBASE_SERVICE_ACCOUNT_BASE64 for deploy"
+  fi
+fi
+
+# 컨테이너 내부 파일 경로 불일치로 strict path 로딩이 실패하지 않도록,
+# key/base64 인증을 사용할 때는 경로 기반 인증 변수를 비웁니다.
+if [[ -n "$FIREBASE_SERVICE_ACCOUNT_KEY" || -n "$FIREBASE_SERVICE_ACCOUNT_BASE64" ]]; then
+  FIREBASE_SERVICE_ACCOUNT_PATH=""
+  GOOGLE_APPLICATION_CREDENTIALS=""
+fi
 
 if [[ -z "$ADMIN_AUTH_SECRET" ]]; then
   echo "Error: ADMIN_AUTH_SECRET is required."
@@ -153,6 +252,22 @@ fi
 if [[ -z "$NEXTAUTH_SECRET" && "$DEPLOY_WEB" == "true" ]]; then
   echo "Error: NEXTAUTH_SECRET is required when deploying web."
   exit 1
+fi
+
+if [[ "$DEPLOY_API" == "true" ]]; then
+  missing_sms_envs=()
+  [[ -n "$LINK_ID" ]] || missing_sms_envs+=("LINK_ID")
+  [[ -n "$SECRET_KEY" ]] || missing_sms_envs+=("SECRET_KEY")
+  [[ -n "$POPBILL_CORP_NUM" ]] || missing_sms_envs+=("POPBILL_CORP_NUM")
+  [[ -n "$POPBILL_SENDER" ]] || missing_sms_envs+=("POPBILL_SENDER")
+
+  if [[ ${#missing_sms_envs[@]} -gt 0 ]]; then
+    echo "Warning: SMS env missing for API deploy: ${missing_sms_envs[*]}"
+  fi
+
+  if [[ -z "$FIREBASE_STORAGE_BUCKET" ]]; then
+    echo "Warning: Firebase env missing for API deploy: FIREBASE_STORAGE_BUCKET"
+  fi
 fi
 
 if [[ -z "$PUBLIC_IP" ]]; then
@@ -217,6 +332,18 @@ NEXTAUTH_URL=$NEXTAUTH_URL
 NEXTAUTH_SECRET=$NEXTAUTH_SECRET
 KAKAO_CLIENT_ID=$KAKAO_CLIENT_ID
 KAKAO_CLIENT_SECRET=$KAKAO_CLIENT_SECRET
+LINK_ID=$LINK_ID
+SECRET_KEY=$SECRET_KEY
+POPBILL_IS_TEST=$POPBILL_IS_TEST
+POPBILL_CORP_NUM=$POPBILL_CORP_NUM
+POPBILL_SENDER=$POPBILL_SENDER
+POPBILL_SENDER_NAME=$POPBILL_SENDER_NAME
+POPBILL_USER_ID=$POPBILL_USER_ID
+FIREBASE_STORAGE_BUCKET=$FIREBASE_STORAGE_BUCKET
+FIREBASE_SERVICE_ACCOUNT_PATH=$FIREBASE_SERVICE_ACCOUNT_PATH
+FIREBASE_SERVICE_ACCOUNT_KEY=$FIREBASE_SERVICE_ACCOUNT_KEY
+FIREBASE_SERVICE_ACCOUNT_BASE64=$FIREBASE_SERVICE_ACCOUNT_BASE64
+GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_APPLICATION_CREDENTIALS
 API_PORT=$API_PORT
 WEB_PORT=$WEB_PORT
 ADMIN_PORT=$ADMIN_PORT

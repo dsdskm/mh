@@ -16,6 +16,16 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || (process.env.NO
 const DAUM_POSTCODE_SCRIPT_URL =
   "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
 
+function formatCountdown(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = Math.max(0, totalSeconds % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
 type DaumPostcodeData = {
   roadAddress: string;
   jibunAddress: string;
@@ -58,6 +68,8 @@ export default function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [verifyingCode, setVerifyingCode] = useState(false);
+  const [codeExpiresAt, setCodeExpiresAt] = useState<number | null>(null);
+  const [codeRemainingSec, setCodeRemainingSec] = useState(0);
   const [postcodeReady, setPostcodeReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -131,6 +143,31 @@ export default function SignupPage() {
     void loadPolicyUrls();
   }, []);
 
+  useEffect(() => {
+    if (!codeSent || verificationToken || !codeExpiresAt) {
+      setCodeRemainingSec(0);
+      return;
+    }
+
+    const updateRemaining = () => {
+      const nextRemaining = Math.max(
+        0,
+        Math.ceil((codeExpiresAt - Date.now()) / 1000),
+      );
+      setCodeRemainingSec(nextRemaining);
+
+      if (nextRemaining <= 0) {
+        setCodeSent(false);
+        setVerificationToken(null);
+        setCodeExpiresAt(null);
+      }
+    };
+
+    updateRemaining();
+    const timer = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(timer);
+  }, [codeSent, verificationToken, codeExpiresAt]);
+
   function searchAddress() {
     if (!window.daum?.Postcode) {
       setError("주소 검색 준비 중입니다. 잠시 후 다시 시도해주세요.");
@@ -196,8 +233,10 @@ export default function SignupPage() {
         return;
       }
 
-      const data = await requestPhoneVerificationApi(normalizedPhone);
+      await requestPhoneVerificationApi(normalizedPhone);
+      const expiresAtMs = Date.now() + 3 * 60 * 1000;
       setCodeSent(true);
+      setCodeExpiresAt(Number.isFinite(expiresAtMs) ? expiresAtMs : null);
       setSuccess("인증번호를 전송했습니다. 휴대폰 문자를 확인해주세요.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "인증번호 발송 실패");
@@ -207,6 +246,11 @@ export default function SignupPage() {
   }
 
   async function verifySmsCode() {
+    if (codeRemainingSec <= 0) {
+      setError("인증번호가 만료되었습니다. 다시 요청해주세요.");
+      return;
+    }
+
     setVerifyingCode(true);
     setError(null);
     setSuccess(null);
@@ -217,6 +261,7 @@ export default function SignupPage() {
         code: smsCode.trim(),
       });
       setVerificationToken(data.verificationToken);
+      setCodeRemainingSec(0);
       setSuccess("전화번호 인증이 완료되었습니다.");
     } catch (verifyError) {
       setError(verifyError instanceof Error ? verifyError.message : "인증번호 확인 실패");
@@ -300,6 +345,8 @@ export default function SignupPage() {
       setSmsCode("");
       setVerificationToken(null);
       setCodeSent(false);
+      setCodeExpiresAt(null);
+      setCodeRemainingSec(0);
       setTermsAgreed(false);
       setIsPhoneAvailable(null);
       setPhoneMessage(null);
@@ -420,8 +467,10 @@ export default function SignupPage() {
                 setVerificationToken(null);
                 setCodeSent(false);
                 setSmsCode("");
+                setCodeExpiresAt(null);
+                setCodeRemainingSec(0);
               }}
-              placeholder="전화번호 (숫자만)"
+              placeholder="전화번호 (숫자만 입력)"
               className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               autoComplete="tel"
               inputMode="numeric"
@@ -459,12 +508,18 @@ export default function SignupPage() {
               <button
                 type="button"
                 onClick={() => void verifySmsCode()}
-                disabled={verifyingCode || !smsCode.trim()}
+                disabled={verifyingCode || !smsCode.trim() || codeRemainingSec <= 0}
                 className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-60 whitespace-nowrap"
               >
                 {verifyingCode ? "확인 중..." : "인증 확인"}
               </button>
             </div>
+          )}
+
+          {codeSent && !verificationToken && (
+            <p className={`rounded-xl p-3 text-xs font-semibold ${codeRemainingSec > 0 ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700"}`}>
+              인증번호 유효시간: {formatCountdown(codeRemainingSec)}
+            </p>
           )}
 
           {verificationToken && (

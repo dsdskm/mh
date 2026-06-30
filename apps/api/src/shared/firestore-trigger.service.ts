@@ -2,8 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { getApps, initializeApp, cert, App } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import { readFileSync } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
 
 export type TriggerType = 'orders' | 'inquiries' | 'reviews';
+const LOCAL_FIREBASE_SERVICE_ACCOUNT_FILE = 'firebase-service-account.local.json';
 
 @Injectable()
 export class FirestoreTriggerService {
@@ -53,10 +55,14 @@ export class FirestoreTriggerService {
   }
 
   private resolveCredential() {
+    const serviceAccountEnv = this.getNonEmptyEnv('FIREBASE_SERVICE_ACCOUNT_KEY');
+    const serviceAccountBase64 = this.getNonEmptyEnv('FIREBASE_SERVICE_ACCOUNT_BASE64');
+
     const serviceAccountRaw =
-      process.env.FIREBASE_SERVICE_ACCOUNT_KEY ??
+      serviceAccountEnv ??
       this.readServiceAccountFromFile(process.env.FIREBASE_SERVICE_ACCOUNT_PATH) ??
-      this.decodeBase64(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64);
+      this.readServiceAccountFromFile(LOCAL_FIREBASE_SERVICE_ACCOUNT_FILE) ??
+      this.decodeBase64(serviceAccountBase64);
 
     if (!serviceAccountRaw) {
       throw new Error(
@@ -78,12 +84,27 @@ export class FirestoreTriggerService {
   }
 
   private readServiceAccountFromFile(filePath?: string): string | null {
-    if (!filePath) return null;
-    try {
-      return readFileSync(filePath, 'utf-8');
-    } catch {
-      return null;
+    const trimmed = filePath?.trim();
+    if (!trimmed) return null;
+
+    const candidates = isAbsolute(trimmed)
+      ? [trimmed]
+      : [
+          trimmed,
+          resolve(process.cwd(), trimmed),
+          resolve(process.cwd(), '..', trimmed),
+          resolve(process.cwd(), '..', '..', trimmed),
+        ];
+
+    for (const candidate of candidates) {
+      try {
+        return readFileSync(candidate, 'utf-8');
+      } catch {
+        // Try the next candidate path.
+      }
     }
+
+    return null;
   }
 
   private decodeBase64(encoded?: string): string | null {
@@ -93,6 +114,11 @@ export class FirestoreTriggerService {
     } catch {
       return null;
     }
+  }
+
+  private getNonEmptyEnv(key: string): string | undefined {
+    const value = process.env[key]?.trim();
+    return value ? value : undefined;
   }
 
   private extractProjectId(): string | null {

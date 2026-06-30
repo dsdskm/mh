@@ -308,6 +308,12 @@ export function AdminShell({ activeTab, state, children }: Props) {
     }
   }
 
+  if (!state.authReady) {
+    return (
+      <div className="min-h-screen bg-admin-pattern" />
+    );
+  }
+
   if (!state.isAuthed) {
     return (
       <AdminLogin
@@ -357,8 +363,8 @@ export function AdminShell({ activeTab, state, children }: Props) {
         </div>
       </aside>
 
-      <main className="flex-1 pb-10 lg:ml-60 lg:mr-80">
-        <div className="sticky top-0 z-30 hidden border-b border-lime-200 bg-white/90 px-3 py-3 backdrop-blur sm:px-4 lg:block lg:fixed lg:left-60 lg:right-80 lg:top-0 lg:px-6">
+      <main className="flex-1 pb-10 lg:ml-60 xl:mr-80">
+        <div className="sticky top-0 z-30 hidden border-b border-lime-200 bg-white/90 px-3 py-3 backdrop-blur sm:px-4 lg:block lg:fixed lg:left-60 lg:right-0 lg:top-0 lg:px-6 xl:right-80">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <p className="text-sm font-extrabold text-stone-900">운영 상태</p>
@@ -417,7 +423,7 @@ export function AdminShell({ activeTab, state, children }: Props) {
         </div>
       </main>
 
-      <aside className="fixed right-0 top-0 hidden h-screen w-80 border-l border-amber-200 bg-white/95 shadow-xl lg:block">
+      <aside className="fixed right-0 top-0 hidden h-screen w-80 border-l border-amber-200 bg-white/95 shadow-xl xl:block">
         <div className="h-full overflow-auto p-4">
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">

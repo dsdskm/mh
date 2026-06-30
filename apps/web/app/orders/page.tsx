@@ -43,6 +43,16 @@ const GUEST_LOOKUP_PHONE_KEY = "cornmarket:guest-lookup-phone";
 const GUEST_LOOKUP_TOKEN_KEY = "cornmarket:guest-lookup-token";
 const STATUS_FLOW: Order["status"][] = ORDER_STATUS_FLOW;
 
+function formatCountdown(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = Math.max(0, totalSeconds % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
 // 전체 상태 흐름을 가로로 표시하고, 처리되지 않은 단계는 흐릿하게 표시
 function renderStatusTimeline(order: Order) {
   if (!order.statusHistory || order.statusHistory.length === 0) {
@@ -117,6 +127,8 @@ export default function OrdersPage() {
   const [guestOrders, setGuestOrders] = useState<Order[]>([]);
   const [guestLoading, setGuestLoading] = useState(false);
   const [guestVerifying, setGuestVerifying] = useState(false);
+  const [guestCodeExpiresAt, setGuestCodeExpiresAt] = useState<number | null>(null);
+  const [guestCodeRemainingSec, setGuestCodeRemainingSec] = useState(0);
   const [guestError, setGuestError] = useState<string | null>(null);
   const [guestSuccess, setGuestSuccess] = useState<string | null>(null);
 
@@ -158,6 +170,30 @@ export default function OrdersPage() {
     setGuestLookupToken(savedToken);
     void loadGuestOrders(savedPhone, savedToken);
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (!guestCodeSent || guestLookupToken || !guestCodeExpiresAt) {
+      setGuestCodeRemainingSec(0);
+      return;
+    }
+
+    const updateRemaining = () => {
+      const nextRemaining = Math.max(
+        0,
+        Math.ceil((guestCodeExpiresAt - Date.now()) / 1000),
+      );
+      setGuestCodeRemainingSec(nextRemaining);
+
+      if (nextRemaining <= 0) {
+        setGuestCodeSent(false);
+        setGuestCodeExpiresAt(null);
+      }
+    };
+
+    updateRemaining();
+    const timer = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(timer);
+  }, [guestCodeSent, guestLookupToken, guestCodeExpiresAt]);
 
   async function loadMemberOrders(phone: string) {
     setMemberLoading(true);
@@ -250,6 +286,7 @@ export default function OrdersPage() {
         },
         body: JSON.stringify({
           phone: normalizedPhone,
+          purpose: "lookup",
         }),
       });
 
@@ -259,7 +296,9 @@ export default function OrdersPage() {
       }
 
       await response.json();
+      const expiresAtMs = Date.now() + 3 * 60 * 1000;
       setGuestCodeSent(true);
+      setGuestCodeExpiresAt(Number.isFinite(expiresAtMs) ? expiresAtMs : null);
       setGuestSuccess("인증번호를 전송했습니다. 휴대폰 문자를 확인해주세요.");
     } catch (fetchError) {
       setGuestError(fetchError instanceof Error ? fetchError.message : "인증번호 요청 실패");
@@ -274,6 +313,11 @@ export default function OrdersPage() {
 
     if (!normalizedPhone || !guestCode.trim()) {
       setGuestError("전화번호와 인증번호를 입력해주세요.");
+      return;
+    }
+
+    if (guestCodeRemainingSec <= 0) {
+      setGuestError("인증번호가 만료되었습니다. 다시 요청해주세요.");
       return;
     }
 
@@ -307,6 +351,7 @@ export default function OrdersPage() {
       sessionStorage.setItem(GUEST_LOOKUP_TOKEN_KEY, result.lookupToken);
       setGuestLookupToken(result.lookupToken);
       setGuestOrders(result.orders);
+      setGuestCodeRemainingSec(0);
       setGuestSuccess("휴대폰 인증이 완료되었습니다. 주문내역을 보여드립니다.");
     } catch (fetchError) {
       setGuestError(fetchError instanceof Error ? fetchError.message : "휴대폰 인증 실패");
@@ -415,8 +460,13 @@ export default function OrdersPage() {
             <form className="mt-4 space-y-3" onSubmit={requestGuestLookupCode}>
               <input
                 value={guestPhone}
-                onChange={(event) => setGuestPhone(event.target.value.replace(/\D/g, ""))}
-                placeholder="휴대폰 번호 (숫자만)"
+                onChange={(event) => {
+                  setGuestPhone(event.target.value.replace(/\D/g, ""));
+                  setGuestCodeSent(false);
+                  setGuestCodeExpiresAt(null);
+                  setGuestCodeRemainingSec(0);
+                }}
+                placeholder="휴대폰 번호 (숫자만 입력)"
                 className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
                 inputMode="numeric"
                 required
@@ -441,11 +491,14 @@ export default function OrdersPage() {
                 />
                 <button
                   type="submit"
-                  disabled={guestVerifying}
+                  disabled={guestVerifying || guestCodeRemainingSec <= 0}
                   className="w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold text-amber-800 disabled:opacity-60"
                 >
                   {guestVerifying ? "확인 중..." : "인증하고 주문내역 보기"}
                 </button>
+                <p className={`text-xs font-semibold ${guestCodeRemainingSec > 0 ? "text-amber-700" : "text-red-600"}`}>
+                  인증번호 유효시간: {formatCountdown(guestCodeRemainingSec)}
+                </p>
               </form>
             )}
 

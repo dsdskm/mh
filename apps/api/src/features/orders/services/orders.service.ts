@@ -29,7 +29,6 @@ import {
 import { randomBytes, randomInt } from 'node:crypto';
 import { FirestoreTriggerService } from '../../../shared/firestore-trigger.service';
 import { NotificationsService } from '../../notifications/services/notifications.service';
-import { PopbillSmsClient } from '../../messages/services/popbill-sms.client';
 import { MessagesService } from '../../messages/services/messages.service';
 
 type PhoneCodeState = {
@@ -42,6 +41,8 @@ type VerifiedLookupState = {
   phone: string;
   expiresAt: number;
 };
+
+type GuestLookupPurpose = 'checkout' | 'lookup';
 
 @Injectable()
 export class OrdersService implements OnModuleInit, OnModuleDestroy {
@@ -69,7 +70,6 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly firestoreTrigger: FirestoreTriggerService,
     private readonly notificationsService: NotificationsService,
-    private readonly popbillSmsClient: PopbillSmsClient,
     private readonly messagesService: MessagesService,
   ) {}
 
@@ -176,7 +176,9 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       : 0;
     // 회원 사은품: 회원 주문일 때만, 설정된 상품을 0원으로 함께 발송 (재고 차감 안 함)
     const memberBonusProductId =
-      input.purchaseType === 'member' ? storeConfig.memberBonusProductId : null;
+      input.purchaseType === 'member' && !input.excludeMemberBonus
+        ? storeConfig.memberBonusProductId
+        : null;
     // 쿠폰/적립금은 회원 전용. accountId가 있는 회원 주문에만 적용한다.
     const memberAccountId =
       input.purchaseType === 'member' && typeof input.accountId === 'number'
@@ -414,7 +416,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
           url: '/orders',
         });
         if (!input.skipGuestVerification) {
-          void this.notifyAdminOrderCreatedSms();
+          void this.sendOrderReceivedSms(order);
+          void this.notifyAdminOrderCreatedSms(order);
         }
         void this.firestoreTrigger.notify('orders');
         return result;
@@ -707,7 +710,10 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     return this.toOrder(updated);
   }
 
-  async requestGuestOrderLookup(phoneRaw: string) {
+  async requestGuestOrderLookup(
+    phoneRaw: string,
+    purpose: GuestLookupPurpose = 'lookup',
+  ) {
     const phone = this.normalizePhone(phoneRaw);
     this.assertPhoneFormat(phone);
 
@@ -733,7 +739,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       attempts: 0,
     });
 
-    await this.sendPhoneCode(phone, code);
+    await this.sendPhoneCode(phone, code, purpose);
 
     return {
       ok: true,
@@ -848,54 +854,18 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   private async sendPhoneCode(
     phone: string,
     code: string,
+    purpose: GuestLookupPurpose,
   ): Promise<void> {
-    const storeConfig = await this.configService.getStoreConfig();
-    const shopName = storeConfig.shopName.trim() || '상점';
-    const popbillConfig = this.getPopbillConfig();
-    const message = `[${shopName}] 주문조회 인증번호 [${code}]를 입력해주세요.`;
-
-    if (popbillConfig) {
-      try {
-        await this.popbillSmsClient.checkSenderNumber({
-          corpNum: popbillConfig.corpNum,
-          sender: popbillConfig.sender,
-          userID: popbillConfig.userID,
-        });
-
-        await this.popbillSmsClient.sendSms({
-          corpNum: popbillConfig.corpNum,
-          sender: popbillConfig.sender,
-          senderName: popbillConfig.senderName,
-          receiver: phone,
-          content: message,
-          userID: popbillConfig.userID,
-        });
-        return;
-      } catch (error) {
-        const smsErrorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
-        throw new BadRequestException(`문자 발송에 실패했습니다. ${smsErrorMessage}`);
-      }
-    }
-
-    const webhookUrl = process.env.SMS_WEBHOOK_URL?.trim();
-
-    if (!webhookUrl) {
-      throw new BadRequestException('문자 발송 설정이 누락되었습니다. 관리자에게 문의해주세요.');
-    }
-
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        to: phone,
-        message,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new BadRequestException('문자 발송에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    const verificationContext =
+      purpose === 'checkout' ? '비회원 주문 인증번호' : '주문조회 인증번호';
+    try {
+      await this.messagesService.sendSms({
+        receiver: phone,
+        content: `${verificationContext} [${code}]를 입력해주세요.`,
+      });
+    } catch (error) {
+      const smsErrorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
+      throw new BadRequestException(`문자 발송에 실패했습니다. ${smsErrorMessage}`);
     }
   }
 
@@ -905,56 +875,16 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const storeConfig = await this.configService.getStoreConfig();
-    const shopName = storeConfig.shopName.trim() || '상점';
-    const popbillConfig = this.getPopbillConfig();
     const message =
       status === ORDER_STATUS.PAID
-        ? `[${shopName}] ${order.customerName}님 ${order.totalAmount}원 입금이 확인되었습니다. 감사합니다.`
-        : `[${shopName}] 배송이 시작되었습니다. 택배사로부터 자세한 배송 정보를 얻으실 수 있습니다. 감사합니다.`;
+        ? `${order.customerName}님 ${order.totalAmount}원 입금이 확인되었습니다. 감사합니다.`
+        : '배송이 시작되었습니다. 택배사로부터 자세한 배송 정보를 얻으실 수 있습니다. 감사합니다.';
 
     try {
-      if (popbillConfig) {
-        await this.popbillSmsClient.checkSenderNumber({
-          corpNum: popbillConfig.corpNum,
-          sender: popbillConfig.sender,
-          userID: popbillConfig.userID,
-        });
-
-        await this.popbillSmsClient.sendSms({
-          corpNum: popbillConfig.corpNum,
-          sender: popbillConfig.sender,
-          senderName: popbillConfig.senderName,
-          receiver: this.normalizePhone(order.phone),
-          content: message,
-          userID: popbillConfig.userID,
-        });
-        return;
-      }
-
-      const webhookUrl = process.env.SMS_WEBHOOK_URL?.trim();
-      if (!webhookUrl) {
-        return;
-      }
-
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: this.normalizePhone(order.phone),
-          message,
-        }),
+      await this.messagesService.sendSms({
+        receiver: this.normalizePhone(order.phone),
+        content: message,
       });
-
-      if (!response.ok) {
-        console.warn('[orders] 상태변경 문자 발송 실패', {
-          orderId: order.id,
-          status,
-          httpStatus: response.status,
-        });
-      }
     } catch (error) {
       console.warn('[orders] 상태변경 문자 발송 실패', {
         orderId: order.id,
@@ -964,54 +894,144 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async notifyAdminOrderCreatedSms(): Promise<void> {
+  private async sendOrderReceivedSms(order: OrderEntity): Promise<void> {
+    const storeConfig = await this.configService.getStoreConfig();
+    const shopName = storeConfig.shopName.trim() || '상점';
+    const prefix = `[${shopName}]`;
+    const dueAtText = order.paymentDueAt
+      ? this.formatSmsDateTime(order.paymentDueAt)
+      : '없음';
+    const amountText = `${Math.max(0, Math.floor(order.totalAmount)).toLocaleString('ko-KR')}원`;
+    const bankName = (storeConfig.bankName ?? '').trim() || '-';
+    const accountHolder = (storeConfig.accountHolder ?? '').trim() || '-';
+    const accountNumber = (storeConfig.accountNumber ?? '').trim() || '-';
+
+    const firstCandidates = [
+      `${prefix} 주문번호:${order.id}, 입금기한:${dueAtText} 감사합니다.`,
+      `${prefix} 주문번호:${order.id}, 기한:${dueAtText} 감사합니다.`,
+      `${prefix} 주문번호:${order.id}, 기한:${dueAtText.replace(/^\d{4}-/, '')} 감사합니다.`,
+      `${prefix} 주문번호:${order.id} 감사합니다.`,
+    ];
+
+    const secondCandidates = [
+      `${prefix} 금액:${amountText}, 은행:${bankName}, 예금주:${accountHolder}, 계좌:${accountNumber}`,
+      `${prefix} 금액:${amountText}, 은행:${bankName}, 예금주:${accountHolder}, 계좌번호:${accountNumber}`,
+      `${prefix} 금액:${amountText}, 은행:${bankName}, 예금주:${accountHolder}`,
+    ];
+
+    const firstSelected =
+      firstCandidates.find((item) => this.smsByteLength(item) <= 90) ?? firstCandidates[firstCandidates.length - 1];
+    const secondSelected =
+      secondCandidates.find((item) => this.smsByteLength(item) <= 90) ?? secondCandidates[secondCandidates.length - 1];
+    const firstMessage = this.truncateByByte(firstSelected, 90);
+    const secondMessage = this.truncateByByte(secondSelected, 90);
+
+    try {
+      await this.messagesService.sendSms({
+        receiver: this.normalizePhone(order.phone),
+        content: firstMessage,
+      });
+      await this.messagesService.sendSms({
+        receiver: this.normalizePhone(order.phone),
+        content: secondMessage,
+      });
+    } catch (error) {
+      console.warn('[orders] 주문접수 문자 발송 실패', {
+        orderId: order.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private formatSmsDateTime(value: Date | string): string {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return '-';
+    }
+
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+
+    const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
+    const month = parts.find((part) => part.type === 'month')?.value ?? '00';
+    const day = parts.find((part) => part.type === 'day')?.value ?? '00';
+    const hour = parts.find((part) => part.type === 'hour')?.value ?? '00';
+    const minute = parts.find((part) => part.type === 'minute')?.value ?? '00';
+
+    return `${year}-${month}-${day} ${hour}:${minute}`;
+  }
+
+  private smsByteLength(content: string): number {
+    return Array.from(content).reduce((sum, ch) => {
+      return sum + (/[^\u0000-\u007f]/.test(ch) ? 2 : 1);
+    }, 0);
+  }
+
+  private truncateByByte(content: string, maxBytes: number): string {
+    const chars = Array.from(content);
+    let used = 0;
+    let out = '';
+
+    for (const ch of chars) {
+      const chBytes = /[^\u0000-\u007f]/.test(ch) ? 2 : 1;
+      if (used + chBytes > maxBytes) {
+        break;
+      }
+      out += ch;
+      used += chBytes;
+    }
+
+    return out;
+  }
+
+  private async notifyAdminOrderCreatedSms(order: OrderEntity): Promise<void> {
     try {
       const config = await this.configService.getStoreConfig();
+      const shopName = config.shopName.trim() || '상점';
       const receiver = this.normalizePhone(config.sellerPhone ?? '');
       if (!/^\d{8,20}$/.test(receiver)) {
         return;
       }
 
+      const paidItems = (order.items ?? [])
+        .filter((item) => item.subtotal > 0)
+        .filter((item) => item.quantity > 0);
+      const totalQty = paidItems.reduce((sum, item) => sum + Math.max(0, item.quantity), 0);
+      const firstItem = paidItems[0];
+      const firstName = firstItem?.productName?.trim() || '상품';
+      const shortName = Array.from(firstName).slice(0, 10).join('');
+      const productSummary =
+        paidItems.length <= 1
+          ? `${shortName} ${Math.max(0, totalQty)}개`
+          : `${shortName} 외 ${Math.max(0, totalQty - Math.max(0, firstItem.quantity))}개`;
+      const amountText = `${Math.max(0, Math.floor(order.totalAmount)).toLocaleString('ko-KR')}원`;
+      const prefix = `[${shopName}] `;
+      const templates = [
+        `신규주문접수 ${productSummary} 금액${amountText}`,
+        `신규주문 ${productSummary} 금액${amountText}`,
+        `주문 ${productSummary} 금액${amountText}`,
+        `${productSummary} 금액${amountText}`,
+        `금액${amountText}`,
+      ];
+      const content =
+        templates.find((text) => this.smsByteLength(`${prefix}${text}`) <= 90) ?? templates[templates.length - 1];
+
       await this.messagesService.sendSms({
         receiver,
-        content: '신규 주문이 접수되었습니다.',
+        content,
       });
     } catch (error) {
       console.warn('[orders] 관리자 주문 알림 문자 발송 실패', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  }
-
-  private getPopbillConfig(): {
-    corpNum: string;
-    sender: string;
-    senderName?: string;
-    userID?: string;
-  } | null {
-    const corpNum = (process.env.POPBILL_CORP_NUM ?? '').trim();
-    const sender = (process.env.POPBILL_SENDER ?? '').replace(/\D/g, '');
-    const senderName = (process.env.POPBILL_SENDER_NAME ?? '').trim();
-    const userID = (process.env.POPBILL_USER_ID ?? '').trim();
-
-    if (!corpNum || !sender) {
-      return null;
-    }
-
-    if (!/^\d{10}$/.test(corpNum)) {
-      throw new BadRequestException('서버 설정 오류: POPBILL_CORP_NUM(숫자 10자리) 값을 확인해주세요.');
-    }
-
-    if (!/^\d{8,20}$/.test(sender)) {
-      throw new BadRequestException('서버 설정 오류: POPBILL_SENDER(숫자 8~20자리) 값을 확인해주세요.');
-    }
-
-    return {
-      corpNum,
-      sender,
-      senderName: senderName || undefined,
-      userID: userID || undefined,
-    };
   }
 
   private getKstDatePrefix(): string {

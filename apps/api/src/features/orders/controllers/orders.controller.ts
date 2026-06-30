@@ -18,6 +18,7 @@ type CreateOrderBody = {
   requestNote?: string;
   depositorName?: string;
   purchaseType?: 'member' | 'guest';
+  excludeMemberBonus?: boolean;
   lookupToken?: string;
   // 회원 전용: 주문자 계정 및 쿠폰/적립금
   accountId?: number | null;
@@ -31,6 +32,7 @@ type CreateOrderBody = {
 
 type GuestLookupRequestBody = {
   phone?: string;
+  purpose?: 'checkout' | 'lookup';
 };
 
 type GuestLookupVerifyBody = {
@@ -112,6 +114,7 @@ export class OrdersController {
       requestNote,
       depositorName,
       purchaseType,
+      excludeMemberBonus: purchaseType === 'member' ? body.excludeMemberBonus === true : false,
       lookupToken,
       // 회원 전용: 주문자 계정 및 쿠폰/적립금 (비회원은 무시됨)
       accountId:
@@ -136,12 +139,13 @@ export class OrdersController {
   @Post('orders/lookup/request')
   requestGuestLookup(@Body() body: GuestLookupRequestBody) {
     const phone = body.phone?.trim();
+    const purpose = body.purpose === 'checkout' ? 'checkout' : 'lookup';
 
     if (!phone) {
       throw new BadRequestException('전화번호를 입력해주세요.');
     }
 
-    return this.ordersService.requestGuestOrderLookup(phone);
+    return this.ordersService.requestGuestOrderLookup(phone, purpose);
   }
 
   @Post('orders/lookup/verify')

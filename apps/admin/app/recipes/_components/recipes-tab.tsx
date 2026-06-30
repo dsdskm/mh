@@ -60,10 +60,6 @@ export function RecipesTab({ state }: Props) {
   }
 
   function addRecipeIngredient() {
-    if (hasExistingRecipe) {
-      return;
-    }
-
     setRecipeForm({
       ...recipeForm,
       ingredients: [...recipeForm.ingredients, ""],
@@ -71,7 +67,7 @@ export function RecipesTab({ state }: Props) {
   }
 
   function removeRecipeIngredient(index: number) {
-    if (hasExistingRecipe) {
+    if (recipeForm.ingredients.length <= 1) {
       return;
     }
 
@@ -120,12 +116,8 @@ export function RecipesTab({ state }: Props) {
     event.preventDefault();
     setRecipeError(null);
 
-    const recipeTitle = hasExistingRecipe
-      ? existingRecipe?.title ?? recipeForm.title
-      : recipeForm.title;
-    const recipeIngredients = hasExistingRecipe
-      ? [...(existingRecipe?.ingredients ?? recipeForm.ingredients)]
-      : recipeForm.ingredients;
+    const recipeTitle = recipeForm.title;
+    const recipeIngredients = recipeForm.ingredients;
 
     if (!recipeTitle.trim()) {
       setRecipeError("레시피 이름을 입력하세요.");
@@ -217,7 +209,7 @@ export function RecipesTab({ state }: Props) {
           <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
             <p className="text-sm font-semibold text-stone-800">{existingRecipe.title}</p>
             <p className="text-xs text-stone-600">
-              단일 레시피 모드입니다. 현재는 조리 단계만 수정할 수 있습니다.
+              단일 레시피 모드입니다. 재료/조리 단계를 모두 수정할 수 있습니다.
             </p>
             <div className="mt-3 flex flex-col gap-2">
               {existingRecipe.steps.map((step, stepIdx) => (
@@ -277,10 +269,9 @@ export function RecipesTab({ state }: Props) {
                 value={ingredient}
                 onChange={(e) => handleRecipeIngredientChange(idx, e.target.value)}
                 placeholder={`재료 ${idx + 1}`}
-                disabled={hasExistingRecipe}
                 className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               />
-              {recipeForm.ingredients.length > 1 && !hasExistingRecipe && (
+              {recipeForm.ingredients.length > 1 && (
                 <button
                   type="button"
                   onClick={() => removeRecipeIngredient(idx)}
@@ -348,7 +339,7 @@ export function RecipesTab({ state }: Props) {
           disabled={uploadingRecipe}
           className="w-full rounded-xl bg-lime-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
         >
-          {uploadingRecipe ? "레시피 저장 중..." : hasExistingRecipe ? "단계 수정 저장" : "레시피 저장"}
+          {uploadingRecipe ? "레시피 저장 중..." : "레시피 저장"}
         </button>
       </form>
 

@@ -140,6 +140,16 @@ function formatKoreanDateTime(value: string): string {
   }).format(date);
 }
 
+function formatCountdown(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = Math.max(0, totalSeconds % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "");
 const MEMBER_PHONE_KEY = "cornmarket:member-phone";
 const NOTICE_DISMISS_KEY_PREFIX = "cornmarket:notice:dismissed:";
@@ -201,6 +211,7 @@ export default function Home() {
   const [selectedCouponId, setSelectedCouponId] = useState<number | null>(null);
   const [mileageBalance, setMileageBalance] = useState(0);
   const [mileageInput, setMileageInput] = useState("");
+  const [excludeMemberBonus, setExcludeMemberBonus] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [visibleReviewCount, setVisibleReviewCount] = useState(5);
@@ -234,6 +245,8 @@ export default function Home() {
   const [guestOrderSendingCode, setGuestOrderSendingCode] = useState(false);
   const [guestOrderVerifyingCode, setGuestOrderVerifyingCode] = useState(false);
   const [guestHasRegisteredAccount, setGuestHasRegisteredAccount] = useState(false);
+  const [guestOrderCodeExpiresAt, setGuestOrderCodeExpiresAt] = useState<number | null>(null);
+  const [guestOrderCodeRemainingSec, setGuestOrderCodeRemainingSec] = useState(0);
   const videoIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
@@ -246,6 +259,32 @@ export default function Home() {
       setSavedMemberPhone(savedPhone);
     }
   }, []);
+
+  useEffect(() => {
+    if (!guestOrderCodeSent || guestOrderPhoneVerified || !guestOrderCodeExpiresAt) {
+      setGuestOrderCodeRemainingSec(0);
+      return;
+    }
+
+    const updateRemaining = () => {
+      const nextRemaining = Math.max(
+        0,
+        Math.ceil((guestOrderCodeExpiresAt - Date.now()) / 1000),
+      );
+      setGuestOrderCodeRemainingSec(nextRemaining);
+
+      if (nextRemaining <= 0) {
+        setGuestOrderCodeSent(false);
+        setGuestOrderLookupToken(null);
+        setGuestOrderPhoneVerified(false);
+        setGuestOrderCodeExpiresAt(null);
+      }
+    };
+
+    updateRemaining();
+    const timer = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(timer);
+  }, [guestOrderCodeSent, guestOrderPhoneVerified, guestOrderCodeExpiresAt]);
 
   useEffect(() => {
     if (window.daum?.Postcode) {
@@ -420,6 +459,25 @@ export default function Home() {
     );
   }, [products, cart]);
 
+  const confirmCartItems = useMemo(() => {
+    return products.reduce<Array<Product & { quantity: number; subtotal: number }>>(
+      (acc, product) => {
+        if (!(product.id in cart)) {
+          return acc;
+        }
+
+        const quantity = Math.max(0, cart[product.id] ?? 0);
+        acc.push({
+          ...product,
+          quantity,
+          subtotal: product.price * quantity,
+        });
+        return acc;
+      },
+      [],
+    );
+  }, [products, cart]);
+
   const totalPrice = useMemo(
     () => cartItems.reduce((sum, item) => sum + item.subtotal, 0),
     [cartItems],
@@ -499,6 +557,10 @@ export default function Home() {
     0,
     totalPrice + effectiveDeliveryFee - couponDiscount - mileageToUse,
   );
+  const confirmShippingAddress =
+    purchaseType === "guest"
+      ? [guestAddressBase, guestAddressDetail].filter(Boolean).join(" ").trim()
+      : shippingAddress.trim();
 
   // 적립 예정 적립금 (배송완료 시)
   const expectedMileageEarn = useMemo(() => {
@@ -623,7 +685,7 @@ export default function Home() {
 
     const firstOverLimitItem = cartItems.find((item) => item.quantity > item.stock);
     if (firstOverLimitItem) {
-      setError(`${firstOverLimitItem.name}의 재고를 초과했습니다. 수량을 조정해주세요.`);
+      setError(`${firstOverLimitItem.name}의 남은 수량을 초과했습니다. 수량을 조정해주세요.`);
       return false;
     }
 
@@ -677,6 +739,8 @@ export default function Home() {
           requestNote: orderRequestNote.trim() || undefined,
           depositorName,
           purchaseType,
+          excludeMemberBonus:
+            purchaseType === "member" ? excludeMemberBonus : undefined,
           lookupToken: purchaseType === "guest" ? guestOrderLookupToken : undefined,
           // 회원 전용: 주문자 계정 및 쿠폰/적립금
           accountId: purchaseType === "member" ? memberAccountId : undefined,
@@ -712,6 +776,8 @@ export default function Home() {
       setGuestOrderCodeSent(false);
       setGuestOrderLookupToken(null);
       setGuestOrderPhoneVerified(false);
+      setGuestOrderCodeExpiresAt(null);
+      setGuestOrderCodeRemainingSec(0);
       setOrderRequestNote("");
     } catch (submitError) {
       const message =
@@ -745,7 +811,10 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ phone: normalizedPhone }),
+        body: JSON.stringify({
+          phone: normalizedPhone,
+          purpose: "checkout",
+        }),
       });
 
       if (!response.ok) {
@@ -756,21 +825,27 @@ export default function Home() {
       const data = (await response.json()) as {
         alreadyRegistered?: boolean;
         message?: string;
+        expiresAt?: string;
       };
 
       if (data.alreadyRegistered) {
         setGuestOrderCodeSent(false);
         setGuestOrderLookupToken(null);
         setGuestOrderPhoneVerified(false);
+        setGuestOrderCodeExpiresAt(null);
+        setGuestOrderCodeRemainingSec(0);
         setGuestHasRegisteredAccount(true);
         setError(null);
         return;
       }
 
+      const expiresAtMs = Date.now() + 3 * 60 * 1000;
+
       setGuestOrderCodeSent(true);
       setGuestOrderLookupToken(null);
       setGuestOrderPhoneVerified(false);
       setGuestHasRegisteredAccount(false);
+      setGuestOrderCodeExpiresAt(Number.isFinite(expiresAtMs) ? expiresAtMs : null);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "인증번호 요청 실패");
     } finally {
@@ -788,6 +863,11 @@ export default function Home() {
     const normalizedPhone = phone.replace(/\D/g, "");
     if (!normalizedPhone || !guestOrderCode.trim()) {
       setError("전화번호와 인증번호를 입력해주세요.");
+      return;
+    }
+
+    if (guestOrderCodeRemainingSec <= 0) {
+      setError("인증번호가 만료되었습니다. 다시 요청해주세요.");
       return;
     }
 
@@ -1089,7 +1169,7 @@ export default function Home() {
                       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-lg font-extrabold text-stone-900">{formatCurrency(product.price)}</p>
-                          <p className="text-xs text-stone-500">재고 {product.stock}개</p>
+                          <p className="text-xs text-stone-500">남은 수량 {product.stock}개</p>
                         </div>
                         <div className="flex items-center justify-between gap-2 rounded-full border border-stone-300 px-2 py-1 sm:justify-normal">
                           {(() => {
@@ -1441,6 +1521,7 @@ export default function Home() {
                           return;
                         }
                         setPurchaseType("member");
+                        setExcludeMemberBonus(false);
                         setMemberShippingAddresses([]);
                         setSelectedShippingAddressId(null);
                         void fillDefaultShippingAddress();
@@ -1453,6 +1534,7 @@ export default function Home() {
                       type="button"
                       onClick={() => {
                         setPurchaseType("guest");
+                        setExcludeMemberBonus(false);
                         setDepositorName("");
                         setPhone("");
                         setShippingAddress("");
@@ -1462,6 +1544,8 @@ export default function Home() {
                         setGuestOrderCodeSent(false);
                         setGuestOrderLookupToken(null);
                         setGuestOrderPhoneVerified(false);
+                        setGuestOrderCodeExpiresAt(null);
+                        setGuestOrderCodeRemainingSec(0);
                         setGuestHasRegisteredAccount(false);
                         setMemberShippingAddresses([]);
                         setSelectedShippingAddressId(null);
@@ -1509,6 +1593,8 @@ export default function Home() {
                           if (purchaseType === "guest") {
                             setGuestOrderPhoneVerified(false);
                             setGuestOrderLookupToken(null);
+                            setGuestOrderCodeExpiresAt(null);
+                            setGuestOrderCodeRemainingSec(0);
                             setGuestHasRegisteredAccount(false);
                           }
                         }}
@@ -1537,12 +1623,17 @@ export default function Home() {
                             <button
                               type="button"
                               onClick={() => void verifyGuestOrderCode()}
-                              disabled={guestOrderVerifyingCode}
+                              disabled={guestOrderVerifyingCode || guestOrderCodeRemainingSec <= 0}
                               className="rounded-xl bg-lime-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
                             >
                               {guestOrderVerifyingCode ? "확인 중..." : "확인"}
                             </button>
                           </div>
+                          {guestOrderCodeSent && !guestOrderPhoneVerified && (
+                            <p className={`text-xs font-semibold ${guestOrderCodeRemainingSec > 0 ? "text-amber-700" : "text-red-600"}`}>
+                              인증번호 유효시간: {formatCountdown(guestOrderCodeRemainingSec)}
+                            </p>
+                          )}
                           <p className={`text-xs font-semibold ${guestOrderPhoneVerified ? "text-lime-700" : "text-stone-500"}`}>
                             {guestOrderPhoneVerified ? "문자 인증 완료" : "문자 인증 필요"}
                           </p>
@@ -1839,6 +1930,55 @@ export default function Home() {
           >
             <h2 className="font-display text-3xl text-lime-800">주문 접수 확인</h2>
             <p className="mt-1 text-sm text-stone-600">입력하신 정보로 주문을 접수할까요?</p>
+            <div className="mt-3 space-y-2 rounded-2xl border border-stone-200 bg-stone-50 p-3 text-xs text-stone-700">
+              <p className="font-bold text-stone-900">주문 정보</p>
+              <p>구매 유형: {purchaseType === "member" ? "회원" : "비회원"}</p>
+              <p>입금자명: {depositorName || "-"}</p>
+              <p>연락처: {phone ? formatPhone(phone) : "-"}</p>
+              <p>배송지: {confirmShippingAddress || "-"}</p>
+              <p>요청사항: {orderRequestNote.trim() || "없음"}</p>
+            </div>
+
+            <div className="mt-2 rounded-2xl border border-lime-200 bg-lime-50 p-3">
+              <p className="text-xs font-bold text-lime-900">주문 품목 ({totalQuantity}개)</p>
+              <ul className="mt-1 max-h-36 space-y-1 overflow-y-auto text-xs text-lime-900">
+                {confirmCartItems.map((item) => (
+                  <li key={`confirm-${item.id}`} className="flex items-center justify-between gap-2 rounded-lg bg-white/80 px-2 py-1">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate">{item.name}</p>
+                      <p className="text-[11px] text-stone-600">{formatCurrency(item.subtotal)}</p>
+                    </div>
+                    <div className="flex items-center gap-1 rounded-full border border-lime-300 bg-white px-1 py-0.5">
+                      <button
+                        type="button"
+                        onClick={() => changeQuantity(item.id, -1)}
+                        disabled={item.quantity <= 0}
+                        className="h-6 w-6 rounded-full bg-stone-100 text-sm font-bold text-stone-700"
+                        aria-label={`${item.name} 수량 감소`}
+                      >
+                        -
+                      </button>
+                      <span className="min-w-5 text-center text-[11px] font-bold">{item.quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => changeQuantity(item.id, 1)}
+                        disabled={item.quantity >= item.stock}
+                        className="h-6 w-6 rounded-full bg-lime-100 text-sm font-bold text-lime-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label={`${item.name} 수량 증가`}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {confirmCartItems.length === 0 && (
+                <p className="mt-2 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
+                  장바구니가 비었습니다. 수정 후 다시 주문해주세요.
+                </p>
+              )}
+            </div>
+
             {effectiveDeliveryFee > 0 || couponDiscount > 0 || mileageToUse > 0 ? (
               <div className="mt-2 space-y-0.5 text-sm text-stone-700">
                 <p>상품 금액 {formatCurrency(totalPrice)}</p>
@@ -1862,6 +2002,17 @@ export default function Home() {
                 주문 후 {storeConfig.paymentDueDays}일 이내에 입금해주세요. 기한이 지나면 주문이 자동 취소됩니다.
               </p>
             )}
+            {purchaseType === "member" && storeConfig.memberBonusProductName && (
+              <label className="mt-2 flex items-center gap-2 rounded-xl border border-lime-200 bg-lime-50 px-3 py-2 text-xs font-semibold text-lime-800">
+                <input
+                  type="checkbox"
+                  checked={!excludeMemberBonus}
+                  onChange={(event) => setExcludeMemberBonus(!event.target.checked)}
+                  className="h-4 w-4"
+                />
+                사은품 &lsquo;{storeConfig.memberBonusProductName}&rsquo; 받기
+              </label>
+            )}
 
             <div className="mt-4 flex gap-2">
               <button
@@ -1870,12 +2021,12 @@ export default function Home() {
                 disabled={submitting}
                 className="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-700"
               >
-                취소
+                수정하기
               </button>
               <button
                 type="button"
                 onClick={() => void confirmOrderSubmit()}
-                disabled={submitting || !isOrderAvailable}
+                disabled={submitting || !isOrderAvailable || totalQuantity === 0}
                 className="flex-1 rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
               >
                 {!isOrderAvailable ? "주문 불가" : submitting ? "접수 중..." : "주문 접수"}

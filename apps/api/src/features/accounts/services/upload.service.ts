@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getStorage, Storage } from 'firebase-admin/storage';
 
@@ -25,6 +26,7 @@ type PresignedUploadSession = {
 };
 
 const RESUMABLE_UPLOAD_MIN_BYTES = 8 * 1024 * 1024;
+const LOCAL_FIREBASE_SERVICE_ACCOUNT_FILE = 'firebase-service-account.local.json';
 
 @Injectable()
 export class UploadService {
@@ -219,12 +221,17 @@ export class UploadService {
   }
 
   private resolveCredential() {
+    const serviceAccountEnv = this.getNonEmptyEnv('FIREBASE_SERVICE_ACCOUNT_KEY');
+    const serviceAccountBase64 = this.getNonEmptyEnv('FIREBASE_SERVICE_ACCOUNT_BASE64');
+
+    const serviceAccountFromFile =
+      this.readServiceAccountFromFile(process.env.FIREBASE_SERVICE_ACCOUNT_PATH, true) ??
+      this.readServiceAccountFromFile(LOCAL_FIREBASE_SERVICE_ACCOUNT_FILE, false);
+
     const serviceAccountRaw =
-      process.env.FIREBASE_SERVICE_ACCOUNT_KEY ??
-      this.readServiceAccountFromFile(
-        process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
-      ) ??
-      this.decodeBase64(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64);
+      serviceAccountEnv ??
+      serviceAccountFromFile ??
+      this.decodeBase64(serviceAccountBase64);
 
     if (!serviceAccountRaw) {
       throw new InternalServerErrorException(
@@ -251,19 +258,36 @@ export class UploadService {
     }
   }
 
-  private readServiceAccountFromFile(filePath?: string): string | null {
+  private readServiceAccountFromFile(filePath?: string, strict = true): string | null {
     const trimmed = filePath?.trim();
     if (!trimmed) {
       return null;
     }
 
-    try {
-      return readFileSync(trimmed, 'utf8');
-    } catch {
+    const candidates = isAbsolute(trimmed)
+      ? [trimmed]
+      : [
+          trimmed,
+          resolve(process.cwd(), trimmed),
+          resolve(process.cwd(), '..', trimmed),
+          resolve(process.cwd(), '..', '..', trimmed),
+        ];
+
+    for (const candidate of candidates) {
+      try {
+        return readFileSync(candidate, 'utf8');
+      } catch {
+        // Try the next candidate path.
+      }
+    }
+
+    if (strict) {
       throw new InternalServerErrorException(
         'FIREBASE_SERVICE_ACCOUNT_PATH 파일을 읽을 수 없습니다.',
       );
     }
+
+    return null;
   }
 
   private decodeBase64(value?: string): string | null {
@@ -276,6 +300,11 @@ export class UploadService {
     } catch {
       return null;
     }
+  }
+
+  private getNonEmptyEnv(key: string): string | undefined {
+    const value = process.env[key]?.trim();
+    return value ? value : undefined;
   }
 
   private getExtension(fileName: string): string {
