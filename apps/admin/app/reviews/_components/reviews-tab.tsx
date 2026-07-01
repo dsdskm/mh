@@ -255,7 +255,6 @@ export function ReviewsTab({ reviews, deleteReview }: Props) {
       {detailReview && (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => !submitting && setDetailReviewId(null)}
         >
           <div
             className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"

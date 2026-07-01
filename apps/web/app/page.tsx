@@ -154,6 +154,14 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || (process.env.NO
 const MEMBER_PHONE_KEY = "cornmarket:member-phone";
 const NOTICE_DISMISS_KEY_PREFIX = "cornmarket:notice:dismissed:";
 const TERMS_SEEN_VERSION_KEY = "cornmarket:terms:seen-version";
+const ORDER_REQUEST_CUSTOM_VALUE = "__custom__";
+
+type OrderRequestPresetValue =
+  | ""
+  | "문 앞에 놓아주세요"
+  | "경비실에 맡겨 주세요"
+  | "전화주세요"
+  | typeof ORDER_REQUEST_CUSTOM_VALUE;
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -203,7 +211,8 @@ export default function Home() {
   const [shippingAddress, setShippingAddress] = useState("");
   const [memberShippingAddresses, setMemberShippingAddresses] = useState<ShippingAddress[]>([]);
   const [selectedShippingAddressId, setSelectedShippingAddressId] = useState<number | null>(null);
-  const [orderRequestNote, setOrderRequestNote] = useState("");
+  const [orderRequestPreset, setOrderRequestPreset] = useState<OrderRequestPresetValue>("");
+  const [orderRequestCustomNote, setOrderRequestCustomNote] = useState("");
   const [loadingDefaultShipping, setLoadingDefaultShipping] = useState(false);
   // 회원 전용: 쿠폰/적립금
   const [memberAccountId, setMemberAccountId] = useState<number | null>(null);
@@ -248,6 +257,10 @@ export default function Home() {
   const [guestOrderCodeExpiresAt, setGuestOrderCodeExpiresAt] = useState<number | null>(null);
   const [guestOrderCodeRemainingSec, setGuestOrderCodeRemainingSec] = useState(0);
   const videoIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const resolvedOrderRequestNote =
+    orderRequestPreset === ORDER_REQUEST_CUSTOM_VALUE
+      ? orderRequestCustomNote.trim()
+      : orderRequestPreset.trim();
 
   useEffect(() => {
     setMounted(true);
@@ -717,6 +730,10 @@ export default function Home() {
   }
 
   async function submitOrder() {
+    if (submitting) {
+      return;
+    }
+
     if (!validateOrderBeforeSubmit()) {
       return;
     }
@@ -736,7 +753,7 @@ export default function Home() {
         body: JSON.stringify({
           phone,
           shippingAddress: resolvedShippingAddress,
-          requestNote: orderRequestNote.trim() || undefined,
+          requestNote: resolvedOrderRequestNote || undefined,
           depositorName,
           purchaseType,
           excludeMemberBonus:
@@ -778,7 +795,8 @@ export default function Home() {
       setGuestOrderPhoneVerified(false);
       setGuestOrderCodeExpiresAt(null);
       setGuestOrderCodeRemainingSec(0);
-      setOrderRequestNote("");
+      setOrderRequestPreset("");
+      setOrderRequestCustomNote("");
     } catch (submitError) {
       const message =
         submitError instanceof Error
@@ -922,6 +940,10 @@ export default function Home() {
   }
 
   async function confirmOrderSubmit() {
+    if (submitting) {
+      return;
+    }
+
     setShowOrderConfirmModal(false);
     await submitOrder();
   }
@@ -1460,7 +1482,8 @@ export default function Home() {
                   setMemberShippingAddresses([]);
                   setSelectedShippingAddressId(null);
                 }
-                setOrderRequestNote("");
+                setOrderRequestPreset("");
+                setOrderRequestCustomNote("");
                 setOrderDone(null);
                 setError(null);
               }}
@@ -1702,12 +1725,27 @@ export default function Home() {
                           ))}
                         </select>
                       )}
-                      <textarea
-                        value={orderRequestNote}
-                        onChange={(event) => setOrderRequestNote(event.target.value)}
-                        placeholder="주문시 요청 사항 (예: 문 앞에 놓아주세요)"
-                        className="h-20 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                      />
+                      <div className="space-y-2">
+                        <select
+                          value={orderRequestPreset}
+                          onChange={(event) => setOrderRequestPreset(event.target.value as OrderRequestPresetValue)}
+                          className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                        >
+                          <option value="">주문시 요청 사항 선택</option>
+                          <option value="문 앞에 놓아주세요">문 앞에 놓아주세요</option>
+                          <option value="경비실에 맡겨 주세요">경비실에 맡겨 주세요</option>
+                          <option value="전화주세요">전화주세요</option>
+                          <option value={ORDER_REQUEST_CUSTOM_VALUE}>직접 입력</option>
+                        </select>
+                        {orderRequestPreset === ORDER_REQUEST_CUSTOM_VALUE && (
+                          <textarea
+                            value={orderRequestCustomNote}
+                            onChange={(event) => setOrderRequestCustomNote(event.target.value)}
+                            placeholder="요청 사항을 직접 입력해주세요"
+                            className="h-20 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                          />
+                        )}
+                      </div>
                       {purchaseType === "member" && loadingDefaultShipping && (
                         <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
                           계정 정보와 기본 배송지를 불러오는 중입니다...
@@ -1936,7 +1974,7 @@ export default function Home() {
               <p>입금자명: {depositorName || "-"}</p>
               <p>연락처: {phone ? formatPhone(phone) : "-"}</p>
               <p>배송지: {confirmShippingAddress || "-"}</p>
-              <p>요청사항: {orderRequestNote.trim() || "없음"}</p>
+              <p>요청사항: {resolvedOrderRequestNote || "없음"}</p>
             </div>
 
             <div className="mt-2 rounded-2xl border border-lime-200 bg-lime-50 p-3">

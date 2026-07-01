@@ -59,6 +59,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
   private readonly guestLookupCodeStore = new Map<string, PhoneCodeState>();
   private readonly guestLookupVerifiedStore = new Map<string, VerifiedLookupState>();
+  private readonly orderReceivedSmsInFlight = new Set<number>();
   private overdueTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -721,7 +722,11 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       where: { phone },
     });
 
-    if (existingAccount) {
+    const isMasterCheckoutException =
+      purpose === 'checkout' &&
+      existingAccount?.type?.toUpperCase() === 'MASTER';
+
+    if (existingAccount && !isMasterCheckoutException) {
       return {
         ok: false,
         alreadyRegistered: true,
@@ -858,9 +863,11 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     const verificationContext =
       purpose === 'checkout' ? '비회원 주문 인증번호' : '주문조회 인증번호';
+    const receiverName = purpose === 'checkout' ? '웹 비회원 주문인증' : '웹 주문조회 인증';
     try {
       await this.messagesService.sendSms({
         receiver: phone,
+        receiverName,
         content: `${verificationContext} [${code}]를 입력해주세요.`,
       });
     } catch (error) {
@@ -895,51 +902,55 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async sendOrderReceivedSms(order: OrderEntity): Promise<void> {
-    const storeConfig = await this.configService.getStoreConfig();
-    const shopName = storeConfig.shopName.trim() || '상점';
-    const prefix = `[${shopName}]`;
-    const dueAtText = order.paymentDueAt
-      ? this.formatSmsDateTime(order.paymentDueAt)
-      : '없음';
-    const amountText = `${Math.max(0, Math.floor(order.totalAmount)).toLocaleString('ko-KR')}원`;
-    const bankName = (storeConfig.bankName ?? '').trim() || '-';
-    const accountHolder = (storeConfig.accountHolder ?? '').trim() || '-';
-    const accountNumber = (storeConfig.accountNumber ?? '').trim() || '-';
+    if (this.orderReceivedSmsInFlight.has(order.id)) {
+      return;
+    }
 
-    const firstCandidates = [
-      `${prefix} 주문번호:${order.id}, 입금기한:${dueAtText} 감사합니다.`,
-      `${prefix} 주문번호:${order.id}, 기한:${dueAtText} 감사합니다.`,
-      `${prefix} 주문번호:${order.id}, 기한:${dueAtText.replace(/^\d{4}-/, '')} 감사합니다.`,
-      `${prefix} 주문번호:${order.id} 감사합니다.`,
-    ];
-
-    const secondCandidates = [
-      `${prefix} 금액:${amountText}, 은행:${bankName}, 예금주:${accountHolder}, 계좌:${accountNumber}`,
-      `${prefix} 금액:${amountText}, 은행:${bankName}, 예금주:${accountHolder}, 계좌번호:${accountNumber}`,
-      `${prefix} 금액:${amountText}, 은행:${bankName}, 예금주:${accountHolder}`,
-    ];
-
-    const firstSelected =
-      firstCandidates.find((item) => this.smsByteLength(item) <= 90) ?? firstCandidates[firstCandidates.length - 1];
-    const secondSelected =
-      secondCandidates.find((item) => this.smsByteLength(item) <= 90) ?? secondCandidates[secondCandidates.length - 1];
-    const firstMessage = this.truncateByByte(firstSelected, 90);
-    const secondMessage = this.truncateByByte(secondSelected, 90);
-
+    this.orderReceivedSmsInFlight.add(order.id);
     try {
-      await this.messagesService.sendSms({
-        receiver: this.normalizePhone(order.phone),
-        content: firstMessage,
-      });
-      await this.messagesService.sendSms({
-        receiver: this.normalizePhone(order.phone),
-        content: secondMessage,
-      });
-    } catch (error) {
-      console.warn('[orders] 주문접수 문자 발송 실패', {
-        orderId: order.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const storeConfig = await this.configService.getStoreConfig();
+      const shopName = storeConfig.shopName.trim() || '상점';
+      const prefix = `[${shopName}]`;
+      const dueAtText = order.paymentDueAt
+        ? this.formatSmsDateTime(order.paymentDueAt)
+        : '-';
+      const amountText = `${Math.max(0, Math.floor(order.totalAmount)).toLocaleString('ko-KR')}원`;
+      const bankName = (storeConfig.bankName ?? '').trim() || '-';
+      const accountHolder = (storeConfig.accountHolder ?? '').trim() || '-';
+      const accountNumber = (storeConfig.accountNumber ?? '').trim() || '-';
+
+      const compactDueAt = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(dueAtText)
+        ? dueAtText.slice(5)
+        : dueAtText;
+      const compactBank = this.truncateByByte(bankName, 16);
+      const compactAccount = this.truncateByByte(accountNumber, 24);
+      const compactHolder = this.truncateByByte(accountHolder, 16);
+
+      const messageCandidates = [
+        `${prefix}${amountText}/입금기한 ${compactDueAt}/${compactBank}/${compactAccount}/${compactHolder} 감사합니다.`,
+        `${prefix}${amountText}/입금기한 ${compactDueAt}/${compactBank}/${compactAccount} 감사합니다.`,
+        `${prefix}${amountText}/입금기한 ${compactDueAt}/${compactAccount} 감사합니다.`,
+        `${prefix}${amountText}/입금기한 ${compactDueAt} 감사합니다.`,
+        `${prefix}${amountText}/입금기한 ${compactDueAt}`,
+      ];
+
+      const selected =
+        messageCandidates.find((item) => this.smsByteLength(item) <= 90) ?? messageCandidates[messageCandidates.length - 1];
+      const message = this.truncateByByte(selected, 90);
+
+      try {
+        await this.messagesService.sendSms({
+          receiver: this.normalizePhone(order.phone),
+          content: message,
+        });
+      } catch (error) {
+        console.warn('[orders] 주문접수 문자 발송 실패', {
+          orderId: order.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    } finally {
+      this.orderReceivedSmsInFlight.delete(order.id);
     }
   }
 
@@ -996,7 +1007,11 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       const config = await this.configService.getStoreConfig();
       const shopName = config.shopName.trim() || '상점';
       const receiver = this.normalizePhone(config.sellerPhone ?? '');
+      const customerReceiver = this.normalizePhone(order.phone);
       if (!/^\d{8,20}$/.test(receiver)) {
+        return;
+      }
+      if (receiver === customerReceiver) {
         return;
       }
 

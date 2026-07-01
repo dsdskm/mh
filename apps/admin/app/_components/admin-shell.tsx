@@ -328,7 +328,7 @@ export function AdminShell({ activeTab, state, children }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-admin-pattern text-stone-900 lg:flex">
+    <div className="min-h-screen bg-admin-pattern text-stone-900 lg:flex lg:pl-60">
       <header className="sticky top-0 z-40 border-b border-lime-200 bg-white/95 px-3 py-3 backdrop-blur lg:hidden">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
@@ -363,8 +363,8 @@ export function AdminShell({ activeTab, state, children }: Props) {
         </div>
       </aside>
 
-      <main className="flex-1 pb-10 lg:ml-60 xl:mr-80">
-        <div className="sticky top-0 z-30 hidden border-b border-lime-200 bg-white/90 px-3 py-3 backdrop-blur sm:px-4 lg:block lg:fixed lg:left-60 lg:right-0 lg:top-0 lg:px-6 xl:right-80">
+      <main className="min-w-0 flex-1 pb-10">
+        <div className="sticky top-0 z-30 hidden border-b border-lime-200 bg-white/90 px-3 py-3 backdrop-blur sm:px-4 lg:block lg:fixed lg:left-60 lg:right-0 lg:top-0 lg:px-6 xl:right-72 2xl:right-80">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <p className="text-sm font-extrabold text-stone-900">운영 상태</p>
@@ -423,7 +423,7 @@ export function AdminShell({ activeTab, state, children }: Props) {
         </div>
       </main>
 
-      <aside className="fixed right-0 top-0 hidden h-screen w-80 border-l border-amber-200 bg-white/95 shadow-xl xl:block">
+      <aside className="hidden w-72 border-l border-amber-200 bg-white/95 shadow-xl xl:sticky xl:top-0 xl:block xl:h-screen 2xl:w-80">
         <div className="h-full overflow-auto p-4">
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
@@ -472,7 +472,7 @@ export function AdminShell({ activeTab, state, children }: Props) {
       </aside>
 
       {showMobileMenu && (
-        <div className="fixed inset-0 z-50 bg-black/40 lg:hidden" onClick={() => setShowMobileMenu(false)}>
+        <div className="fixed inset-0 z-50 bg-black/40 lg:hidden">
           <div
             className="absolute left-0 top-0 h-full w-[86vw] max-w-sm overflow-auto bg-white p-4 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
@@ -510,11 +510,6 @@ export function AdminShell({ activeTab, state, children }: Props) {
       {showBusinessTextModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => {
-            if (!savingBusinessStatus) {
-              setShowBusinessTextModal(false);
-            }
-          }}
         >
           <div
             className="w-full max-w-xl rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
@@ -578,12 +573,6 @@ export function AdminShell({ activeTab, state, children }: Props) {
       {showBusinessStatusConfirmModal && pendingBusinessStatus && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => {
-            if (!savingBusinessStatus) {
-              setShowBusinessStatusConfirmModal(false);
-              setPendingBusinessStatus(null);
-            }
-          }}
         >
           <div
             className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"

@@ -1135,7 +1135,6 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
       {dayPopup && (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setDayPopup(null)}
         >
           <div
             className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
@@ -1223,11 +1222,6 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
       {confirmState && (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => {
-            if (!submittingOrderId) {
-              setConfirmState(null);
-            }
-          }}
         >
           <div
             className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
@@ -1268,11 +1262,6 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
       {deleteTarget && (
         <div
           className="fixed inset-0 z-[82] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => {
-            if (!deletingOrderId) {
-              setDeleteTarget(null);
-            }
-          }}
         >
           <div
             className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
@@ -1406,11 +1395,6 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
       {smsTarget && (
         <div
           className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => {
-            if (!smsSending) {
-              closeSmsModal();
-            }
-          }}
         >
           <div
             className="w-full max-w-md rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
@@ -1505,7 +1489,6 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
       {editOrderId && (
         <div
           className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => !updatingOrder && setEditOrderId(null)}
         >
           <div
             className="w-full max-w-xl rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"

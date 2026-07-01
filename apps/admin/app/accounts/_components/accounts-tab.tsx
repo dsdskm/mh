@@ -51,9 +51,13 @@ type Props = {
 type ConfirmAction =
   | { kind: "create"; payload: AdminUserCreatePayload }
   | { kind: "update"; id: number; payload: AdminUserUpdatePayload }
-  | { kind: "delete"; id: number; name: string };
+  | { kind: "delete"; id: number; name: string; isMaster: boolean };
 
 export function AccountsTab({ accounts, createAccount, updateAccount, deleteAccount }: Props) {
+  function isMasterAccount(account: AdminUser): boolean {
+    return account.type.toUpperCase() === "MASTER";
+  }
+
   // ── modal state ──────────────────────────────────────────────────────────
   const [showModal, setShowModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<AdminUser | null>(null);
@@ -354,12 +358,18 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
       kind: "delete",
       id: account.id,
       name: account.displayName ?? account.userId ?? `#${account.id}`,
+      isMaster: isMasterAccount(account),
     });
     setConfirmError(null);
   }
 
   async function executeConfirmedAction() {
     if (!confirmAction) {
+      return;
+    }
+
+    if (confirmAction.kind === "delete" && confirmAction.isMaster) {
+      setConfirmError("MASTER 계정은 삭제할 수 없습니다.");
       return;
     }
 
@@ -579,11 +589,6 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
       {smsTargets && (
         <div
           className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => {
-            if (!smsSending) {
-              closeSmsModal();
-            }
-          }}
         >
           <div
             className="w-full max-w-md rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
@@ -691,7 +696,6 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
       {detailAccount && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setDetailAccount(null)}
         >
           <div
             className="w-full max-w-lg rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
@@ -785,8 +789,9 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
               <button
                 type="button"
                 onClick={() => requestDeleteConfirmation(detailAccount)}
-                className="flex-1 rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700"
-              >삭제</button>
+                disabled={isMasterAccount(detailAccount)}
+                className="flex-1 rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >{isMasterAccount(detailAccount) ? "삭제 불가" : "삭제"}</button>
             </div>
           </div>
         </div>
@@ -795,12 +800,6 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
       {confirmAction && (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => {
-            if (!submitting) {
-              setConfirmAction(null);
-              setConfirmError(null);
-            }
-          }}
         >
           <div
             className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
@@ -810,7 +809,10 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
             <p className="mt-2 text-sm text-stone-700">
               {confirmAction.kind === "create" && "계정을 생성하시겠습니까?"}
               {confirmAction.kind === "update" && "계정 정보를 수정하시겠습니까?"}
-              {confirmAction.kind === "delete" && `"${confirmAction.name}" 계정을 삭제하시겠습니까?`}
+              {confirmAction.kind === "delete" &&
+                (confirmAction.isMaster
+                  ? `"${confirmAction.name}" 계정은 삭제할 수 없습니다.`
+                  : `"${confirmAction.name}" 계정을 삭제하시겠습니까?`)}
             </p>
 
             {confirmError && (
@@ -832,7 +834,7 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
               <button
                 type="button"
                 onClick={() => void executeConfirmedAction()}
-                disabled={submitting}
+                disabled={submitting || (confirmAction.kind === "delete" && confirmAction.isMaster)}
                 className="flex-1 rounded-xl bg-lime-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
               >
                 {submitting ? "처리 중..." : "확인"}
@@ -846,7 +848,6 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
       {showModal && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => { if (!submitting) setShowModal(false); }}
         >
           <div
             className="w-full max-w-lg rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"

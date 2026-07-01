@@ -454,7 +454,7 @@ export function MessagesTab({ accounts }: Props) {
             <button
               type="button"
               onClick={addSelectedAccount}
-              className="rounded-xl border border-lime-300 bg-lime-50 px-4 py-2 text-sm font-semibold text-lime-800 hover:bg-lime-100"
+              className="min-w-[88px] rounded-xl border border-lime-300 bg-lime-50 px-5 py-2 text-sm font-semibold text-lime-800 hover:bg-lime-100"
             >
               추가
             </button>
@@ -574,11 +574,6 @@ export function MessagesTab({ accounts }: Props) {
       {sendDraft && (
         <div
           className="fixed inset-0 z-[75] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => {
-            if (!sending) {
-              setSendDraft(null);
-            }
-          }}
         >
           <div
             className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
@@ -618,7 +613,7 @@ export function MessagesTab({ accounts }: Props) {
 
       {historyOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[85vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="max-h-[90vh] w-full max-w-[96vw] overflow-hidden rounded-2xl bg-white shadow-2xl 2xl:max-w-[1700px]">
             <div className="flex items-center justify-between border-b border-stone-200 px-5 py-4">
               <h3 className="text-lg font-bold text-stone-900">문자 내역</h3>
               <button
@@ -668,15 +663,17 @@ export function MessagesTab({ accounts }: Props) {
                 </p>
               )}
 
-              <div className="max-h-[55vh] overflow-auto rounded-xl border border-stone-200">
-                <table className="w-full min-w-[960px] border-collapse text-sm">
+              <div className="max-h-[70vh] overflow-auto rounded-xl border border-stone-200">
+                <table className="w-full min-w-[1320px] border-collapse text-sm">
                   <thead className="sticky top-0 bg-stone-100 text-stone-700">
                     <tr>
                       <th className="border-b border-stone-200 px-3 py-2 text-left">일시</th>
                       <th className="border-b border-stone-200 px-3 py-2 text-left">예약일시</th>
+                      <th className="border-b border-stone-200 px-3 py-2 text-left">수신자</th>
                       <th className="border-b border-stone-200 px-3 py-2 text-left">수신번호</th>
                       <th className="border-b border-stone-200 px-3 py-2 text-left">내용</th>
                       <th className="border-b border-stone-200 px-3 py-2 text-left">상태</th>
+                      <th className="border-b border-stone-200 px-3 py-2 text-left">실패사유</th>
                       <th className="border-b border-stone-200 px-3 py-2 text-left">접수번호</th>
                       <th className="border-b border-stone-200 px-3 py-2 text-left">관리</th>
                     </tr>
@@ -684,34 +681,37 @@ export function MessagesTab({ accounts }: Props) {
                   <tbody>
                     {historyLoading ? (
                       <tr>
-                        <td className="px-3 py-5 text-center text-stone-500" colSpan={7}>
+                        <td className="px-3 py-5 text-center text-stone-500" colSpan={9}>
                           문자 내역을 불러오는 중입니다...
                         </td>
                       </tr>
                     ) : historyItems.length === 0 ? (
                       <tr>
-                        <td className="px-3 py-5 text-center text-stone-500" colSpan={7}>
+                        <td className="px-3 py-5 text-center text-stone-500" colSpan={9}>
                           문자 내역이 없습니다.
                         </td>
                       </tr>
                     ) : (
                       historyItems.map((item) => (
                         <tr key={item.id} className="odd:bg-white even:bg-stone-50">
-                          <td className="border-t border-stone-100 px-3 py-2 text-stone-700">
+                          <td className="whitespace-nowrap border-t border-stone-100 px-3 py-2 text-stone-700">
                             {new Date(item.createdAt).toLocaleString("ko-KR")}
                           </td>
-                          <td className="border-t border-stone-100 px-3 py-2 text-stone-700">
+                          <td className="whitespace-nowrap border-t border-stone-100 px-3 py-2 text-stone-700">
                             {formatReserveForView(item.reserveDT)}
                           </td>
-                          <td className="border-t border-stone-100 px-3 py-2 text-stone-700">
+                          <td className="whitespace-nowrap border-t border-stone-100 px-3 py-2 text-stone-700">
+                            {item.receiverName ?? "-"}
+                          </td>
+                          <td className="whitespace-nowrap border-t border-stone-100 px-3 py-2 text-stone-700">
                             {formatPhone(item.receiver)}
                           </td>
                           <td className="border-t border-stone-100 px-3 py-2 text-stone-700">
-                            <p className="max-w-[420px] truncate" title={item.content}>
+                            <p className="max-w-[520px] whitespace-nowrap truncate" title={item.content}>
                               {item.content}
                             </p>
                           </td>
-                          <td className="border-t border-stone-100 px-3 py-2">
+                          <td className="whitespace-nowrap border-t border-stone-100 px-3 py-2">
                             {item.status === "success" ? (
                               <span className="rounded-md bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
                                 성공
@@ -727,9 +727,14 @@ export function MessagesTab({ accounts }: Props) {
                             )}
                           </td>
                           <td className="border-t border-stone-100 px-3 py-2 text-stone-700">
+                            <p className="max-w-[360px] whitespace-nowrap truncate" title={item.errorMessage ?? "-"}>
+                              {item.errorMessage ?? "-"}
+                            </p>
+                          </td>
+                          <td className="whitespace-nowrap border-t border-stone-100 px-3 py-2 text-stone-700">
                             {item.receiptNum ?? "-"}
                           </td>
-                          <td className="border-t border-stone-100 px-3 py-2 text-stone-700">
+                          <td className="whitespace-nowrap border-t border-stone-100 px-3 py-2 text-stone-700">
                             {item.reserveDT && item.receiptNum && item.status === "success" ? (
                               <button
                                 type="button"
@@ -775,11 +780,6 @@ export function MessagesTab({ accounts }: Props) {
       {cancelTarget && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4"
-          onClick={() => {
-            if (!cancelSubmitting) {
-              setCancelTarget(null);
-            }
-          }}
         >
           <div
             className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"

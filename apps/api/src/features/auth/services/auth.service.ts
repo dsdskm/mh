@@ -345,6 +345,7 @@ export class AuthService {
     try {
       await this.messagesService.sendSms({
         receiver: phone,
+        receiverName: '웹 회원인증',
         content: `인증번호 [${code}]를 입력해주세요.`,
       });
     } catch (error) {

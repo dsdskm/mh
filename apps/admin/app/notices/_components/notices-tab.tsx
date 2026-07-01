@@ -371,7 +371,6 @@ function NoticeFormModal({
   return (
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4"
-      onClick={() => !submitting && onClose()}
     >
       <div
         className="w-full max-w-lg rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
