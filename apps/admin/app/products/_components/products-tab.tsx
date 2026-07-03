@@ -427,13 +427,7 @@ export function ProductsTab({ state }: Props) {
               )}
 
               <label className="block space-y-1">
-                <span className="text-xs font-semibold text-stone-600">이미지 URL</span>
-                <input
-                  value={editingForm.imageUrl}
-                  onChange={(event) => setEditingForm((prev) => prev ? { ...prev, imageUrl: event.target.value } : prev)}
-                  className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                  required
-                />
+                <span className="text-xs font-semibold text-stone-600">이미지</span>
                 <input
                   type="file"
                   accept="image/*"
