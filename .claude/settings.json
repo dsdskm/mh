@@ -3,7 +3,7 @@
     "allow": [
       "Bash(psql \"postgresql://root:root@localhost:5432/main\" -tAc \"SELECT count\\(*\\) FROM products;\")",
       "Bash(psql postgresql://root:root@localhost:5432/main -tAc 'INSERT INTO products \\(\"name\",\"description\",\"price\",\"stock\",\"totalQuantity\",\"imageUrl\",\"badge\",\"active\"\\) VALUES \\('\\\\''테스트상품A'\\\\'','\\\\''desc'\\\\'',10000,50,0,'\\\\''http://x/a'\\\\'','\\\\'''\\\\'',true\\),\\('\\\\''테스트상품B'\\\\'','\\\\''desc'\\\\'',20000,50,0,'\\\\''http://x/b'\\\\'','\\\\'''\\\\'',true\\),\\('\\\\''테스트상품C'\\\\'','\\\\''desc'\\\\'',30000,50,0,'\\\\''http://x/c'\\\\'','\\\\'''\\\\'',true\\); SELECT count\\(*\\) FROM products;')",
-      "Bash(./dev-mock-seed.sh)"
+      "Bash(./mock-seed.sh)"
     ]
   }
 }

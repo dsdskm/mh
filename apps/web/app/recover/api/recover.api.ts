@@ -73,3 +73,14 @@ export function verifyRecoverPhoneCodeApi(payload: {
     "휴대폰 인증에 실패했습니다.",
   );
 }
+
+export async function fetchSellerPhoneApi(): Promise<string> {
+  try {
+    const response = await fetch(`${API_BASE}/api/config`, { cache: "no-store" });
+    if (!response.ok) return "";
+    const data = (await response.json()) as { sellerPhone?: string };
+    return data.sellerPhone?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}

@@ -11,6 +11,7 @@ import {
   signupApi,
   verifyPhoneCodeApi,
 } from "./api/singup.api";
+import { PhoneContactMessage } from "../_components/phone-verification-box";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "");
 const DAUM_POSTCODE_SCRIPT_URL =
@@ -75,6 +76,7 @@ export default function SignupPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [registered, setRegistered] = useState(false);
   const [signupCouponNotice, setSignupCouponNotice] = useState<string | null>(null);
+  const [sellerPhone, setSellerPhone] = useState("");
 
   const normalizedPhone = useMemo(() => phone.replace(/\D/g, ""), [phone]);
   const passwordChecks = useMemo(() => {
@@ -131,9 +133,11 @@ export default function SignupPage() {
         const data = (await response.json()) as {
           termsUrl?: string;
           privacyUrl?: string;
+          sellerPhone?: string;
         };
         setTermsUrl(data.termsUrl?.trim() ?? "");
         setPrivacyUrl(data.privacyUrl?.trim() ?? "");
+        setSellerPhone(data.sellerPhone?.trim() ?? "");
       } catch {
         setTermsUrl("");
         setPrivacyUrl("");
@@ -520,6 +524,10 @@ export default function SignupPage() {
             <p className={`rounded-xl p-3 text-xs font-semibold ${codeRemainingSec > 0 ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700"}`}>
               인증번호 유효시간: {formatCountdown(codeRemainingSec)}
             </p>
+          )}
+
+          {codeSent && !verificationToken && (
+            <PhoneContactMessage sellerPhone={sellerPhone} />
           )}
 
           {verificationToken && (

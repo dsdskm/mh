@@ -4,7 +4,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "dev:clear-cache": "sh ./scripts/dev/dev-clear-caches.sh",
+    "dev:clear-cache": "sh ./scripts/dev/clear-caches.sh",
     "dev:web": "turbo run dev --filter=web",
     "dev:admin": "turbo run dev --filter=admin",
     "dev:api": "turbo run dev --filter=api",

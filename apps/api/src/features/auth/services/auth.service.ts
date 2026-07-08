@@ -1,6 +1,6 @@
 import { randomBytes, randomInt, scrypt as nodeScrypt } from 'node:crypto';
 import { promisify } from 'node:util';
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AccountEntity } from '../../../database/entities/account.entity';
@@ -30,13 +30,33 @@ type VerifiedPhoneState = {
 };
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit, OnModuleDestroy {
   private static readonly SMS_CODE_EXPIRE_MS = 3 * 60 * 1000;
   private static readonly VERIFIED_TOKEN_EXPIRE_MS = 10 * 60 * 1000;
   private static readonly MAX_VERIFY_ATTEMPTS = 5;
+  private static readonly CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
   private readonly phoneCodeStore = new Map<string, PhoneCodeState>();
   private readonly verifiedPhoneStore = new Map<string, VerifiedPhoneState>();
+  private cleanupTimer: NodeJS.Timeout | null = null;
+
+  onModuleInit() {
+    this.cleanupTimer = setInterval(() => this.purgeExpired(), AuthService.CLEANUP_INTERVAL_MS);
+  }
+
+  onModuleDestroy() {
+    if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+  }
+
+  private purgeExpired() {
+    const now = Date.now();
+    for (const [key, state] of this.phoneCodeStore) {
+      if (now > state.expiresAt) this.phoneCodeStore.delete(key);
+    }
+    for (const [token, state] of this.verifiedPhoneStore) {
+      if (now > state.expiresAt) this.verifiedPhoneStore.delete(token);
+    }
+  }
 
   constructor(
     @InjectRepository(AccountEntity)
@@ -96,11 +116,13 @@ export class AuthService {
 
     const existingPhone = await this.accountRepository.findOne({ where: { phone } });
     if (purpose === 'signup' && existingPhone) {
+      console.log(`[AuthService] requestPhoneVerification: signup purpose but account already exists for phone ${phone}`);
       throw new BadRequestException('이미 가입되어 있는 번호입니다. 로그인해주세요.');
     }
 
     if (purpose === 'recover' && !existingPhone) {
-      throw new BadRequestException('가입된 회원 정보를 찾을 수 없습니다.');
+      console.log(`[AuthService] requestPhoneVerification: recover purpose but no account found for phone ${phone}`);
+      throw new BadRequestException('가입되지 않은 번호입니다. 번호를 확인해주세요.');
     }
 
     const code = this.createPhoneCode();

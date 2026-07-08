@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { FormEvent, useEffect, useState } from "react";
 import { formatCurrency, formatPhone } from "../_lib/format";
 import { getProfileApi } from "../account/api/account.api";
+import { PhoneContactMessage } from "../_components/phone-verification-box";
 import {
   ORDER_STATUS,
   ORDER_STATUS_FLOW,
@@ -131,6 +132,14 @@ export default function OrdersPage() {
   const [guestCodeRemainingSec, setGuestCodeRemainingSec] = useState(0);
   const [guestError, setGuestError] = useState<string | null>(null);
   const [guestSuccess, setGuestSuccess] = useState<string | null>(null);
+  const [sellerPhone, setSellerPhone] = useState("");
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/config`, { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : {})
+      .then((data: { sellerPhone?: string }) => setSellerPhone(data.sellerPhone?.trim() ?? ""))
+      .catch(() => {});
+  }, []);
 
   const [memberOrders, setMemberOrders] = useState<Order[]>([]);
   const [memberLoading, setMemberLoading] = useState(false);
@@ -499,6 +508,7 @@ export default function OrdersPage() {
                 <p className={`text-xs font-semibold ${guestCodeRemainingSec > 0 ? "text-amber-700" : "text-red-600"}`}>
                   인증번호 유효시간: {formatCountdown(guestCodeRemainingSec)}
                 </p>
+                <PhoneContactMessage sellerPhone={sellerPhone} />
               </form>
             )}
 

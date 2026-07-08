@@ -6,20 +6,15 @@ import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency, formatPhone, toEmbedVideoUrl } from "./_lib/format";
-import {
-  getProfileApi,
-  getShippingAddressesApi,
-  getMyCouponsApi,
-  getMyMileageApi,
-} from "./account/api/account.api";
+import { PhoneVerificationBox } from "./_components/phone-verification-box";
+import { getProfileApi, getShippingAddressesApi, getMyCouponsApi, getMyMileageApi } from "./account/api/account.api";
 import type { ShippingAddress } from "../types/auth";
 import { getOrderStatusLabelKo } from "@repo/shared-types/order";
 import type { OrderStatus } from "@repo/shared-types/order";
 import type { Notice } from "@repo/shared-types/notice";
 import type { Coupon } from "@repo/shared-types/coupon";
 
-const DAUM_POSTCODE_SCRIPT_URL =
-  "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
+const DAUM_POSTCODE_SCRIPT_URL = "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
 
 type DaumPostcodeData = {
   roadAddress: string;
@@ -31,9 +26,7 @@ type DaumPostcodeData = {
 declare global {
   interface Window {
     daum?: {
-      Postcode: new (options: {
-        oncomplete: (data: DaumPostcodeData) => void;
-      }) => {
+      Postcode: new (options: { oncomplete: (data: DaumPostcodeData) => void }) => {
         open: () => void;
       };
     };
@@ -150,7 +143,9 @@ function formatCountdown(totalSeconds: number): string {
   return `${minutes}:${seconds}`;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "");
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ||
+  (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "");
 const MEMBER_PHONE_KEY = "cornmarket:member-phone";
 const NOTICE_DISMISS_KEY_PREFIX = "cornmarket:notice:dismissed:";
 const TERMS_SEEN_VERSION_KEY = "cornmarket:terms:seen-version";
@@ -258,9 +253,7 @@ export default function Home() {
   const [guestOrderCodeRemainingSec, setGuestOrderCodeRemainingSec] = useState(0);
   const videoIframeRef = useRef<HTMLIFrameElement | null>(null);
   const resolvedOrderRequestNote =
-    orderRequestPreset === ORDER_REQUEST_CUSTOM_VALUE
-      ? orderRequestCustomNote.trim()
-      : orderRequestPreset.trim();
+    orderRequestPreset === ORDER_REQUEST_CUSTOM_VALUE ? orderRequestCustomNote.trim() : orderRequestPreset.trim();
 
   useEffect(() => {
     setMounted(true);
@@ -280,10 +273,7 @@ export default function Home() {
     }
 
     const updateRemaining = () => {
-      const nextRemaining = Math.max(
-        0,
-        Math.ceil((guestOrderCodeExpiresAt - Date.now()) / 1000),
-      );
+      const nextRemaining = Math.max(0, Math.ceil((guestOrderCodeExpiresAt - Date.now()) / 1000));
       setGuestOrderCodeRemainingSec(nextRemaining);
 
       if (nextRemaining <= 0) {
@@ -347,10 +337,7 @@ export default function Home() {
         setReviews(reviewsData);
         setStoreConfig(configData);
       } catch (loadError) {
-        const message =
-          loadError instanceof Error
-            ? loadError.message
-            : "알 수 없는 오류가 발생했습니다.";
+        const message = loadError instanceof Error ? loadError.message : "알 수 없는 오류가 발생했습니다.";
         setError(message);
       } finally {
         setLoading(false);
@@ -454,59 +441,44 @@ export default function Home() {
   }
 
   const cartItems = useMemo(() => {
-    return products.reduce<Array<Product & { quantity: number; subtotal: number }>>(
-      (acc, product) => {
-        const quantity = cart[product.id] ?? 0;
-        if (quantity < 1) {
-          return acc;
-        }
-
-        acc.push({
-          ...product,
-          quantity,
-          subtotal: product.price * quantity,
-        });
+    return products.reduce<Array<Product & { quantity: number; subtotal: number }>>((acc, product) => {
+      const quantity = cart[product.id] ?? 0;
+      if (quantity < 1) {
         return acc;
-      },
-      [],
-    );
+      }
+
+      acc.push({
+        ...product,
+        quantity,
+        subtotal: product.price * quantity,
+      });
+      return acc;
+    }, []);
   }, [products, cart]);
 
   const confirmCartItems = useMemo(() => {
-    return products.reduce<Array<Product & { quantity: number; subtotal: number }>>(
-      (acc, product) => {
-        if (!(product.id in cart)) {
-          return acc;
-        }
-
-        const quantity = Math.max(0, cart[product.id] ?? 0);
-        acc.push({
-          ...product,
-          quantity,
-          subtotal: product.price * quantity,
-        });
+    return products.reduce<Array<Product & { quantity: number; subtotal: number }>>((acc, product) => {
+      if (!(product.id in cart)) {
         return acc;
-      },
-      [],
-    );
+      }
+
+      const quantity = Math.max(0, cart[product.id] ?? 0);
+      acc.push({
+        ...product,
+        quantity,
+        subtotal: product.price * quantity,
+      });
+      return acc;
+    }, []);
   }, [products, cart]);
 
-  const totalPrice = useMemo(
-    () => cartItems.reduce((sum, item) => sum + item.subtotal, 0),
-    [cartItems],
-  );
+  const totalPrice = useMemo(() => cartItems.reduce((sum, item) => sum + item.subtotal, 0), [cartItems]);
 
-  const totalQuantity = useMemo(
-    () => cartItems.reduce((sum, item) => sum + item.quantity, 0),
-    [cartItems],
-  );
+  const totalQuantity = useMemo(() => cartItems.reduce((sum, item) => sum + item.quantity, 0), [cartItems]);
 
   // 배송료: 청구 설정이 켜져 있을 때만 부과 (API orders.service 로직과 동일)
   const effectiveDeliveryFee = useMemo(
-    () =>
-      storeConfig.chargeDeliveryFee
-        ? Math.max(0, Math.floor(storeConfig.deliveryFee || 0))
-        : 0,
+    () => (storeConfig.chargeDeliveryFee ? Math.max(0, Math.floor(storeConfig.deliveryFee || 0)) : 0),
     [storeConfig.chargeDeliveryFee, storeConfig.deliveryFee],
   );
 
@@ -554,10 +526,7 @@ export default function Home() {
   }, [isMemberCheckout, selectedCoupon, totalPrice]);
 
   // 적립금 사용액 (잔액·결제예정액 한도 내)
-  const payableBeforeMileage = Math.max(
-    0,
-    totalPrice + effectiveDeliveryFee - couponDiscount,
-  );
+  const payableBeforeMileage = Math.max(0, totalPrice + effectiveDeliveryFee - couponDiscount);
   const mileageToUse = useMemo(() => {
     if (!isMemberCheckout) {
       return 0;
@@ -566,10 +535,7 @@ export default function Home() {
     return Math.min(requested, mileageBalance, payableBeforeMileage);
   }, [isMemberCheckout, mileageInput, mileageBalance, payableBeforeMileage]);
 
-  const finalPayable = Math.max(
-    0,
-    totalPrice + effectiveDeliveryFee - couponDiscount - mileageToUse,
-  );
+  const finalPayable = Math.max(0, totalPrice + effectiveDeliveryFee - couponDiscount - mileageToUse);
   const confirmShippingAddress =
     purchaseType === "guest"
       ? [guestAddressBase, guestAddressDetail].filter(Boolean).join(" ").trim()
@@ -597,9 +563,7 @@ export default function Home() {
       });
     }
 
-    return copied.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+    return copied.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [reviews, reviewSort]);
 
   const embeddedVideoUrl = useMemo(() => {
@@ -648,14 +612,8 @@ export default function Home() {
       const host = url.hostname.replace(/^www\./, "").toLowerCase();
 
       if (host.includes("youtube.com") || host.includes("youtube-nocookie.com")) {
-        iframe.contentWindow?.postMessage(
-          JSON.stringify({ event: "command", func: "mute", args: [] }),
-          "*",
-        );
-        iframe.contentWindow?.postMessage(
-          JSON.stringify({ event: "command", func: "setVolume", args: [0] }),
-          "*",
-        );
+        iframe.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "mute", args: [] }), "*");
+        iframe.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [0] }), "*");
       }
 
       if (host.includes("vimeo.com")) {
@@ -756,12 +714,11 @@ export default function Home() {
           requestNote: resolvedOrderRequestNote || undefined,
           depositorName,
           purchaseType,
-          excludeMemberBonus:
-            purchaseType === "member" ? excludeMemberBonus : undefined,
+          excludeMemberBonus: purchaseType === "member" ? excludeMemberBonus : undefined,
           lookupToken: purchaseType === "guest" ? guestOrderLookupToken : undefined,
           // 회원 전용: 주문자 계정 및 쿠폰/적립금
           accountId: purchaseType === "member" ? memberAccountId : undefined,
-          couponId: purchaseType === "member" ? selectedCouponId ?? undefined : undefined,
+          couponId: purchaseType === "member" ? (selectedCouponId ?? undefined) : undefined,
           mileageToUse: purchaseType === "member" && mileageToUse > 0 ? mileageToUse : undefined,
           items: cartItems.map((item) => ({
             productId: item.id,
@@ -798,10 +755,7 @@ export default function Home() {
       setOrderRequestPreset("");
       setOrderRequestCustomNote("");
     } catch (submitError) {
-      const message =
-        submitError instanceof Error
-          ? submitError.message
-          : "결제 요청에 실패했습니다.";
+      const message = submitError instanceof Error ? submitError.message : "결제 요청에 실패했습니다.";
       setError(message);
     } finally {
       setSubmitting(false);
@@ -929,10 +883,7 @@ export default function Home() {
     new window.daum.Postcode({
       oncomplete: (data) => {
         const baseAddress = data.roadAddress || data.jibunAddress;
-        const buildingSuffix =
-          data.apartment === "Y" && data.buildingName
-            ? ` (${data.buildingName})`
-            : "";
+        const buildingSuffix = data.apartment === "Y" && data.buildingName ? ` (${data.buildingName})` : "";
         setGuestAddressBase(`${baseAddress}${buildingSuffix}`.trim());
         setError(null);
       },
@@ -988,10 +939,7 @@ export default function Home() {
       await refreshReviews();
       setVisibleReviewCount(5);
     } catch (submitError) {
-      const message =
-        submitError instanceof Error
-          ? submitError.message
-          : "후기 등록 중 오류가 발생했습니다.";
+      const message = submitError instanceof Error ? submitError.message : "후기 등록 중 오류가 발생했습니다.";
       setError(message);
     } finally {
       setReviewSubmitting(false);
@@ -1047,10 +995,7 @@ export default function Home() {
 
     setLoadingDefaultShipping(true);
     try {
-      const [profileData, shippingData] = await Promise.all([
-        getProfileApi(userId),
-        getShippingAddressesApi(userId),
-      ]);
+      const [profileData, shippingData] = await Promise.all([getProfileApi(userId), getShippingAddressesApi(userId)]);
 
       setDepositorName(profileData.profile.name || session?.user?.name || "");
       setPhone(profileData.profile.phone || savedMemberPhone);
@@ -1061,10 +1006,7 @@ export default function Home() {
       setSelectedCouponId(null);
       setMileageInput("");
       try {
-        const [couponsData, mileageData] = await Promise.all([
-          getMyCouponsApi(accountId),
-          getMyMileageApi(accountId),
-        ]);
+        const [couponsData, mileageData] = await Promise.all([getMyCouponsApi(accountId), getMyMileageApi(accountId)]);
         setMemberCoupons(couponsData);
         setMileageBalance(mileageData.balance);
       } catch {
@@ -1075,13 +1017,10 @@ export default function Home() {
       setMemberShippingAddresses(shippingData.shippingAddresses);
 
       const selected =
-        shippingData.shippingAddresses.find((item) => item.isDefault) ??
-        shippingData.shippingAddresses[0];
+        shippingData.shippingAddresses.find((item) => item.isDefault) ?? shippingData.shippingAddresses[0];
       setSelectedShippingAddressId(selected?.id ?? null);
 
-      const defaultAddress = [selected?.address1, selected?.address2]
-        .filter(Boolean)
-        .join(" ");
+      const defaultAddress = [selected?.address1, selected?.address2].filter(Boolean).join(" ");
       setShippingAddress(defaultAddress);
     } catch {
       setMemberShippingAddresses([]);
@@ -1106,7 +1045,9 @@ export default function Home() {
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-4">
           <div>
             <p className="font-display text-2xl text-amber-700 sm:text-3xl">{storeConfig.shopName || "옥수수 가게"}</p>
-            <p className="mt-1 text-sm text-amber-900/90 sm:text-base">{storeConfig.detailDescription || "상점 설명"}</p>
+            <p className="mt-1 text-sm text-amber-900/90 sm:text-base">
+              {storeConfig.detailDescription || "상점 설명"}
+            </p>
             <div
               className={`mt-2 inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
                 storeConfig.businessStatus === "open"
@@ -1201,25 +1142,23 @@ export default function Home() {
 
                             return (
                               <>
-                          <button
-                            type="button"
-                            onClick={() => changeQuantity(product.id, -1)}
-                            disabled={!canDecrease}
-                            className="h-8 w-8 rounded-full bg-stone-100 text-base font-bold disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            -
-                          </button>
-                          <span className="min-w-6 text-center text-sm font-bold">
-                            {quantity}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => changeQuantity(product.id, 1)}
-                            disabled={!canIncrease}
-                            className="h-8 w-8 rounded-full bg-amber-100 text-base font-bold text-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            +
-                          </button>
+                                <button
+                                  type="button"
+                                  onClick={() => changeQuantity(product.id, -1)}
+                                  disabled={!canDecrease}
+                                  className="h-8 w-8 rounded-full bg-stone-100 text-base font-bold disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  -
+                                </button>
+                                <span className="min-w-6 text-center text-sm font-bold">{quantity}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => changeQuantity(product.id, 1)}
+                                  disabled={!canIncrease}
+                                  className="h-8 w-8 rounded-full bg-amber-100 text-base font-bold text-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  +
+                                </button>
                               </>
                             );
                           })()}
@@ -1327,9 +1266,7 @@ export default function Home() {
                 </div>
               </details>
             ))}
-            {storeConfig.recipes.length === 0 && (
-              <p className="text-sm text-stone-600">등록된 레시피가 없습니다.</p>
-            )}
+            {storeConfig.recipes.length === 0 && <p className="text-sm text-stone-600">등록된 레시피가 없습니다.</p>}
           </div>
         </section>
 
@@ -1368,9 +1305,7 @@ export default function Home() {
               value={reviewContent}
               onChange={(event) => setReviewContent(event.target.value)}
               placeholder={
-                isLoggedIn
-                  ? "후기 내용을 입력하세요 (예: 달고 신선해요)"
-                  : "로그인 후 후기 작성이 가능합니다"
+                isLoggedIn ? "후기 내용을 입력하세요 (예: 달고 신선해요)" : "로그인 후 후기 작성이 가능합니다"
               }
               className="h-24 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               disabled={!isLoggedIn}
@@ -1399,9 +1334,7 @@ export default function Home() {
               <article key={review.id} className="rounded-2xl border border-stone-200 p-4">
                 <p className="text-sm font-bold text-stone-900">{review.name}</p>
                 <p className="mt-1 text-sm text-stone-700">{review.content}</p>
-                <p className="mt-1 text-xs text-stone-500">
-                  작성일 {formatKoreanDateTime(review.createdAt)}
-                </p>
+                <p className="mt-1 text-xs text-stone-500">작성일 {formatKoreanDateTime(review.createdAt)}</p>
                 {review.comments.length > 0 && (
                   <div className="mt-3 rounded-xl bg-stone-50 p-3 text-sm text-stone-700">
                     <p className="flex items-center gap-1.5 text-xs font-bold text-stone-600">
@@ -1412,9 +1345,7 @@ export default function Home() {
                             : "bg-amber-100 text-amber-800"
                         }`}
                       >
-                        {isOperatorAuthor(review.comments[review.comments.length - 1]?.name ?? "")
-                          ? "운영"
-                          : "고객"}
+                        {isOperatorAuthor(review.comments[review.comments.length - 1]?.name ?? "") ? "운영" : "고객"}
                       </span>
                       <span>{review.comments[review.comments.length - 1]?.name ?? "댓글"}</span>
                     </p>
@@ -1511,11 +1442,17 @@ export default function Home() {
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
             {storeConfig.termsUrl && (
-              <Link href="/terms" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 font-semibold hover:bg-stone-100">
+              <Link
+                href="/terms"
+                className="rounded-full border border-stone-300 bg-white px-3 py-1.5 font-semibold hover:bg-stone-100"
+              >
                 이용약관
               </Link>
             )}
-            <Link href="/privacy" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 font-semibold hover:bg-stone-100">
+            <Link
+              href="/privacy"
+              className="rounded-full border border-stone-300 bg-white px-3 py-1.5 font-semibold hover:bg-stone-100"
+            >
               개인정보처리방침
             </Link>
           </div>
@@ -1530,7 +1467,8 @@ export default function Home() {
                 <h2 className="font-display text-3xl text-amber-800">구매 신청</h2>
                 {storeConfig.memberBonusProductName && (
                   <p className="mt-3 rounded-xl bg-lime-50 px-3 py-2 text-xs font-semibold text-lime-800">
-                    🎁 회원으로 주문하시면 &lsquo;{storeConfig.memberBonusProductName}&rsquo;을(를) 사은품으로 함께 보내드려요.
+                    🎁 회원으로 주문하시면 &lsquo;{storeConfig.memberBonusProductName}&rsquo;을(를) 사은품으로 함께
+                    보내드려요.
                   </p>
                 )}
                 {purchaseType === null ? (
@@ -1626,40 +1564,18 @@ export default function Home() {
                         required
                       />
                       {purchaseType === "guest" && (
-                        <div className="space-y-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
-                          <p className="text-xs font-semibold text-stone-600">휴대폰 문자 인증</p>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => void requestGuestOrderCode()}
-                              disabled={guestOrderSendingCode}
-                              className="flex-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-bold text-stone-700 disabled:opacity-60"
-                            >
-                              {guestOrderSendingCode ? "요청 중..." : "인증번호 받기"}
-                            </button>
-                            <input
-                              value={guestOrderCode}
-                              onChange={(event) => setGuestOrderCode(event.target.value)}
-                              placeholder="인증번호"
-                              className="w-32 rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => void verifyGuestOrderCode()}
-                              disabled={guestOrderVerifyingCode || guestOrderCodeRemainingSec <= 0}
-                              className="rounded-xl bg-lime-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
-                            >
-                              {guestOrderVerifyingCode ? "확인 중..." : "확인"}
-                            </button>
-                          </div>
-                          {guestOrderCodeSent && !guestOrderPhoneVerified && (
-                            <p className={`text-xs font-semibold ${guestOrderCodeRemainingSec > 0 ? "text-amber-700" : "text-red-600"}`}>
-                              인증번호 유효시간: {formatCountdown(guestOrderCodeRemainingSec)}
-                            </p>
-                          )}
-                          <p className={`text-xs font-semibold ${guestOrderPhoneVerified ? "text-lime-700" : "text-stone-500"}`}>
-                            {guestOrderPhoneVerified ? "문자 인증 완료" : "문자 인증 필요"}
-                          </p>
+                        <PhoneVerificationBox
+                          code={guestOrderCode}
+                          onCodeChange={setGuestOrderCode}
+                          codeSent={guestOrderCodeSent}
+                          verified={guestOrderPhoneVerified}
+                          remainingSec={guestOrderCodeRemainingSec}
+                          sending={guestOrderSendingCode}
+                          verifying={guestOrderVerifyingCode}
+                          onSend={() => { void requestGuestOrderCode(); }}
+                          onVerify={() => { void verifyGuestOrderCode(); }}
+                          sellerPhone={storeConfig.sellerPhone}
+                        >
                           {guestHasRegisteredAccount && (
                             <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
                               <p className="text-xs font-semibold text-amber-800">
@@ -1673,7 +1589,7 @@ export default function Home() {
                               </Link>
                             </div>
                           )}
-                        </div>
+                        </PhoneVerificationBox>
                       )}
 
                       {purchaseType === "member" ? (
@@ -1758,9 +1674,7 @@ export default function Home() {
                             <span className="text-xs font-semibold text-stone-700">쿠폰</span>
                             <select
                               value={selectedCouponId ?? ""}
-                              onChange={(e) =>
-                                setSelectedCouponId(e.target.value ? Number(e.target.value) : null)
-                              }
+                              onChange={(e) => setSelectedCouponId(e.target.value ? Number(e.target.value) : null)}
                               className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
                             >
                               <option value="">쿠폰 미사용</option>
@@ -1772,9 +1686,7 @@ export default function Home() {
                                     {coupon.discountType === "percent"
                                       ? `${coupon.discountValue}%`
                                       : formatCurrency(coupon.discountValue)}
-                                    {coupon.minOrderAmount > 0
-                                      ? `, ${formatCurrency(coupon.minOrderAmount)} 이상`
-                                      : ""}
+                                    {coupon.minOrderAmount > 0 ? `, ${formatCurrency(coupon.minOrderAmount)} 이상` : ""}
                                     {usable ? "" : " · 최소금액 미달"})
                                   </option>
                                 );
@@ -1799,11 +1711,7 @@ export default function Home() {
                               />
                               <button
                                 type="button"
-                                onClick={() =>
-                                  setMileageInput(
-                                    String(Math.min(mileageBalance, payableBeforeMileage)),
-                                  )
-                                }
+                                onClick={() => setMileageInput(String(Math.min(mileageBalance, payableBeforeMileage)))}
                                 disabled={mileageBalance <= 0}
                                 className="shrink-0 rounded-xl border border-stone-300 px-3 py-2 text-xs font-bold text-stone-700 disabled:opacity-50"
                               >
@@ -1924,9 +1832,7 @@ export default function Home() {
                   <p className="mt-2 text-xs">입금 확인 후 판매자가 주문 상태를 변경합니다.</p>
                 </div>
 
-                <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
-                  문자로 발송되었습니다.
-                </p>
+                <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">문자로 발송되었습니다.</p>
 
                 <div className="mt-4 flex gap-2">
                   <button
@@ -1981,7 +1887,10 @@ export default function Home() {
               <p className="text-xs font-bold text-lime-900">주문 품목 ({totalQuantity}개)</p>
               <ul className="mt-1 max-h-36 space-y-1 overflow-y-auto text-xs text-lime-900">
                 {confirmCartItems.map((item) => (
-                  <li key={`confirm-${item.id}`} className="flex items-center justify-between gap-2 rounded-lg bg-white/80 px-2 py-1">
+                  <li
+                    key={`confirm-${item.id}`}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-white/80 px-2 py-1"
+                  >
                     <div className="min-w-0 flex-1">
                       <p className="truncate">{item.name}</p>
                       <p className="text-[11px] text-stone-600">{formatCurrency(item.subtotal)}</p>
@@ -2021,19 +1930,19 @@ export default function Home() {
               <div className="mt-2 space-y-0.5 text-sm text-stone-700">
                 <p>상품 금액 {formatCurrency(totalPrice)}</p>
                 {effectiveDeliveryFee > 0 && <p>배송료 {formatCurrency(effectiveDeliveryFee)}</p>}
-                {couponDiscount > 0 && (
-                  <p className="text-lime-700">쿠폰 할인 -{formatCurrency(couponDiscount)}</p>
-                )}
-                {mileageToUse > 0 && (
-                  <p className="text-lime-700">적립금 사용 -{formatCurrency(mileageToUse)}</p>
-                )}
+                {couponDiscount > 0 && <p className="text-lime-700">쿠폰 할인 -{formatCurrency(couponDiscount)}</p>}
+                {mileageToUse > 0 && <p className="text-lime-700">적립금 사용 -{formatCurrency(mileageToUse)}</p>}
                 <p className="font-semibold text-stone-900">총 결제 예정 금액 {formatCurrency(finalPayable)}</p>
                 {expectedMileageEarn > 0 && (
-                  <p className="text-[11px] text-lime-700">배송완료 시 {formatCurrency(expectedMileageEarn)} 적립 예정</p>
+                  <p className="text-[11px] text-lime-700">
+                    배송완료 시 {formatCurrency(expectedMileageEarn)} 적립 예정
+                  </p>
                 )}
               </div>
             ) : (
-              <p className="mt-2 text-sm font-semibold text-stone-800">총 결제 예정 금액 {formatCurrency(totalPrice)}</p>
+              <p className="mt-2 text-sm font-semibold text-stone-800">
+                총 결제 예정 금액 {formatCurrency(totalPrice)}
+              </p>
             )}
             {storeConfig.paymentDueDays > 0 && (
               <p className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
@@ -2075,9 +1984,7 @@ export default function Home() {
       )}
 
       {showBusinessStatusModal && !isOrderAvailable && (
-        <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
-        >
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
           <div
             className="w-full max-w-sm rounded-3xl border border-stone-200 bg-white p-5 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
@@ -2123,9 +2030,7 @@ export default function Home() {
                 required
               />
 
-              {loginError && (
-                <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{loginError}</p>
-              )}
+              {loginError && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{loginError}</p>}
 
               <button
                 type="submit"
@@ -2164,9 +2069,7 @@ export default function Home() {
       )}
 
       {showLogoutConfirmModal && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
-        >
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
           <div
             className="w-full max-w-sm rounded-3xl border border-amber-200 bg-white p-5 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
@@ -2354,9 +2257,7 @@ export default function Home() {
       )}
 
       {showTermsUpdateModal && storeConfig.termsUrl && (
-        <div
-          className="fixed inset-0 z-[72] flex items-center justify-center bg-black/50 p-4"
-        >
+        <div className="fixed inset-0 z-[72] flex items-center justify-center bg-black/50 p-4">
           <div
             className="w-full max-w-md rounded-3xl border border-lime-200 bg-white p-5 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
@@ -2390,9 +2291,7 @@ export default function Home() {
       )}
 
       {showContactAuthDialog && (
-        <div
-          className="fixed inset-0 z-[75] flex items-center justify-center bg-black/45 p-4"
-        >
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/45 p-4">
           <div
             className="w-full max-w-sm rounded-3xl border border-amber-200 bg-white p-5 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
