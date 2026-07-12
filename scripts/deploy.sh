@@ -218,6 +218,8 @@ POPBILL_CORP_NUM=${POPBILL_CORP_NUM:-$(get_merged_env_value "$API_ENV_FILE" "$AP
 POPBILL_SENDER=${POPBILL_SENDER:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "POPBILL_SENDER")}
 POPBILL_SENDER_NAME=${POPBILL_SENDER_NAME:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "POPBILL_SENDER_NAME")}
 POPBILL_USER_ID=${POPBILL_USER_ID:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "POPBILL_USER_ID")}
+SOLAPI_API_KEY=${SOLAPI_API_KEY:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "SOLAPI_API_KEY")}
+SOLAPI_API_SECRET=${SOLAPI_API_SECRET:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "SOLAPI_API_SECRET")}
 FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "FIREBASE_STORAGE_BUCKET")}
 FIREBASE_SERVICE_ACCOUNT_PATH=${FIREBASE_SERVICE_ACCOUNT_PATH:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "FIREBASE_SERVICE_ACCOUNT_PATH")}
 FIREBASE_SERVICE_ACCOUNT_KEY=${FIREBASE_SERVICE_ACCOUNT_KEY:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "FIREBASE_SERVICE_ACCOUNT_KEY")}
@@ -258,6 +260,8 @@ if [[ "$DEPLOY_API" == "true" ]]; then
   missing_sms_envs=()
   [[ -n "$LINK_ID" ]] || missing_sms_envs+=("LINK_ID")
   [[ -n "$SECRET_KEY" ]] || missing_sms_envs+=("SECRET_KEY")
+  [[ -n "$SOLAPI_API_KEY" ]] || missing_sms_envs+=("SOLAPI_API_KEY")
+  [[ -n "$SOLAPI_API_SECRET" ]] || missing_sms_envs+=("SOLAPI_API_SECRET")
   [[ -n "$POPBILL_CORP_NUM" ]] || missing_sms_envs+=("POPBILL_CORP_NUM")
   [[ -n "$POPBILL_SENDER" ]] || missing_sms_envs+=("POPBILL_SENDER")
 
@@ -334,6 +338,8 @@ KAKAO_CLIENT_ID=$KAKAO_CLIENT_ID
 KAKAO_CLIENT_SECRET=$KAKAO_CLIENT_SECRET
 LINK_ID=$LINK_ID
 SECRET_KEY=$SECRET_KEY
+SOLAPI_API_KEY=$SOLAPI_API_KEY
+SOLAPI_API_SECRET=$SOLAPI_API_SECRET
 POPBILL_IS_TEST=$POPBILL_IS_TEST
 POPBILL_CORP_NUM=$POPBILL_CORP_NUM
 POPBILL_SENDER=$POPBILL_SENDER
@@ -349,6 +355,7 @@ WEB_PORT=$WEB_PORT
 ADMIN_PORT=$ADMIN_PORT
 EOF
 
+REMOTE_ENV=""
 if [[ "$DEPLOY_API" != "true" || "$DEPLOY_WEB" != "true" || "$DEPLOY_ADMIN" != "true" ]]; then
   REMOTE_ENV=$(gcloud compute ssh "$VM_NAME" --zone "$ZONE" --command "cat '$REMOTE_DIR/.env'" 2>/dev/null || true)
   if [[ -n "$REMOTE_ENV" ]]; then
@@ -383,6 +390,17 @@ DEPLOY_SERVICES=()
 if [[ "$DEPLOY_API" == "true" ]]; then DEPLOY_SERVICES+=(api); fi
 if [[ "$DEPLOY_WEB" == "true" ]]; then DEPLOY_SERVICES+=(web); fi
 if [[ "$DEPLOY_ADMIN" == "true" ]]; then DEPLOY_SERVICES+=(admin); fi
+
+if [[ "$DEPLOY_API" != "true" && -n "$REMOTE_ENV" ]]; then
+  REMOTE_SOLAPI_API_KEY=$(printf '%s\n' "$REMOTE_ENV" | grep -E '^SOLAPI_API_KEY=' | sed -E 's/^SOLAPI_API_KEY=//' || true)
+  REMOTE_SOLAPI_API_SECRET=$(printf '%s\n' "$REMOTE_ENV" | grep -E '^SOLAPI_API_SECRET=' | sed -E 's/^SOLAPI_API_SECRET=//' || true)
+
+  if [[ "$REMOTE_SOLAPI_API_KEY" != "$SOLAPI_API_KEY" || "$REMOTE_SOLAPI_API_SECRET" != "$SOLAPI_API_SECRET" ]]; then
+    echo "Info: SOLAPI env changed. Including API service restart to apply updated credentials."
+    DEPLOY_SERVICES+=(api)
+    DEPLOY_API=true
+  fi
+fi
 
 if [[ ${#DEPLOY_SERVICES[@]} -eq 0 ]]; then
   echo "Error: no services selected for deployment."

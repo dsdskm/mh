@@ -98,6 +98,7 @@ export type AdminPageState = {
   shippingRefundPolicy: string;
   storyImages: Array<{ title: string; imageUrl: string }>;
   videoUrl: string;
+  kakaoChannelUrl: string;
   termsUrl: string;
   privacyUrl: string;
   paymentDueDays: string;
@@ -136,6 +137,7 @@ export type AdminPageState = {
   addStoryImage: (imageUrl: string, title?: string) => void;
   removeStoryImage: (index: number) => void;
   setVideoUrl: (value: string) => void;
+  setKakaoChannelUrl: (value: string) => void;
   setTermsUrl: (value: string) => void;
   setPrivacyUrl: (value: string) => void;
   setPaymentDueDays: (value: string) => void;
@@ -267,6 +269,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
   const [shippingRefundPolicy, setShippingRefundPolicy] = useState("");
   const [storyImages, setStoryImages] = useState<Array<{ title: string; imageUrl: string }>>([]);
   const [videoUrl, setVideoUrl] = useState("");
+  const [kakaoChannelUrl, setKakaoChannelUrl] = useState("");
   const [termsUrl, setTermsUrl] = useState("");
   const [privacyUrl, setPrivacyUrl] = useState("");
   const [paymentDueDays, setPaymentDueDays] = useState("0");
@@ -316,6 +319,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setShippingRefundPolicy(configValue.shippingRefundPolicy ?? "");
     setStoryImages(Array.isArray(configValue.storyImages) ? configValue.storyImages : []);
     setVideoUrl(configValue.videoUrl ?? "");
+    setKakaoChannelUrl(configValue.kakaoChannelUrl ?? "");
     setTermsUrl(configValue.termsUrl ?? "");
     setPrivacyUrl(configValue.privacyUrl ?? "");
     setPaymentDueDays(String(configValue.paymentDueDays ?? 0));
@@ -696,6 +700,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
         shippingRefundPolicy,
         videoUrl: overrides?.videoUrl ?? videoUrl,
         storyImages: overrides?.storyImages ?? storyImages,
+        kakaoChannelUrl,
         termsUrl: overrides?.termsUrl ?? termsUrl,
         privacyUrl: overrides?.privacyUrl ?? privacyUrl,
         businessStatus: overrides?.businessStatus ?? config.businessStatus,
@@ -718,6 +723,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
       setPrivacyUrl(saved.privacyUrl ?? "");
       setShippingRefundPolicy(saved.shippingRefundPolicy ?? "");
       setStoryImages(Array.isArray(saved.storyImages) ? saved.storyImages : []);
+      setKakaoChannelUrl(saved.kakaoChannelUrl ?? "");
       setPaymentDueDays(String(saved.paymentDueDays ?? 0));
       setDeliveryFee(String(saved.deliveryFee ?? 0));
       setChargeDeliveryFee(Boolean(saved.chargeDeliveryFee));
@@ -930,6 +936,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     shippingRefundPolicy,
     storyImages,
     videoUrl,
+    kakaoChannelUrl,
     termsUrl,
     privacyUrl,
     paymentDueDays,
@@ -978,6 +985,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     addStoryImage,
     removeStoryImage,
     setVideoUrl,
+    setKakaoChannelUrl,
     setTermsUrl,
     setPrivacyUrl,
     setPaymentDueDays,

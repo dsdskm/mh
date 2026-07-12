@@ -57,6 +57,9 @@ export class AppSettingEntity {
   @Column({ type: 'varchar' })
   videoUrl!: string;
 
+  @Column({ type: 'varchar', default: '' })
+  kakaoChannelUrl!: string;
+
   @Column({ type: 'jsonb' })
   recipes!: StoreRecipe[];
 

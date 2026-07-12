@@ -10,30 +10,17 @@ import { AppModule } from './app.module';
 const bootstrapLogger = new Logger('Bootstrap');
 
 function loadEnvFiles() {
-  const seen = new Set<string>();
-  const searchRoots = [process.cwd(), __dirname];
-  const candidates: string[] = [];
+  const workspaceRoot = path.resolve(__dirname, '../../../');
+  const envPath = path.join(workspaceRoot, '.env');
+  const envPrdPath = path.join(workspaceRoot, '.env.prd');
+  const isProduction = process.env.NODE_ENV === 'production';
 
-  for (const root of searchRoots) {
-    let current = path.resolve(root);
-
-    while (!seen.has(current)) {
-      seen.add(current);
-      candidates.push(path.join(current, '.env'));
-
-      const parent = path.dirname(current);
-      if (parent === current) {
-        break;
-      }
-
-      current = parent;
-    }
+  if (existsSync(envPath)) {
+    dotenv.config({ path: envPath, override: true });
   }
 
-  const filePath = candidates.find((candidate) => existsSync(candidate));
-
-  if (filePath) {
-    dotenv.config({ path: filePath, override: false });
+  if (isProduction && existsSync(envPrdPath)) {
+    dotenv.config({ path: envPrdPath, override: true });
   }
 }
 

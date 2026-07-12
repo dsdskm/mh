@@ -286,7 +286,7 @@ export function MessagesTab({ accounts }: Props) {
       setHistoryTotal(result.total);
     } catch (historyLoadError) {
       setHistoryError(
-        historyLoadError instanceof Error ? historyLoadError.message : "문자 내역 조회에 실패했습니다.",
+        historyLoadError instanceof Error ? historyLoadError.message : "발송 이력 조회에 실패했습니다.",
       );
     } finally {
       setHistoryLoading(false);
@@ -368,7 +368,7 @@ export function MessagesTab({ accounts }: Props) {
     }
 
     if (successCount > 0) {
-      setNotice(`문자 발송 완료: 성공 ${successCount}건, 실패 ${failedRecipients.length}건`);
+      setNotice(`발송 완료: 성공 ${successCount}건, 실패 ${failedRecipients.length}건`);
       if (failedRecipients.length === 0) {
         setMessage("");
         setReserveAt("");
@@ -408,7 +408,7 @@ export function MessagesTab({ accounts }: Props) {
           onClick={() => void openHistoryPopup()}
           className="rounded-xl border border-lime-300 bg-lime-50 px-4 py-2 text-sm font-semibold text-lime-800 hover:bg-lime-100"
         >
-          문자 내역 보기
+          발송 이력 보기
         </button>
       </div>
 
@@ -565,7 +565,7 @@ export function MessagesTab({ accounts }: Props) {
               disabled={sending}
               className="rounded-xl bg-lime-600 px-4 py-2 text-sm font-semibold text-white hover:bg-lime-700"
             >
-              {sending ? "전송 중..." : "문자 발송"}
+              {sending ? "전송 중..." : "알림 발송"}
             </button>
           </div>
         </form>
@@ -579,7 +579,7 @@ export function MessagesTab({ accounts }: Props) {
             className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-5 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <h3 className="text-lg font-bold text-stone-900">문자 발송 확인</h3>
+            <h3 className="text-lg font-bold text-stone-900">발송 확인</h3>
             <p className="mt-2 text-sm text-stone-700">
               아래 내용으로 발송할까요?
             </p>
@@ -615,7 +615,7 @@ export function MessagesTab({ accounts }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[90vh] w-full max-w-[96vw] overflow-hidden rounded-2xl bg-white shadow-2xl 2xl:max-w-[1700px]">
             <div className="flex items-center justify-between border-b border-stone-200 px-5 py-4">
-              <h3 className="text-lg font-bold text-stone-900">문자 내역</h3>
+              <h3 className="text-lg font-bold text-stone-900">발송 이력</h3>
               <button
                 type="button"
                 onClick={() => setHistoryOpen(false)}
@@ -668,6 +668,8 @@ export function MessagesTab({ accounts }: Props) {
                   <thead className="sticky top-0 bg-stone-100 text-stone-700">
                     <tr>
                       <th className="border-b border-stone-200 px-3 py-2 text-left">일시</th>
+                      <th className="border-b border-stone-200 px-3 py-2 text-left">채널</th>
+                      <th className="border-b border-stone-200 px-3 py-2 text-left">템플릿 ID</th>
                       <th className="border-b border-stone-200 px-3 py-2 text-left">예약일시</th>
                       <th className="border-b border-stone-200 px-3 py-2 text-left">수신자</th>
                       <th className="border-b border-stone-200 px-3 py-2 text-left">수신번호</th>
@@ -681,14 +683,14 @@ export function MessagesTab({ accounts }: Props) {
                   <tbody>
                     {historyLoading ? (
                       <tr>
-                        <td className="px-3 py-5 text-center text-stone-500" colSpan={9}>
-                          문자 내역을 불러오는 중입니다...
+                        <td className="px-3 py-5 text-center text-stone-500" colSpan={11}>
+                          발송 이력을 불러오는 중입니다...
                         </td>
                       </tr>
                     ) : historyItems.length === 0 ? (
                       <tr>
-                        <td className="px-3 py-5 text-center text-stone-500" colSpan={9}>
-                          문자 내역이 없습니다.
+                        <td className="px-3 py-5 text-center text-stone-500" colSpan={11}>
+                          발송 이력이 없습니다.
                         </td>
                       </tr>
                     ) : (
@@ -696,6 +698,20 @@ export function MessagesTab({ accounts }: Props) {
                         <tr key={item.id} className="odd:bg-white even:bg-stone-50">
                           <td className="whitespace-nowrap border-t border-stone-100 px-3 py-2 text-stone-700">
                             {new Date(item.createdAt).toLocaleString("ko-KR")}
+                          </td>
+                          <td className="whitespace-nowrap border-t border-stone-100 px-3 py-2 text-stone-700">
+                            <span
+                              className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                                item.channel === "kakao"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : "bg-sky-100 text-sky-800"
+                              }`}
+                            >
+                              {item.channel === "kakao" ? "카카오톡" : "문자"}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap border-t border-stone-100 px-3 py-2 text-xs text-stone-500">
+                            {item.templateId ?? "-"}
                           </td>
                           <td className="whitespace-nowrap border-t border-stone-100 px-3 py-2 text-stone-700">
                             {formatReserveForView(item.reserveDT)}
@@ -735,7 +751,7 @@ export function MessagesTab({ accounts }: Props) {
                             {item.receiptNum ?? "-"}
                           </td>
                           <td className="whitespace-nowrap border-t border-stone-100 px-3 py-2 text-stone-700">
-                            {item.reserveDT && item.receiptNum && item.status === "success" ? (
+                            {item.channel === "sms" && item.reserveDT && item.receiptNum && item.status === "success" ? (
                               <button
                                 type="button"
                                 onClick={() => setCancelTarget(item)}

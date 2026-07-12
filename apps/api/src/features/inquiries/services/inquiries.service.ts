@@ -176,7 +176,7 @@ export class InquiriesService {
         content: '문의글에 댓글이 등록되었습니다.',
       });
     } catch (error) {
-      console.warn('[inquiries] 댓글 등록 안내 문자 발송 실패', {
+      console.warn('[inquiries] 댓글 등록 안내 알림 발송 실패', {
         receiver,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -196,7 +196,7 @@ export class InquiriesService {
         content: '새 문의가 등록되었습니다.',
       });
     } catch (error) {
-      console.warn('[inquiries] 관리자 문의 알림 문자 발송 실패', {
+      console.warn('[inquiries] 관리자 문의 알림 발송 실패', {
         error: error instanceof Error ? error.message : String(error),
       });
     }

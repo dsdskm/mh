@@ -1,7 +1,40 @@
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function loadRootEnvFiles() {
+	const workspaceRoot = path.resolve(__dirname, "../../");
+	const envPath = path.join(workspaceRoot, ".env");
+	const envPrdPath = path.join(workspaceRoot, ".env.prd");
+	const isProduction = process.env.NODE_ENV === "production";
+
+	for (const filePath of [envPath, ...(isProduction ? [envPrdPath] : [])]) {
+		if (!fs.existsSync(filePath)) {
+			continue;
+		}
+
+		const content = fs.readFileSync(filePath, "utf8");
+		for (const line of content.split(/\r?\n/)) {
+			const trimmed = line.trim();
+			if (!trimmed || trimmed.startsWith("#")) {
+				continue;
+			}
+
+			const separatorIndex = trimmed.indexOf("=");
+			if (separatorIndex <= 0) {
+				continue;
+			}
+
+			const key = trimmed.slice(0, separatorIndex).trim();
+			const value = trimmed.slice(separatorIndex + 1).trim();
+			process.env[key] = value;
+		}
+	}
+}
+
+loadRootEnvFiles();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

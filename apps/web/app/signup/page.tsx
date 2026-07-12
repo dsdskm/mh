@@ -11,7 +11,7 @@ import {
   signupApi,
   verifyPhoneCodeApi,
 } from "./api/singup.api";
-import { PhoneContactMessage } from "../_components/phone-verification-box";
+import { PhoneVerificationBox } from "../_components/phone-verification-box";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "");
 const DAUM_POSTCODE_SCRIPT_URL =
@@ -237,11 +237,11 @@ export default function SignupPage() {
         return;
       }
 
-      await requestPhoneVerificationApi(normalizedPhone);
-      const expiresAtMs = Date.now() + 3 * 60 * 1000;
+      const requestResult = await requestPhoneVerificationApi(normalizedPhone);
+      const expiresAtMs = Date.parse(requestResult.expiresAt);
       setCodeSent(true);
-      setCodeExpiresAt(Number.isFinite(expiresAtMs) ? expiresAtMs : null);
-      setSuccess("인증번호를 전송했습니다. 휴대폰 문자를 확인해주세요.");
+      setCodeExpiresAt(Number.isFinite(expiresAtMs) ? expiresAtMs : Date.now() + 3 * 60 * 1000);
+      setSuccess("인증번호를 전송했습니다. 수신된 알림을 확인해주세요.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "인증번호 발송 실패");
     } finally {
@@ -368,13 +368,13 @@ export default function SignupPage() {
       </Link>
 
       <section className="rounded-3xl border border-amber-200 bg-white p-4 shadow sm:p-5">
-        <h1 className="font-display text-3xl text-amber-800">회원가입</h1>
+        <h1 className="font-display text-2xl text-amber-800 sm:text-3xl">회원가입</h1>
         <p className="mt-1 text-sm leading-6 text-stone-600">
-          아이디/비밀번호 기반 일반 회원가입입니다. 전화번호는 문자 인증 후 가입됩니다.
+          아이디/비밀번호 기반 일반 회원가입입니다. 전화번호 인증 후 가입됩니다.
         </p>
 
         <form className="mt-4 space-y-3" onSubmit={submit}>
-          <div className="grid gap-2 grid-cols-[1fr_auto]">
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <input
               value={userId}
               onChange={(event) => {
@@ -391,7 +391,7 @@ export default function SignupPage() {
               type="button"
               onClick={() => void checkUserId()}
               disabled={checkingUserId || !userId.trim()}
-              className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-60 whitespace-nowrap"
+              className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-60 sm:whitespace-nowrap"
             >
               {checkingUserId ? "확인 중..." : "중복확인"}
             </button>
@@ -460,7 +460,7 @@ export default function SignupPage() {
             required
           />
 
-          <div className="grid gap-2 grid-cols-[1fr_auto]">
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <input
               value={phone}
               onChange={(event) => {
@@ -484,7 +484,7 @@ export default function SignupPage() {
               type="button"
               onClick={() => void requestSmsCode()}
               disabled={sendingCode || !normalizedPhone}
-              className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-60 whitespace-nowrap"
+              className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-60 sm:whitespace-nowrap"
             >
               {sendingCode ? "발송 중..." : "인증번호 받기"}
             </button>
@@ -500,41 +500,32 @@ export default function SignupPage() {
             </p>
           )}
 
-          {codeSent && (
-            <div className="grid gap-2 grid-cols-[1fr_auto]">
-              <input
-                value={smsCode}
-                onChange={(event) => setSmsCode(event.target.value)}
-                placeholder="문자로 받은 6자리 인증번호"
-                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => void verifySmsCode()}
-                disabled={verifyingCode || !smsCode.trim() || codeRemainingSec <= 0}
-                className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-60 whitespace-nowrap"
-              >
-                {verifyingCode ? "확인 중..." : "인증 확인"}
-              </button>
-            </div>
-          )}
+          <PhoneVerificationBox
+            code={smsCode}
+            onCodeChange={setSmsCode}
+            codeSent={codeSent}
+            verified={Boolean(verificationToken)}
+            remainingSec={codeRemainingSec}
+            sending={sendingCode}
+            verifying={verifyingCode}
+            onSend={() => void requestSmsCode()}
+            onVerify={() => void verifySmsCode()}
+            sellerPhone={sellerPhone}
+          >
+            <p className="text-xs text-stone-500">인증번호를 입력한 뒤 확인을 눌러주세요.</p>
+          </PhoneVerificationBox>
 
-          {codeSent && !verificationToken && (
-            <p className={`rounded-xl p-3 text-xs font-semibold ${codeRemainingSec > 0 ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700"}`}>
-              인증번호 유효시간: {formatCountdown(codeRemainingSec)}
+          {phoneMessage && (
+            <p
+              className={`rounded-xl p-3 text-xs ${
+                isPhoneAvailable ? "bg-lime-50 text-lime-800" : "bg-amber-50 text-amber-900"
+              }`}
+            >
+              {phoneMessage}
             </p>
           )}
 
-          {codeSent && !verificationToken && (
-            <PhoneContactMessage sellerPhone={sellerPhone} />
-          )}
-
-          {verificationToken && (
-            <p className="rounded-xl bg-lime-50 p-3 text-sm text-lime-800">전화번호 인증 완료</p>
-          )}
-
-          <div className="grid gap-2 grid-cols-[1fr_auto]">
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <input
               value={address1}
               placeholder="주소검색 클릭"
@@ -547,7 +538,7 @@ export default function SignupPage() {
               type="button"
               onClick={searchAddress}
               disabled={!postcodeReady}
-              className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-60 whitespace-nowrap"
+              className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-800 disabled:opacity-60 sm:whitespace-nowrap"
             >
               {postcodeReady ? "주소 검색" : "로딩 중..."}
             </button>

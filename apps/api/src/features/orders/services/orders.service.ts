@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
@@ -10,6 +11,11 @@ import { DataSource, EntityManager, In, LessThan, Like, QueryFailedError, Reposi
 import { InjectRepository } from '@nestjs/typeorm';
 import { OrderEntity } from '../../../database/entities/order.entity';
 import { OrderItemEntity } from '../../../database/entities/order-item.entity';
+import {
+  OrderTransactionActor,
+  OrderTransactionEvent,
+  OrderTransactionLogEntity,
+} from '../../../database/entities/order-transaction-log.entity';
 import { ProductEntity } from '../../../database/entities/product.entity';
 import { AccountEntity } from '../../../database/entities/account.entity';
 import { CouponEntity } from '../../../database/entities/coupon.entity';
@@ -30,6 +36,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import { FirestoreTriggerService } from '../../../shared/firestore-trigger.service';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { MessagesService } from '../../messages/services/messages.service';
+import { KAKAO_TEMPLATE_IDS, SOLAPI_PF_ID } from '../../messages/services/kakao-template.constants';
 
 type PhoneCodeState = {
   code: string;
@@ -60,12 +67,15 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   private readonly guestLookupCodeStore = new Map<string, PhoneCodeState>();
   private readonly guestLookupVerifiedStore = new Map<string, VerifiedLookupState>();
   private readonly orderReceivedSmsInFlight = new Set<number>();
+  private readonly logger = new Logger(OrdersService.name);
   private overdueTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly dataSource: DataSource,
     @InjectRepository(OrderEntity)
     private readonly orderRepository: Repository<OrderEntity>,
+    @InjectRepository(OrderTransactionLogEntity)
+    private readonly orderTransactionLogRepository: Repository<OrderTransactionLogEntity>,
     @InjectRepository(AccountEntity)
     private readonly accountRepository: Repository<AccountEntity>,
     private readonly configService: ConfigService,
@@ -135,6 +145,20 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
             status: ORDER_STATUS.CANCEL_COMPLETED,
             cancelReason: OrdersService.PAYMENT_OVERDUE_CANCEL_REASON,
             statusHistory: this.appendStatusHistory(order, ORDER_STATUS.CANCEL_COMPLETED),
+          });
+
+          await this.saveOrderTransactionLog({
+            orderId: order.id,
+            eventType: 'auto_cancelled',
+            actor: 'system',
+            fromStatus: ORDER_STATUS.RECEIVED,
+            toStatus: ORDER_STATUS.CANCEL_COMPLETED,
+            message: '입금기한 초과로 주문이 자동 취소되었습니다.',
+            payload: {
+              reason: OrdersService.PAYMENT_OVERDUE_CANCEL_REASON,
+              paymentDueAt: order.paymentDueAt?.toISOString() ?? null,
+            },
+            manager,
           });
         });
         cancelled += 1;
@@ -410,6 +434,19 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
           order: this.toOrder(order),
           transfer: await this.configService.getStoreConfig(),
         };
+        await this.saveOrderTransactionLog({
+          orderId: result.order.id,
+          eventType: 'order_created',
+          actor: input.skipGuestVerification ? 'admin' : 'customer',
+          toStatus: ORDER_STATUS.RECEIVED,
+          message: '주문이 생성되었습니다.',
+          payload: {
+            purchaseType: result.order.purchaseType,
+            accountId: result.order.accountId,
+            totalAmount: result.order.totalAmount,
+            itemCount: result.order.items.length,
+          },
+        });
         await this.notificationsService.createNotification({
           title: '신규 주문이 접수되었습니다.',
           content: `${result.order.customerName} 님 주문 ${result.order.id}`,
@@ -502,6 +539,20 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       cancelReason: input.cancelReason === null ? null : input.cancelReason?.trim() || order.cancelReason,
     });
 
+    await this.saveOrderTransactionLog({
+      orderId: updated.id,
+      eventType: 'order_updated',
+      actor: 'admin',
+      fromStatus: this.normalizeOrderStatus(order.status),
+      toStatus: this.normalizeOrderStatus(updated.status),
+      message: '관리자에서 주문 정보를 수정했습니다.',
+      payload: {
+        customerName: updated.customerName,
+        phone: updated.phone,
+        shippingAddress: updated.shippingAddress,
+      },
+    });
+
     return this.toOrder(updated);
   }
 
@@ -521,6 +572,19 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       if (this.normalizeOrderStatus(order.status) !== ORDER_STATUS.CANCEL_COMPLETED) {
         await this.revertCancelledOrderEffects(manager, order);
       }
+
+      await this.saveOrderTransactionLog({
+        orderId: order.id,
+        eventType: 'order_deleted',
+        actor: 'admin',
+        fromStatus: this.normalizeOrderStatus(order.status),
+        toStatus: null,
+        message: '관리자에서 주문을 삭제했습니다.',
+        payload: {
+          restoredEffects: this.normalizeOrderStatus(order.status) !== ORDER_STATUS.CANCEL_COMPLETED,
+        },
+        manager,
+      });
 
       await orderRepository.delete({ id: order.id });
     });
@@ -564,6 +628,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     const mileageEarnRate = Math.max(0, Math.floor(storeConfig.mileageEarnRate || 0));
     let shouldSendStatusSms = false;
 
+    let previousStatus: OrderStatus | null = null;
+
     const updated = await this.dataSource.transaction(async (manager) => {
       const orderRepository = manager.getRepository(OrderEntity);
       const mileageRepository = manager.getRepository(MileageTransactionEntity);
@@ -578,9 +644,15 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       }
 
       const currentStatus = this.normalizeOrderStatus(order.status);
+      previousStatus = currentStatus;
       shouldSendStatusSms =
         status !== currentStatus &&
-        (status === ORDER_STATUS.PAID || status === ORDER_STATUS.SHIPPING);
+        (
+          status === ORDER_STATUS.PAID ||
+          status === ORDER_STATUS.SHIPPING ||
+          status === ORDER_STATUS.CANCEL_REQUESTED ||
+          status === ORDER_STATUS.CANCEL_COMPLETED
+        );
 
       if (currentStatus === ORDER_STATUS.CANCEL_COMPLETED && status !== ORDER_STATUS.CANCEL_COMPLETED) {
         throw new BadRequestException('취소 완료된 주문은 상태를 변경할 수 없습니다.');
@@ -638,6 +710,18 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       });
     });
 
+    await this.saveOrderTransactionLog({
+      orderId: updated.id,
+      eventType: 'status_changed',
+      actor: 'admin',
+      fromStatus: previousStatus,
+      toStatus: this.normalizeOrderStatus(updated.status),
+      message: '관리자에서 주문 상태를 변경했습니다.',
+      payload: {
+        cancelReason: updated.cancelReason ?? null,
+      },
+    });
+
     await this.notificationsService.createNotification({
       title: '주문 취소 요청이 접수되었습니다.',
       content: `${updated.customerName} 님 주문 ${updated.id}`,
@@ -671,6 +755,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('주문 취소 사유를 입력해주세요.');
     }
 
+    let previousStatus: OrderStatus | null = null;
+
     const updated = await this.dataSource.transaction(async (manager) => {
       const orderRepository = manager.getRepository(OrderEntity);
       const productRepository = manager.getRepository(ProductEntity);
@@ -685,6 +771,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       }
 
       const currentStatus = this.normalizeOrderStatus(order.status);
+      previousStatus = currentStatus;
 
       if (this.normalizePhone(order.phone) !== normalizedPhone) {
         throw new BadRequestException('주문자 연락처가 일치하지 않습니다.');
@@ -707,6 +794,19 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       });
     });
 
+    await this.saveOrderTransactionLog({
+      orderId: updated.id,
+      eventType: 'cancel_requested',
+      actor: 'customer',
+      fromStatus: previousStatus,
+      toStatus: ORDER_STATUS.CANCEL_REQUESTED,
+      message: '고객이 주문 취소를 요청했습니다.',
+      payload: {
+        reason: cancelReason,
+      },
+    });
+
+    void this.sendOrderStatusSms(updated);
     void this.firestoreTrigger.notify('orders');
     return this.toOrder(updated);
   }
@@ -864,36 +964,73 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     const verificationContext =
       purpose === 'checkout' ? '비회원 주문 인증번호' : '주문조회 인증번호';
     const receiverName = purpose === 'checkout' ? '웹 비회원 주문인증' : '웹 주문조회 인증';
+    const fallbackContent = `${verificationContext} [${code}]를 입력해주세요.`;
+
     try {
-      await this.messagesService.sendSms({
+      await this.messagesService.sendKakaoTemplateWithFallback({
         receiver: phone,
         receiverName,
-        content: `${verificationContext} [${code}]를 입력해주세요.`,
+        pfId: SOLAPI_PF_ID,
+        templateId: KAKAO_TEMPLATE_IDS.authNumber,
+        variables: {
+          number: code,
+        },
+        fallbackContent,
       });
     } catch (error) {
       const smsErrorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
-      throw new BadRequestException(`문자 발송에 실패했습니다. ${smsErrorMessage}`);
+      throw new BadRequestException(`알림 발송에 실패했습니다. ${smsErrorMessage}`);
     }
   }
 
   private async sendOrderStatusSms(order: OrderEntity): Promise<void> {
     const status = this.normalizeOrderStatus(order.status);
-    if (status !== ORDER_STATUS.PAID && status !== ORDER_STATUS.SHIPPING) {
+    if (
+      status !== ORDER_STATUS.PAID &&
+      status !== ORDER_STATUS.SHIPPING &&
+      status !== ORDER_STATUS.CANCEL_REQUESTED &&
+      status !== ORDER_STATUS.CANCEL_COMPLETED
+    ) {
       return;
     }
 
-    const message =
-      status === ORDER_STATUS.PAID
-        ? `${order.customerName}님 ${order.totalAmount}원 입금이 확인되었습니다. 감사합니다.`
-        : '배송이 시작되었습니다. 택배사로부터 자세한 배송 정보를 얻으실 수 있습니다. 감사합니다.';
-
     try {
-      await this.messagesService.sendSms({
+      if (status === ORDER_STATUS.SHIPPING) {
+        await this.messagesService.sendSms({
+          receiver: this.normalizePhone(order.phone),
+          content: '배송이 시작되었습니다. 택배사로부터 자세한 배송 정보를 얻으실 수 있습니다. 감사합니다.',
+        });
+        return;
+      }
+
+      const templateId =
+        status === ORDER_STATUS.PAID
+          ? KAKAO_TEMPLATE_IDS.paymentConfirmed
+          : status === ORDER_STATUS.CANCEL_REQUESTED
+            ? KAKAO_TEMPLATE_IDS.orderCancelRequested
+            : KAKAO_TEMPLATE_IDS.orderCancelCompleted;
+
+      const fallbackContent =
+        status === ORDER_STATUS.PAID
+          ? `${order.customerName}님 ${Math.max(0, Math.floor(order.totalAmount)).toLocaleString('ko-KR')}원 입금이 확인되었습니다.`
+          : status === ORDER_STATUS.CANCEL_REQUESTED
+            ? `${order.customerName}님 주문 취소 요청이 접수되었습니다.`
+            : `${order.customerName}님 주문 취소가 완료되었습니다.`;
+
+      await this.messagesService.sendKakaoTemplateWithFallback({
         receiver: this.normalizePhone(order.phone),
-        content: message,
+        receiverName: order.customerName,
+        pfId: SOLAPI_PF_ID,
+        templateId,
+        variables: this.buildOrderKakaoVariables(order),
+        fallbackContent,
       });
+
+      if (status === ORDER_STATUS.CANCEL_REQUESTED) {
+        await this.notifyAdminCancelRequestedKakao(order);
+      }
     } catch (error) {
-      console.warn('[orders] 상태변경 문자 발송 실패', {
+      console.warn('[orders] 상태변경 알림 발송 실패', {
         orderId: order.id,
         status,
         error: error instanceof Error ? error.message : String(error),
@@ -939,18 +1076,61 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       const message = this.truncateByByte(selected, 90);
 
       try {
-        await this.messagesService.sendSms({
+        await this.messagesService.sendKakaoTemplateWithFallback({
           receiver: this.normalizePhone(order.phone),
-          content: message,
+          receiverName: order.customerName,
+          pfId: SOLAPI_PF_ID,
+          templateId: KAKAO_TEMPLATE_IDS.orderReceived,
+          variables: {
+            ...this.buildOrderKakaoVariables(order),
+            bank: bankName,
+            accountNumber,
+            accountOwner: accountHolder,
+            dueDate: dueAtText,
+          },
+          fallbackContent: message,
         });
       } catch (error) {
-        console.warn('[orders] 주문접수 문자 발송 실패', {
+        console.warn('[orders] 주문접수 알림 발송 실패', {
           orderId: order.id,
           error: error instanceof Error ? error.message : String(error),
         });
       }
     } finally {
       this.orderReceivedSmsInFlight.delete(order.id);
+    }
+  }
+
+  private async notifyAdminCancelRequestedKakao(order: OrderEntity): Promise<void> {
+    const storeConfig = await this.configService.getStoreConfig();
+    const sellerReceiver = this.normalizePhone(storeConfig.sellerPhone ?? '');
+    const masterAccount = await this.accountRepository.findOne({
+      where: { type: 'MASTER' },
+    });
+    const masterReceiver = this.normalizePhone(masterAccount?.phone ?? '');
+
+    const receivers = [
+      { role: 'seller', phone: sellerReceiver },
+      { role: 'master', phone: masterReceiver },
+    ];
+
+    for (const receiver of receivers) {
+      if (!/^\d{8,20}$/.test(receiver.phone)) {
+        console.warn('[orders] 주문취소요청 관리자 알림톡 수신번호 누락', {
+          orderId: order.id,
+          role: receiver.role,
+        });
+        continue;
+      }
+
+      await this.messagesService.sendKakaoTemplateWithFallback({
+        receiver: receiver.phone,
+        receiverName: receiver.role === 'master' ? 'MASTER' : '판매자',
+        pfId: SOLAPI_PF_ID,
+        templateId: KAKAO_TEMPLATE_IDS.orderCancelRequested,
+        variables: this.buildOrderKakaoVariables(order),
+        fallbackContent: `${order.customerName}님 주문 취소 요청이 접수되었습니다.`,
+      });
     }
   }
 
@@ -1004,46 +1184,72 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
   private async notifyAdminOrderCreatedSms(order: OrderEntity): Promise<void> {
     try {
-      const config = await this.configService.getStoreConfig();
-      const shopName = config.shopName.trim() || '상점';
-      const receiver = this.normalizePhone(config.sellerPhone ?? '');
-      const customerReceiver = this.normalizePhone(order.phone);
-      if (!/^\d{8,20}$/.test(receiver)) {
-        return;
-      }
-      if (receiver === customerReceiver) {
-        return;
-      }
-
-      const paidItems = (order.items ?? [])
-        .filter((item) => item.subtotal > 0)
-        .filter((item) => item.quantity > 0);
-      const totalQty = paidItems.reduce((sum, item) => sum + Math.max(0, item.quantity), 0);
-      const firstItem = paidItems[0];
-      const firstName = firstItem?.productName?.trim() || '상품';
-      const shortName = Array.from(firstName).slice(0, 10).join('');
-      const productSummary =
-        paidItems.length <= 1
-          ? `${shortName} ${Math.max(0, totalQty)}개`
-          : `${shortName} 외 ${Math.max(0, totalQty - Math.max(0, firstItem.quantity))}개`;
+      const storeConfig = await this.configService.getStoreConfig();
+      const shopName = storeConfig.shopName.trim() || '상점';
+      const prefix = `[${shopName}]`;
+      const dueAtText = order.paymentDueAt
+        ? this.formatSmsDateTime(order.paymentDueAt)
+        : '-';
       const amountText = `${Math.max(0, Math.floor(order.totalAmount)).toLocaleString('ko-KR')}원`;
-      const prefix = `[${shopName}] `;
-      const templates = [
-        `신규주문접수 ${productSummary} 금액${amountText}`,
-        `신규주문 ${productSummary} 금액${amountText}`,
-        `주문 ${productSummary} 금액${amountText}`,
-        `${productSummary} 금액${amountText}`,
-        `금액${amountText}`,
-      ];
-      const content =
-        templates.find((text) => this.smsByteLength(`${prefix}${text}`) <= 90) ?? templates[templates.length - 1];
+      const bankName = (storeConfig.bankName ?? '').trim() || '-';
+      const accountHolder = (storeConfig.accountHolder ?? '').trim() || '-';
+      const accountNumber = (storeConfig.accountNumber ?? '').trim() || '-';
 
-      await this.messagesService.sendSms({
-        receiver,
-        content,
+      const compactDueAt = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(dueAtText)
+        ? dueAtText.slice(5)
+        : dueAtText;
+      const compactBank = this.truncateByByte(bankName, 16);
+      const compactAccount = this.truncateByByte(accountNumber, 24);
+      const compactHolder = this.truncateByByte(accountHolder, 16);
+
+      const messageCandidates = [
+        `${prefix}${amountText}/입금기한 ${compactDueAt}/${compactBank}/${compactAccount}/${compactHolder} 감사합니다.`,
+        `${prefix}${amountText}/입금기한 ${compactDueAt}/${compactBank}/${compactAccount} 감사합니다.`,
+        `${prefix}${amountText}/입금기한 ${compactDueAt}/${compactAccount} 감사합니다.`,
+        `${prefix}${amountText}/입금기한 ${compactDueAt} 감사합니다.`,
+        `${prefix}${amountText}/입금기한 ${compactDueAt}`,
+      ];
+
+      const fallbackContent =
+        messageCandidates.find((item) => this.smsByteLength(item) <= 90) ?? messageCandidates[messageCandidates.length - 1];
+
+      const sellerReceiver = this.normalizePhone(storeConfig.sellerPhone ?? '');
+      const masterAccount = await this.accountRepository.findOne({
+        where: { type: 'MASTER' },
       });
+      const masterReceiver = this.normalizePhone(masterAccount?.phone ?? '');
+
+      const receivers = [
+        { role: 'seller', phone: sellerReceiver },
+        { role: 'master', phone: masterReceiver },
+      ];
+
+      for (const receiver of receivers) {
+        if (!/^\d{8,20}$/.test(receiver.phone)) {
+          console.warn('[orders] 주문접수 관리자 알림톡 수신번호 누락', {
+            orderId: order.id,
+            role: receiver.role,
+          });
+          continue;
+        }
+
+        await this.messagesService.sendKakaoTemplateWithFallback({
+          receiver: receiver.phone,
+          receiverName: receiver.role === 'master' ? 'MASTER' : '판매자',
+          pfId: SOLAPI_PF_ID,
+          templateId: KAKAO_TEMPLATE_IDS.orderReceived,
+          variables: {
+            ...this.buildOrderKakaoVariables(order),
+            bank: bankName,
+            accountNumber,
+            accountOwner: accountHolder,
+            dueDate: dueAtText,
+          },
+          fallbackContent,
+        });
+      }
     } catch (error) {
-      console.warn('[orders] 관리자 주문 알림 문자 발송 실패', {
+      console.warn('[orders] 관리자 주문 알림 발송 실패', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -1119,6 +1325,45 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  private buildOrderKakaoVariables(order: OrderEntity): Record<string, string> {
+    const ordererName = this.resolveOrdererName(order);
+
+    return {
+      orderNo: String(order.id),
+      product: this.buildOrderProductText(order),
+      amount: `${Math.max(0, Math.floor(order.totalAmount)).toLocaleString('ko-KR')}원`,
+      address: (order.shippingAddress ?? '').trim() || '-',
+      memo: (order.requestNote ?? '').trim() || '-',
+      name: ordererName,
+      customerName: ordererName,
+      ordererName,
+      depositorName: (order.depositorName ?? '').trim() || ordererName,
+    };
+  }
+
+  private resolveOrdererName(order: OrderEntity): string {
+    const purchaseType = this.normalizePurchaseType(order.purchaseType);
+    if (purchaseType === 'guest') {
+      return (order.depositorName ?? '').trim() || order.customerName.trim() || '고객';
+    }
+
+    return order.customerName.trim() || (order.depositorName ?? '').trim() || '고객';
+  }
+
+  private buildOrderProductText(order: OrderEntity): string {
+    const paidItems = (order.items ?? [])
+      .filter((item) => item.subtotal > 0)
+      .filter((item) => item.quantity > 0);
+
+    if (!paidItems.length) {
+      return '상품';
+    }
+
+    const firstName = paidItems[0]?.productName?.trim() || '상품';
+    const extraCount = Math.max(0, paidItems.length - 1);
+    return extraCount > 0 ? `${firstName} 외 ${extraCount}건` : firstName;
+  }
+
   private normalizeOrderStatus(statusRaw: string): OrderStatus {
     if (statusRaw === ORDER_STATUS.RECEIVED || statusRaw === '접수') {
       return ORDER_STATUS.RECEIVED;
@@ -1165,6 +1410,39 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   ): { status: string; at: string }[] {
     const history = Array.isArray(order.statusHistory) ? order.statusHistory : [];
     return [...history, { status, at: new Date().toISOString() }];
+  }
+
+  private async saveOrderTransactionLog(input: {
+    orderId: number;
+    eventType: OrderTransactionEvent;
+    actor: OrderTransactionActor;
+    message: string;
+    fromStatus?: string | null;
+    toStatus?: string | null;
+    payload?: Record<string, unknown>;
+    manager?: EntityManager;
+  }): Promise<void> {
+    try {
+      const repository = input.manager
+        ? input.manager.getRepository(OrderTransactionLogEntity)
+        : this.orderTransactionLogRepository;
+
+      await repository.save(
+        repository.create({
+          orderId: input.orderId,
+          eventType: input.eventType,
+          actor: input.actor,
+          fromStatus: input.fromStatus ?? null,
+          toStatus: input.toStatus ?? null,
+          message: input.message,
+          payload: input.payload ?? {},
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `거래 로그 저장 실패 orderId=${input.orderId} eventType=${input.eventType} error=${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   // 주문 취소 완료 시: 재고 복구 + 사용 적립금 복원 + 적립 적립금 회수 + 사용 쿠폰 복원

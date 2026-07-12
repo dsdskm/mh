@@ -7,6 +7,7 @@ export const DATABASE_SYNC_TABLES = [
   'reviews',
   'coupon_templates',
   'orders',
+  'order_transaction_logs',
   'account_shipping_addresses',
   'inquiry_comments',
   'review_comments',

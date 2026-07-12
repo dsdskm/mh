@@ -309,6 +309,15 @@ export function SettingsTab({ state }: Props) {
                 className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               />
             </label>
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-xs font-semibold text-stone-600">카카오 채널 문의 URL</span>
+              <input
+                value={state.kakaoChannelUrl}
+                onChange={(e) => state.setKakaoChannelUrl(e.target.value)}
+                placeholder="https://pf.kakao.com/..."
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
+            </label>
             <label className="space-y-1">
               <span className="text-xs font-semibold text-stone-600">원산지</span>
               <input

@@ -151,6 +151,7 @@ export type AdminNotification = {
 };
 
 export type AdminSmsHistoryStatus = "success" | "failed" | "cancelled";
+export type AdminMessageChannel = "sms" | "kakao";
 
 export type AdminSmsHistoryItem = {
   id: number;
@@ -165,6 +166,8 @@ export type AdminSmsHistoryItem = {
   reserveDT: string | null;
   adsYN: boolean;
   receiptNum: string | null;
+  channel: AdminMessageChannel;
+  templateId: string | null;
   status: AdminSmsHistoryStatus;
   errorMessage: string | null;
 };
@@ -205,6 +208,7 @@ export type StoreConfig = {
   shippingRefundPolicy: string;
   storyImages: Array<{ title: string; imageUrl: string }>;
   videoUrl: string;
+  kakaoChannelUrl: string;
   termsUrl: string;
   privacyUrl: string;
   termsVersion: string;

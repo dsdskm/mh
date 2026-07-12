@@ -73,6 +73,10 @@ export class ConfigService implements OnModuleInit {
       typeof input.privacyUrl === 'string'
         ? this.normalizeTermsUrl(input.privacyUrl)
         : currentPrivacyUrl;
+    const nextKakaoChannelUrl =
+      typeof input.kakaoChannelUrl === 'string'
+        ? this.normalizeTermsUrl(input.kakaoChannelUrl)
+        : base.kakaoChannelUrl ?? '';
 
     const termsChanged = nextTermsUrl !== currentTermsUrl;
     const privacyChanged = nextPrivacyUrl !== currentPrivacyUrl;
@@ -99,6 +103,7 @@ export class ConfigService implements OnModuleInit {
         input.shippingRefundPolicy ?? base.shippingRefundPolicy,
       storyImages: input.storyImages ?? base.storyImages,
       videoUrl: input.videoUrl ?? base.videoUrl,
+      kakaoChannelUrl: nextKakaoChannelUrl,
       recipes: input.recipes ?? base.recipes,
       paymentDueDays:
         input.paymentDueDays === undefined
@@ -219,6 +224,7 @@ export class ConfigService implements OnModuleInit {
         ].join('\n'),
       storyImages: this.parseJsonEnv<StoreStoryImage[]>('STORY_IMAGES', []),
       videoUrl: process.env.PRODUCT_VIDEO_URL ?? '',
+      kakaoChannelUrl: this.normalizeTermsUrl(process.env.KAKAO_CHANNEL_URL ?? ''),
       recipes: this.parseJsonEnv<StoreRecipe[]>('RECIPES', []),
       paymentDueDays: Number(process.env.PAYMENT_DUE_DAYS ?? 0) || 0,
       deliveryFee: Number(process.env.DELIVERY_FEE ?? 0) || 0,
@@ -264,6 +270,7 @@ export class ConfigService implements OnModuleInit {
       shippingRefundPolicy: setting.shippingRefundPolicy ?? '',
       storyImages: setting.storyImages as StoreStoryImage[],
       videoUrl: setting.videoUrl,
+      kakaoChannelUrl: setting.kakaoChannelUrl ?? '',
       termsUrl: latestTerms?.documentUrl ?? '',
       privacyUrl: latestPrivacy?.documentUrl ?? '',
       termsVersion: latestTerms?.termsVersion ?? '',

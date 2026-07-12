@@ -9,6 +9,7 @@ type StoreFooterConfig = {
   trusteeRepresentative: string;
   trusteePhone: string;
   origin: string;
+  kakaoChannelUrl: string;
   termsUrl: string;
 };
 
@@ -29,6 +30,7 @@ async function loadStoreFooterConfig(): Promise<StoreFooterConfig> {
         trusteeRepresentative: "",
         trusteePhone: "",
         origin: "-",
+        kakaoChannelUrl: "",
         termsUrl: "",
       };
     }
@@ -42,6 +44,7 @@ async function loadStoreFooterConfig(): Promise<StoreFooterConfig> {
       trusteeRepresentative: data.trusteeRepresentative?.trim() || "",
       trusteePhone: data.trusteePhone?.trim() || "",
       origin: data.origin?.trim() || "-",
+      kakaoChannelUrl: data.kakaoChannelUrl?.trim() || "",
       termsUrl: data.termsUrl?.trim() || "",
     };
   } catch {
@@ -53,6 +56,7 @@ async function loadStoreFooterConfig(): Promise<StoreFooterConfig> {
       trusteeRepresentative: "",
       trusteePhone: "",
       origin: "-",
+      kakaoChannelUrl: "",
       termsUrl: "",
     };
   }
@@ -89,9 +93,20 @@ export default async function StoreInfoFooter() {
           <Link href="/privacy" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 font-semibold hover:bg-stone-100">
             개인정보처리방침
           </Link>
-          <Link href="/contact" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 font-semibold hover:bg-stone-100">
-            문의하기
-          </Link>
+          {config.kakaoChannelUrl ? (
+            <a
+              href={config.kakaoChannelUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-stone-300 bg-white px-3 py-1.5 font-semibold hover:bg-stone-100"
+            >
+              문의하기
+            </a>
+          ) : (
+            <Link href="/contact" className="rounded-full border border-stone-300 bg-white px-3 py-1.5 font-semibold hover:bg-stone-100">
+              문의하기
+            </Link>
+          )}
         </div>
       </div>
     </footer>

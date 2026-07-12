@@ -73,6 +73,7 @@ export default function AccountPage() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [mileageBalance, setMileageBalance] = useState(0);
   const [mileageHistory, setMileageHistory] = useState<MileageTransaction[]>([]);
+  const [accountType, setAccountType] = useState<"NORMAL" | "KAKAO" | "NAVER" | "MASTER" | null>(null);
 
   useEffect(() => {
     if (window.daum?.Postcode) {
@@ -108,6 +109,7 @@ export default function AccountPage() {
 
       try {
         const profileData = await getProfileApi(userId);
+        setAccountType(profileData.profile.accountType ?? "NORMAL");
         setName(profileData.profile.name);
         setPhone(profileData.profile.phone);
         setAddress1(profileData.profile.address1);
@@ -151,8 +153,8 @@ export default function AccountPage() {
         name: name.trim(),
         address1: address1.trim(),
         address2: address2.trim(),
-        currentPassword,
-        newPassword: newPassword.trim() || undefined,
+        currentPassword: accountType === "KAKAO" ? undefined : currentPassword,
+        newPassword: accountType === "KAKAO" ? undefined : newPassword.trim() || undefined,
       });
 
       setName(result.profile.name);
@@ -196,8 +198,10 @@ export default function AccountPage() {
     }
 
     if (!withdrawPassword.trim()) {
-      setError("탈퇴 확인 비밀번호를 입력해주세요.");
-      return;
+      if (accountType !== "KAKAO") {
+        setError("탈퇴 확인 비밀번호를 입력해주세요.");
+        return;
+      }
     }
 
     setError(null);
@@ -218,7 +222,7 @@ export default function AccountPage() {
     try {
       await withdrawApi({
         userId,
-        password: withdrawPassword,
+        password: accountType === "KAKAO" ? undefined : withdrawPassword,
         reason: withdrawReason.trim() || undefined,
       });
 
@@ -243,7 +247,9 @@ export default function AccountPage() {
 
       <section className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm sm:p-5">
         <h1 className="text-2xl font-bold text-amber-800">정보수정</h1>
-        <p className="mt-1 text-sm text-stone-600">이름, 주소, 비밀번호를 변경할 수 있습니다.</p>
+        <p className="mt-1 text-sm text-stone-600">
+          {accountType === "KAKAO" ? "이름과 주소를 변경할 수 있습니다." : "이름, 주소, 비밀번호를 변경할 수 있습니다."}
+        </p>
 
         <form className="mt-4 space-y-3" onSubmit={submitUpdate}>
           <input
@@ -284,21 +290,25 @@ export default function AccountPage() {
             placeholder="상세 주소"
             className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
           />
-          <input
-            type="password"
-            value={currentPassword}
-            onChange={(event) => setCurrentPassword(event.target.value)}
-            placeholder="현재 비밀번호 (필수)"
-            className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            required
-          />
-          <input
-            type="password"
-            value={newPassword}
-            onChange={(event) => setNewPassword(event.target.value)}
-            placeholder="새 비밀번호 (선택)"
-            className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-          />
+          {accountType !== "KAKAO" && (
+            <>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                placeholder="현재 비밀번호 (필수)"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                required
+              />
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                placeholder="새 비밀번호 (선택)"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
+            </>
+          )}
 
           <button
             type="submit"
@@ -313,13 +323,15 @@ export default function AccountPage() {
           <p className="text-sm font-semibold text-red-700">회원 탈퇴</p>
           <p className="mt-1 text-xs text-red-600">탈퇴 시 계정이 비활성화되며 즉시 로그아웃됩니다.</p>
 
-          <input
-            type="password"
-            value={withdrawPassword}
-            onChange={(event) => setWithdrawPassword(event.target.value)}
-            placeholder="탈퇴 확인 비밀번호"
-            className="mt-3 w-full rounded-xl border border-red-300 px-3 py-2 text-sm"
-          />
+          {accountType !== "KAKAO" && (
+            <input
+              type="password"
+              value={withdrawPassword}
+              onChange={(event) => setWithdrawPassword(event.target.value)}
+              placeholder="탈퇴 확인 비밀번호"
+              className="mt-3 w-full rounded-xl border border-red-300 px-3 py-2 text-sm"
+            />
+          )}
           <select
             value={withdrawReasonPreset}
             onChange={(event) => {

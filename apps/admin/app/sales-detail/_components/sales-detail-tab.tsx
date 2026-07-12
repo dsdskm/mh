@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatCurrency, getOrderStatusLabelKo, STATUS_OPTIONS } from "../../_lib/constants";
 import { Order, OrderStatus } from "../../_lib/types";
 import { ORDER_STATUS } from "@repo/shared-types/order";
@@ -6,6 +6,17 @@ import { PaginationControls } from "../../_components/pagination-controls";
 import { usePersistedPagination } from "../../_hooks/use-persisted-pagination";
 
 type DatePreset = "today" | "week" | "month1" | "month3" | "month6" | "year1" | "all" | "custom";
+const SALES_DETAIL_FILTER_STORAGE_KEY = "admin:sales-detail:filters";
+
+type SalesDetailFilterState = {
+  searchQuery: string;
+  statusFilter: "all" | OrderStatus;
+  sortBy: "orderId" | "subtotal";
+  sortDirection: "desc" | "asc";
+  startDate: string;
+  endDate: string;
+  datePreset: DatePreset;
+};
 
 type Props = {
   orders: Order[];
@@ -90,14 +101,138 @@ function getPresetRange(preset: Exclude<DatePreset, "custom">): { start: string;
 }
 
 export function SalesDetailTab({ orders }: Props) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all");
-  const [sortBy, setSortBy] = useState<"orderId" | "subtotal">("orderId");
-  const [sortDirection, setSortDirection] = useState<"desc" | "asc">("desc");
   const initialWeekRange = getPresetRange("week");
-  const [startDate, setStartDate] = useState(initialWeekRange.start);
-  const [endDate, setEndDate] = useState(initialWeekRange.end);
-  const [datePreset, setDatePreset] = useState<DatePreset>("week");
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+
+    try {
+      const raw = window.localStorage.getItem(SALES_DETAIL_FILTER_STORAGE_KEY);
+      if (!raw) {
+        return "";
+      }
+      const parsed = JSON.parse(raw) as Partial<SalesDetailFilterState>;
+      return typeof parsed.searchQuery === "string" ? parsed.searchQuery : "";
+    } catch {
+      return "";
+    }
+  });
+  const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>(() => {
+    if (typeof window === "undefined") {
+      return "all";
+    }
+
+    try {
+      const raw = window.localStorage.getItem(SALES_DETAIL_FILTER_STORAGE_KEY);
+      if (!raw) {
+        return "all";
+      }
+      const parsed = JSON.parse(raw) as Partial<SalesDetailFilterState>;
+      const saved = parsed.statusFilter;
+      return saved === "all" || (typeof saved === "string" && STATUS_OPTIONS.includes(saved as OrderStatus))
+        ? (saved as "all" | OrderStatus)
+        : "all";
+    } catch {
+      return "all";
+    }
+  });
+  const [sortBy, setSortBy] = useState<"orderId" | "subtotal">(() => {
+    if (typeof window === "undefined") {
+      return "orderId";
+    }
+
+    try {
+      const raw = window.localStorage.getItem(SALES_DETAIL_FILTER_STORAGE_KEY);
+      if (!raw) {
+        return "orderId";
+      }
+      const parsed = JSON.parse(raw) as Partial<SalesDetailFilterState>;
+      return parsed.sortBy === "subtotal" ? "subtotal" : "orderId";
+    } catch {
+      return "orderId";
+    }
+  });
+  const [sortDirection, setSortDirection] = useState<"desc" | "asc">(() => {
+    if (typeof window === "undefined") {
+      return "desc";
+    }
+
+    try {
+      const raw = window.localStorage.getItem(SALES_DETAIL_FILTER_STORAGE_KEY);
+      if (!raw) {
+        return "desc";
+      }
+      const parsed = JSON.parse(raw) as Partial<SalesDetailFilterState>;
+      return parsed.sortDirection === "asc" ? "asc" : "desc";
+    } catch {
+      return "desc";
+    }
+  });
+  const [startDate, setStartDate] = useState(() => {
+    if (typeof window === "undefined") {
+      return initialWeekRange.start;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(SALES_DETAIL_FILTER_STORAGE_KEY);
+      if (!raw) {
+        return initialWeekRange.start;
+      }
+      const parsed = JSON.parse(raw) as Partial<SalesDetailFilterState>;
+      return typeof parsed.startDate === "string" ? parsed.startDate : initialWeekRange.start;
+    } catch {
+      return initialWeekRange.start;
+    }
+  });
+  const [endDate, setEndDate] = useState(() => {
+    if (typeof window === "undefined") {
+      return initialWeekRange.end;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(SALES_DETAIL_FILTER_STORAGE_KEY);
+      if (!raw) {
+        return initialWeekRange.end;
+      }
+      const parsed = JSON.parse(raw) as Partial<SalesDetailFilterState>;
+      return typeof parsed.endDate === "string" ? parsed.endDate : initialWeekRange.end;
+    } catch {
+      return initialWeekRange.end;
+    }
+  });
+  const [datePreset, setDatePreset] = useState<DatePreset>(() => {
+    if (typeof window === "undefined") {
+      return "week";
+    }
+
+    try {
+      const raw = window.localStorage.getItem(SALES_DETAIL_FILTER_STORAGE_KEY);
+      if (!raw) {
+        return "week";
+      }
+      const parsed = JSON.parse(raw) as Partial<SalesDetailFilterState>;
+      const saved = parsed.datePreset;
+      return saved === "today" || saved === "week" || saved === "month1" || saved === "month3" || saved === "month6" || saved === "year1" || saved === "all" || saved === "custom"
+        ? saved
+        : "week";
+    } catch {
+      return "week";
+    }
+  });
+
+  useEffect(() => {
+    const next: SalesDetailFilterState = {
+      searchQuery,
+      statusFilter,
+      sortBy,
+      sortDirection,
+      startDate,
+      endDate,
+      datePreset,
+    };
+    window.localStorage.setItem(SALES_DETAIL_FILTER_STORAGE_KEY, JSON.stringify(next));
+  }, [searchQuery, statusFilter, sortBy, sortDirection, startDate, endDate, datePreset]);
 
   const rows = useMemo<SalesRow[]>(() => {
     return orders.flatMap((order) =>
@@ -299,7 +434,7 @@ export function SalesDetailTab({ orders }: Props) {
           }}
           className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
         >
-          엑셀 Export
+          엑셀 다운로드
         </button>
         <div className="basis-full">
           <div className="mt-1 flex flex-wrap justify-end gap-2">

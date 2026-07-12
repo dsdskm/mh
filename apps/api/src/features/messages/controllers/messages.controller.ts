@@ -9,6 +9,21 @@ type SendSmsBody = {
   adsYN?: boolean;
 };
 
+type SendAllKakaoTestsBody = {
+  receiver?: string;
+  name?: string;
+  orderNo?: string;
+  product?: string;
+  amount?: string;
+  address?: string;
+  memo?: string;
+  bank?: string;
+  accountNumber?: string;
+  accountOwner?: string;
+  dueDate?: string;
+  authNumber?: string;
+};
+
 const DIRECT_SMS_MAX_CHARS = 45;
 
 @Controller('api/backoffice/messages')
@@ -68,6 +83,42 @@ export class MessagesController {
       content,
       reserveDT,
       adsYN,
+    });
+  }
+
+  @Post('tests/kakao-all')
+  async sendAllKakaoTests(@Body() body: SendAllKakaoTestsBody) {
+    const receiver = this.normalizePhone(body.receiver) || '01054055939';
+
+    if (!this.isValidPhone(receiver)) {
+      throw new BadRequestException('receiver는 유효한 수신번호(숫자 8~20자리)여야 합니다.');
+    }
+
+    const name = (body.name ?? '홍길동').trim() || '홍길동';
+    const orderNo = (body.orderNo ?? '2026071100001').trim() || '2026071100001';
+    const product = (body.product ?? '초당옥수수 10개입').trim() || '초당옥수수 10개입';
+    const amount = (body.amount ?? '39,000원').trim() || '39,000원';
+    const address = (body.address ?? '서울시 강남구 테헤란로 1').trim() || '서울시 강남구 테헤란로 1';
+    const memo = (body.memo ?? '문 앞에 놓아주세요').trim() || '문 앞에 놓아주세요';
+    const bank = (body.bank ?? '국민은행').trim() || '국민은행';
+    const accountNumber = (body.accountNumber ?? '123-456-789012').trim() || '123-456-789012';
+    const accountOwner = (body.accountOwner ?? '홍길동').trim() || '홍길동';
+    const dueDate = (body.dueDate ?? '2026-07-12 23:59').trim() || '2026-07-12 23:59';
+    const authNumber = (body.authNumber ?? '123456').replace(/\D/g, '').slice(0, 6) || '123456';
+
+    return this.messagesService.sendAllKakaoTemplateTests({
+      receiver,
+      name,
+      orderNo,
+      product,
+      amount,
+      address,
+      memo,
+      bank,
+      accountNumber,
+      accountOwner,
+      dueDate,
+      authNumber,
     });
   }
 

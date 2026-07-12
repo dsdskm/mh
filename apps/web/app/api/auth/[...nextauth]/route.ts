@@ -29,7 +29,7 @@ async function handleRequest(
   const params = await context.params;
   const [firstSegment] = params.nextauth;
 
-  if (NEXTAUTH_SEGMENTS.has(firstSegment)) {
+  if (typeof firstSegment === "string" && NEXTAUTH_SEGMENTS.has(firstSegment)) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (nextAuthHandler as any)(request, context) as Promise<NextResponse>;
   }

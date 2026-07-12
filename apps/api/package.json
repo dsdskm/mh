@@ -24,6 +24,7 @@
     "popbill": "^1.64.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "solapi": "^6.0.1",
     "typeorm": "^1.0.0"
   },
   "devDependencies": {

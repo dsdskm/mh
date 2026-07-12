@@ -13,6 +13,7 @@ import { getOrderStatusLabelKo } from "@repo/shared-types/order";
 import type { OrderStatus } from "@repo/shared-types/order";
 import type { Notice } from "@repo/shared-types/notice";
 import type { Coupon } from "@repo/shared-types/coupon";
+import kakaoLoginButton from "@repo/ui/assets/kakao_login_medium_narrow.png";
 
 const DAUM_POSTCODE_SCRIPT_URL = "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
 
@@ -23,6 +24,14 @@ type DaumPostcodeData = {
   apartment: "Y" | "N";
 };
 
+type KakaoSdk = {
+  Auth: {
+    authorize: (options: { redirectUri: string; state?: string }) => void;
+  };
+  init: (appKey: string) => void;
+  isInitialized: () => boolean;
+};
+
 declare global {
   interface Window {
     daum?: {
@@ -30,6 +39,7 @@ declare global {
         open: () => void;
       };
     };
+    Kakao?: KakaoSdk;
   }
 }
 
@@ -62,6 +72,7 @@ type StoreConfig = {
     imageUrl: string;
   }>;
   videoUrl: string;
+  kakaoChannelUrl: string;
   termsUrl: string;
   termsVersion: string;
   termsUpdatedAt: string | null;
@@ -146,11 +157,11 @@ function formatCountdown(totalSeconds: number): string {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ||
   (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "");
+const KAKAO_JAVASCRIPT_API_KEY = process.env.NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY?.trim() || "";
 const MEMBER_PHONE_KEY = "cornmarket:member-phone";
 const NOTICE_DISMISS_KEY_PREFIX = "cornmarket:notice:dismissed:";
 const TERMS_SEEN_VERSION_KEY = "cornmarket:terms:seen-version";
 const ORDER_REQUEST_CUSTOM_VALUE = "__custom__";
-
 type OrderRequestPresetValue =
   | ""
   | "문 앞에 놓아주세요"
@@ -181,6 +192,7 @@ export default function Home() {
     detailDescription: "",
     storyImages: [],
     videoUrl: "",
+    kakaoChannelUrl: "",
     termsUrl: "",
     termsVersion: "",
     termsUpdatedAt: null,
@@ -252,8 +264,26 @@ export default function Home() {
   const [guestOrderCodeExpiresAt, setGuestOrderCodeExpiresAt] = useState<number | null>(null);
   const [guestOrderCodeRemainingSec, setGuestOrderCodeRemainingSec] = useState(0);
   const videoIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const loginModalActionWidth = kakaoLoginButton.width;
   const resolvedOrderRequestNote =
     orderRequestPreset === ORDER_REQUEST_CUSTOM_VALUE ? orderRequestCustomNote.trim() : orderRequestPreset.trim();
+  const inquiryUrl = storeConfig.kakaoChannelUrl.trim();
+
+  function openInquiry() {
+    setShowMenuDrawer(false);
+
+    if (inquiryUrl) {
+      window.open(inquiryUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    if (isLoggedIn) {
+      router.push("/contact");
+      return;
+    }
+
+    setShowContactAuthDialog(true);
+  }
 
   useEffect(() => {
     setMounted(true);
@@ -661,7 +691,7 @@ export default function Home() {
     }
 
     if (purchaseType === "guest" && !guestOrderPhoneVerified) {
-      setError("비회원 주문은 휴대폰 문자 인증이 필요합니다.");
+      setError("비회원 주문은 휴대폰 인증이 필요합니다.");
       return false;
     }
 
@@ -971,6 +1001,34 @@ export default function Home() {
     } finally {
       setLoginSubmitting(false);
     }
+  }
+
+  function startKakaoLogin() {
+    setLoginError(null);
+
+    const kakao = window.Kakao;
+    if (!kakao) {
+      setLoginError("카카오 SDK를 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    if (!KAKAO_JAVASCRIPT_API_KEY) {
+      setLoginError("카카오 JavaScript API 키가 설정되지 않았습니다.");
+      return;
+    }
+
+    if (!kakao.isInitialized()) {
+      kakao.init(KAKAO_JAVASCRIPT_API_KEY);
+    }
+
+    if (!kakao.isInitialized()) {
+      setLoginError("카카오 SDK 초기화에 실패했습니다. 다시 시도해주세요.");
+      return;
+    }
+
+    const callbackUrl = `${window.location.pathname}${window.location.search}` || "/";
+    const startUrl = `/api/auth/kakao/start?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+    window.location.assign(startUrl);
   }
 
   async function confirmLogout() {
@@ -1572,8 +1630,12 @@ export default function Home() {
                           remainingSec={guestOrderCodeRemainingSec}
                           sending={guestOrderSendingCode}
                           verifying={guestOrderVerifyingCode}
-                          onSend={() => { void requestGuestOrderCode(); }}
-                          onVerify={() => { void verifyGuestOrderCode(); }}
+                          onSend={() => {
+                            void requestGuestOrderCode();
+                          }}
+                          onVerify={() => {
+                            void verifyGuestOrderCode();
+                          }}
                           sellerPhone={storeConfig.sellerPhone}
                         >
                           {guestHasRegisteredAccount && (
@@ -1582,7 +1644,7 @@ export default function Home() {
                                 해당 번호로 가입된 아이디가 있습니다.
                               </p>
                               <Link
-                                href="/recover"
+                                href="/recover/find-id"
                                 className="inline-flex rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800"
                               >
                                 아이디 찾기
@@ -1832,7 +1894,7 @@ export default function Home() {
                   <p className="mt-2 text-xs">입금 확인 후 판매자가 주문 상태를 변경합니다.</p>
                 </div>
 
-                <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">문자로 발송되었습니다.</p>
+                <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">알림으로 발송되었습니다.</p>
 
                 <div className="mt-4 flex gap-2">
                   <button
@@ -2035,31 +2097,53 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={loginSubmitting}
-                className="w-full rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+                className="mx-auto block rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+                style={{ width: loginModalActionWidth, maxWidth: "100%" }}
               >
                 {loginSubmitting ? "로그인 중..." : "로그인"}
               </button>
+
+              {/* <button
+                type="button"
+                onClick={startKakaoLogin}
+                disabled={loginSubmitting}
+                className="mx-auto block overflow-hidden rounded-xl disabled:opacity-60"
+                style={{ width: loginModalActionWidth, maxWidth: "100%" }}
+              >
+                <Image src={kakaoLoginButton} alt="카카오로 로그인" className="h-auto w-full" priority />
+              </button> */}
             </form>
 
             <div className="mt-3 space-y-2">
               <Link
-                href="/recover"
+                href="/recover/find-id"
                 onClick={() => setShowLoginModal(false)}
-                className="block w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-center text-sm font-bold text-stone-700"
+                className="mx-auto block rounded-xl border border-stone-300 bg-white px-4 py-3 text-center text-sm font-bold text-stone-700"
+                style={{ width: loginModalActionWidth, maxWidth: "100%" }}
               >
-                아이디/비밀번호 찾기
+                아이디 찾기
+              </Link>
+              <Link
+                href="/recover/reset-password"
+                onClick={() => setShowLoginModal(false)}
+                className="mx-auto block rounded-xl border border-stone-300 bg-white px-4 py-3 text-center text-sm font-bold text-stone-700"
+                style={{ width: loginModalActionWidth, maxWidth: "100%" }}
+              >
+                비밀번호 찾기
               </Link>
               <Link
                 href="/signup?callback=/"
                 onClick={() => setShowLoginModal(false)}
-                className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+                className="mx-auto block rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+                style={{ width: loginModalActionWidth, maxWidth: "100%" }}
               >
                 회원가입
               </Link>
               <button
                 type="button"
                 onClick={() => setShowLoginModal(false)}
-                className="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-700"
+                className="mx-auto block rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-700"
+                style={{ width: loginModalActionWidth, maxWidth: "100%" }}
               >
                 닫기
               </button>
@@ -2167,14 +2251,7 @@ export default function Home() {
               </Link>
               <button
                 type="button"
-                onClick={() => {
-                  setShowMenuDrawer(false);
-                  if (isLoggedIn) {
-                    router.push("/contact");
-                    return;
-                  }
-                  setShowContactAuthDialog(true);
-                }}
+                onClick={openInquiry}
                 className="w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold text-amber-800"
               >
                 문의하기

@@ -1,0 +1,10 @@
+export const SOLAPI_PF_ID = 'KA01PF260709150444836qYQ6C0OUZ7G';
+
+export const KAKAO_TEMPLATE_IDS = {
+  orderCancelCompleted: 'KA01TP260709160232292iP2RmDDlNB4',
+  orderCancelRequested: 'KA01TP260709160017042Mr7ONpMLfzj',
+  paymentConfirmed: 'KA01TP260709155702740pRbdxTGmJGv',
+  orderReceived: 'KA01TP260709155049216lgH3nRtY3AZ',
+  authNumber: 'KA01TP2607091527122974HG6HfrUw6i',
+  signupWelcome: 'KA01TP2607091518385899mCy22zal4x',
+} as const;

@@ -67,6 +67,7 @@ export type UserProfileResponse = {
   profile: {
     id: number;
     userId: string;
+    accountType?: "NORMAL" | "KAKAO" | "NAVER" | "MASTER";
     name: string;
     phone: string;
     address1: string;
@@ -81,13 +82,13 @@ export type UpdateProfilePayload = {
   name: string;
   address1: string;
   address2: string;
-  currentPassword: string;
+  currentPassword?: string;
   newPassword?: string;
 };
 
 export type WithdrawPayload = {
   userId: string;
-  password: string;
+  password?: string;
   reason?: string;
 };
 

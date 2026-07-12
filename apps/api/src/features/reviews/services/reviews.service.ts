@@ -146,7 +146,7 @@ export class ReviewsService {
         content: '새 후기가 등록되었습니다.',
       });
     } catch (error) {
-      console.warn('[reviews] 관리자 후기 알림 문자 발송 실패', {
+      console.warn('[reviews] 관리자 후기 알림 발송 실패', {
         error: error instanceof Error ? error.message : String(error),
       });
     }

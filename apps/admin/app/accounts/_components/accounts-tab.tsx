@@ -172,7 +172,7 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
         const firstMessage =
           firstFailed && firstFailed.reason instanceof Error
             ? firstFailed.reason.message
-            : "문자 전송 중 오류가 발생했습니다.";
+            : "발송 중 오류가 발생했습니다.";
         setSmsError(`성공 ${successCount}건 / 실패 ${failedResults.length}건 - ${firstMessage}`);
         setSmsConfirmOpen(false);
         return;

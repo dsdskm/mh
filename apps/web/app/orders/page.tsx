@@ -308,7 +308,7 @@ export default function OrdersPage() {
       const expiresAtMs = Date.now() + 3 * 60 * 1000;
       setGuestCodeSent(true);
       setGuestCodeExpiresAt(Number.isFinite(expiresAtMs) ? expiresAtMs : null);
-      setGuestSuccess("인증번호를 전송했습니다. 휴대폰 문자를 확인해주세요.");
+      setGuestSuccess("인증번호를 전송했습니다. 수신된 알림을 확인해주세요.");
     } catch (fetchError) {
       setGuestError(fetchError instanceof Error ? fetchError.message : "인증번호 요청 실패");
     } finally {
@@ -494,7 +494,7 @@ export default function OrdersPage() {
                 <input
                   value={guestCode}
                   onChange={(event) => setGuestCode(event.target.value)}
-                  placeholder="문자로 받은 6자리 인증번호"
+                  placeholder="받은 6자리 인증번호"
                   className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
                   required
                 />

@@ -1,6 +1,25 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "");
+async function resolveApiBaseUrl(): Promise<string> {
+  const configuredBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.API_BASE_URL?.trim();
+  if (configuredBase) {
+    return configuredBase.replace(/\/$/, "");
+  }
+
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:9000";
+  }
+
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
+  if (!host) {
+    return "";
+  }
+
+  const protocol = requestHeaders.get("x-forwarded-proto") || "https";
+  return `${protocol}://${host}`;
+}
 
 type PrivacyConfig = {
   privacyUrl?: string;
@@ -8,7 +27,12 @@ type PrivacyConfig = {
 
 async function loadPrivacyUrl(): Promise<string | null> {
   try {
-    const response = await fetch(`${API_BASE}/api/config`, {
+    const apiBase = await resolveApiBaseUrl();
+    if (!apiBase) {
+      return null;
+    }
+
+    const response = await fetch(`${apiBase}/api/config`, {
       cache: "no-store",
     });
 

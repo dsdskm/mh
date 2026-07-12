@@ -34,6 +34,7 @@ import { MileageService } from './features/mileage/services/mileage.service';
 import { MessagesController } from './features/messages/controllers/messages.controller';
 import { MessagesService } from './features/messages/services/messages.service';
 import { PopbillSmsClient } from './features/messages/services/popbill-sms.client';
+import { SolapiMessageClient } from './features/messages/services/solapi-message.client';
 
 import { AccountEntity } from './database/entities/account.entity';
 import { AppSettingEntity } from './database/entities/app-setting.entity';
@@ -42,6 +43,7 @@ import { InquiryCommentEntity } from './database/entities/inquiry-comment.entity
 import { NoticeEntity } from './database/entities/notice.entity';
 import { OrderItemEntity } from './database/entities/order-item.entity';
 import { OrderEntity } from './database/entities/order.entity';
+import { OrderTransactionLogEntity } from './database/entities/order-transaction-log.entity';
 import { ProductEntity } from './database/entities/product.entity';
 import { ReviewCommentEntity } from './database/entities/review-comment.entity';
 import { ReviewEntity } from './database/entities/review.entity';
@@ -59,30 +61,17 @@ import { DatabaseSyncController } from './features/database-sync/database-sync.c
 import { DatabaseSyncService } from './features/database-sync/database-sync.service';
 
 function loadEnvFiles() {
-  const seen = new Set<string>();
-  const searchRoots = [process.cwd(), __dirname];
-  const candidates: string[] = [];
+  const workspaceRoot = path.resolve(__dirname, '../../../');
+  const envPath = path.join(workspaceRoot, '.env');
+  const envPrdPath = path.join(workspaceRoot, '.env.prd');
+  const isProduction = process.env.NODE_ENV === 'production';
 
-  for (const root of searchRoots) {
-    let current = path.resolve(root);
-
-    while (!seen.has(current)) {
-      seen.add(current);
-      candidates.push(path.join(current, '.env'));
-
-      const parent = path.dirname(current);
-      if (parent === current) {
-        break;
-      }
-
-      current = parent;
-    }
+  if (existsSync(envPath)) {
+    dotenv.config({ path: envPath, override: true });
   }
 
-  const filePath = candidates.find((candidate) => existsSync(candidate));
-
-  if (filePath) {
-    dotenv.config({ path: filePath, override: false });
+  if (isProduction && existsSync(envPrdPath)) {
+    dotenv.config({ path: envPrdPath, override: true });
   }
 }
 
@@ -108,6 +97,7 @@ if (!databaseUrl) {
         ProductEntity,
         NoticeEntity,
         OrderEntity,
+        OrderTransactionLogEntity,
         OrderItemEntity,
         InquiryEntity,
         InquiryCommentEntity,
@@ -128,6 +118,7 @@ if (!databaseUrl) {
       ProductEntity,
       NoticeEntity,
       OrderEntity,
+      OrderTransactionLogEntity,
       OrderItemEntity,
       InquiryEntity,
       InquiryCommentEntity,
@@ -175,6 +166,7 @@ if (!databaseUrl) {
     MileageService,
     MessagesService,
     PopbillSmsClient,
+    SolapiMessageClient,
     FirestoreTriggerService,
     DatabaseSyncService,
     AdminAuthService,

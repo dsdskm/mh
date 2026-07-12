@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PopbillSmsClient } from './popbill-sms.client';
+import { SolapiMessageClient } from './solapi-message.client';
+import { KAKAO_TEMPLATE_IDS, SOLAPI_PF_ID } from './kakao-template.constants';
 import { Repository } from 'typeorm';
-import { AdminSmsHistoryEntity } from '../../../database/entities/admin-sms-history.entity';
+import { AdminMessageChannel, AdminSmsHistoryEntity, AdminSmsStatus } from '../../../database/entities/admin-sms-history.entity';
 import { ConfigService } from '../../config/services/config.service';
 
 type SendSmsInput = {
@@ -13,6 +15,30 @@ type SendSmsInput = {
   adsYN?: boolean;
 };
 
+type SendKakaoTemplateInput = {
+  receiver: string;
+  receiverName?: string;
+  pfId: string;
+  templateId: string;
+  variables: Record<string, string>;
+  fallbackContent: string;
+};
+
+type SendAllKakaoTemplateTestInput = {
+  receiver: string;
+  name: string;
+  orderNo: string;
+  product: string;
+  amount: string;
+  address: string;
+  memo: string;
+  bank: string;
+  accountNumber: string;
+  accountOwner: string;
+  dueDate: string;
+  authNumber: string;
+};
+
 type FixedSmsConfig = {
   corpNum: string;
   sender: string;
@@ -20,8 +46,8 @@ type FixedSmsConfig = {
   userID?: string;
 };
 
-const WEBHOOK_HISTORY_CORP_NUM = '0000000000';
-const WEBHOOK_HISTORY_SENDER = 'WEBHOOK';
+const SOLAPI_HISTORY_CORP_NUM = 'SOLAPI0000';
+const SOLAPI_FIXED_SENDER = '01054055939';
 
 type GetAdminSmsHistoryInput = {
   page: number;
@@ -31,10 +57,25 @@ type GetAdminSmsHistoryInput = {
   dateTo?: string;
 };
 
+type SaveHistoryInput = {
+  channel: AdminMessageChannel;
+  receiver: string;
+  receiverName?: string;
+  content: string;
+  reserveDT?: string | null;
+  adsYN?: boolean;
+  receiptNum?: string | null;
+  status: AdminSmsStatus;
+  errorMessage?: string | null;
+  templateId?: string | null;
+  config?: FixedSmsConfig | null;
+};
+
 @Injectable()
 export class MessagesService {
   constructor(
     private readonly popbillSmsClient: PopbillSmsClient,
+    private readonly solapiMessageClient: SolapiMessageClient,
     private readonly configService: ConfigService,
     @InjectRepository(AdminSmsHistoryEntity)
     private readonly adminSmsHistoryRepository: Repository<AdminSmsHistoryEntity>,
@@ -92,6 +133,8 @@ export class MessagesService {
         reserveDT: item.reserveDT,
         adsYN: item.adsYN,
         receiptNum: item.receiptNum,
+        channel: item.channel,
+        templateId: item.templateId,
         status: item.status,
         errorMessage: item.errorMessage,
       })),
@@ -99,22 +142,26 @@ export class MessagesService {
   }
 
   async sendSms(input: SendSmsInput): Promise<{ receiptNum: string }> {
+    const receiver = this.normalizePhone(input.receiver);
+    if (!/^\d{8,20}$/.test(receiver)) {
+      throw new BadRequestException('receiver는 유효한 수신번호(숫자 8~20자리)여야 합니다.');
+    }
+
     let fixedConfig: FixedSmsConfig | null = null;
     let prefixedContent = input.content.trim();
-    let usingPopbill = false;
+    let useLegacyPopbill = false;
 
     try {
-      fixedConfig = this.getOptionalSmsConfig();
       prefixedContent = await this.applyShopNamePrefix(input.content);
-      usingPopbill = Boolean(fixedConfig);
+      useLegacyPopbill = Boolean(input.reserveDT);
 
-      if (!usingPopbill && input.reserveDT) {
-        throw new BadRequestException('예약 문자는 POPBILL 설정이 필요합니다.');
+      if (useLegacyPopbill) {
+        fixedConfig = this.getFixedSmsConfig();
       }
 
       let receiptNum = '';
 
-      if (fixedConfig) {
+      if (useLegacyPopbill && fixedConfig) {
         await this.popbillSmsClient.checkSenderNumber({
           corpNum: fixedConfig.corpNum,
           sender: fixedConfig.sender,
@@ -127,79 +174,260 @@ export class MessagesService {
         receiptNum = await this.popbillSmsClient.sendSms({
           ...fixedConfig,
           ...input,
+          receiver,
           content: prefixedContent,
         });
 
         console.log(`[POPBILL_SMS_SEND] success corpNum=${fixedConfig.corpNum} sender=${fixedConfig.sender} receiptNum=${receiptNum}`);
       } else {
-        const webhookUrl = process.env.SMS_WEBHOOK_URL?.trim();
-        if (!webhookUrl) {
-          throw new BadRequestException('문자 발송 설정이 누락되었습니다. 관리자에게 문의해주세요.');
-        }
-
-        const response = await fetch(webhookUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            to: input.receiver,
-            message: prefixedContent,
-          }),
+        receiptNum = await this.solapiMessageClient.sendSms({
+          to: receiver,
+          from: SOLAPI_FIXED_SENDER,
+          text: prefixedContent,
         });
-
-        if (!response.ok) {
-          throw new BadRequestException('문자 발송에 실패했습니다. 잠시 후 다시 시도해주세요.');
-        }
-
-        receiptNum = `webhook-${Date.now()}`;
       }
 
-      await this.adminSmsHistoryRepository.save(
-        this.adminSmsHistoryRepository.create({
-          corpNum: fixedConfig?.corpNum ?? WEBHOOK_HISTORY_CORP_NUM,
-          sender: fixedConfig?.sender ?? WEBHOOK_HISTORY_SENDER,
-          senderName: fixedConfig?.senderName ?? null,
-          userID: fixedConfig?.userID ?? null,
-          receiver: input.receiver,
-          receiverName: input.receiverName ?? null,
-          content: prefixedContent,
-          reserveDT: input.reserveDT ?? null,
-          adsYN: Boolean(input.adsYN),
-          receiptNum,
-          status: 'success',
-          errorMessage: null,
-        }),
-      );
+      await this.saveHistory({
+        channel: 'sms',
+        receiver,
+        receiverName: input.receiverName,
+        content: prefixedContent,
+        reserveDT: input.reserveDT ?? null,
+        adsYN: Boolean(input.adsYN),
+        receiptNum,
+        status: 'success',
+        errorMessage: null,
+        templateId: null,
+        config: fixedConfig,
+      });
 
       return { receiptNum };
     } catch (error) {
-      const message = error instanceof Error ? error.message : '문자 발송 중 알 수 없는 오류가 발생했습니다.';
-      if (usingPopbill && fixedConfig) {
+      const message = error instanceof Error ? error.message : '알림 발송 중 알 수 없는 오류가 발생했습니다.';
+      if (useLegacyPopbill && fixedConfig) {
         console.error(
           `[POPBILL_SENDER_CHECK] failed corpNum=${fixedConfig.corpNum} sender=${fixedConfig.sender} message=${message}`,
         );
       }
 
-      await this.adminSmsHistoryRepository.save(
-        this.adminSmsHistoryRepository.create({
-          corpNum: fixedConfig?.corpNum ?? WEBHOOK_HISTORY_CORP_NUM,
-          sender: fixedConfig?.sender ?? WEBHOOK_HISTORY_SENDER,
-          senderName: fixedConfig?.senderName ?? null,
-          userID: fixedConfig?.userID ?? null,
-          receiver: input.receiver,
-          receiverName: input.receiverName ?? null,
-          content: prefixedContent,
-          reserveDT: input.reserveDT ?? null,
-          adsYN: Boolean(input.adsYN),
-          receiptNum: null,
-          status: 'failed',
-          errorMessage: message,
-        }),
+      await this.saveHistory({
+        channel: 'sms',
+        receiver,
+        receiverName: input.receiverName,
+        content: prefixedContent,
+        reserveDT: input.reserveDT ?? null,
+        adsYN: Boolean(input.adsYN),
+        receiptNum: null,
+        status: 'failed',
+        errorMessage: message,
+        templateId: null,
+        config: fixedConfig,
+      });
+
+      throw new BadRequestException(`알림 발송에 실패했습니다. ${message}`);
+    }
+  }
+
+  async sendKakaoTemplateWithFallback(input: SendKakaoTemplateInput): Promise<{
+    receiptNum: string;
+    fallbackUsed: boolean;
+  }> {
+    const receiver = this.normalizePhone(input.receiver);
+    if (!/^\d{8,20}$/.test(receiver)) {
+      throw new BadRequestException('receiver는 유효한 수신번호(숫자 8~20자리)여야 합니다.');
+    }
+
+    const fallbackContent = input.fallbackContent.trim();
+    if (!fallbackContent) {
+      throw new BadRequestException('fallbackContent를 입력해주세요.');
+    }
+
+    try {
+      const receiptNum = await this.solapiMessageClient.sendKakaoAlimtalk({
+        to: receiver,
+        from: SOLAPI_FIXED_SENDER,
+        pfId: input.pfId,
+        templateId: input.templateId,
+        variables: input.variables,
+      });
+
+      await this.saveHistory({
+        channel: 'kakao',
+        receiver,
+        receiverName: input.receiverName,
+        content: fallbackContent,
+        reserveDT: null,
+        adsYN: false,
+        receiptNum,
+        status: 'success',
+        errorMessage: null,
+        templateId: input.templateId,
+        config: null,
+      });
+
+      return {
+        receiptNum,
+        fallbackUsed: false,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '알림톡 전송 중 알 수 없는 오류가 발생했습니다.';
+      console.warn(
+        `[SOLAPI_KAKAO_SEND] failed templateId=${input.templateId} receiver=${receiver} message=${message}`,
       );
 
-      throw new BadRequestException(`문자 발송에 실패했습니다. ${message}`);
+      await this.saveHistory({
+        channel: 'kakao',
+        receiver,
+        receiverName: input.receiverName,
+        content: fallbackContent,
+        reserveDT: null,
+        adsYN: false,
+        receiptNum: null,
+        status: 'failed',
+        errorMessage: message,
+        templateId: input.templateId,
+        config: null,
+      });
+
+      const smsResult = await this.sendSms({
+        receiver,
+        receiverName: input.receiverName,
+        content: fallbackContent,
+      });
+
+      return {
+        receiptNum: smsResult.receiptNum,
+        fallbackUsed: true,
+      };
     }
+  }
+
+  async sendAllKakaoTemplateTests(input: SendAllKakaoTemplateTestInput): Promise<{
+    receiver: string;
+    from: string;
+    results: Array<{
+      case: string;
+      templateId: string;
+      success: boolean;
+      fallbackUsed: boolean;
+      receiptNum: string | null;
+      errorMessage: string | null;
+    }>;
+  }> {
+    const receiver = this.normalizePhone(input.receiver);
+    if (!/^\d{8,20}$/.test(receiver)) {
+      throw new BadRequestException('receiver는 유효한 수신번호(숫자 8~20자리)여야 합니다.');
+    }
+
+    const orderVariables = {
+      orderNo: input.orderNo,
+      product: input.product,
+      amount: input.amount,
+      address: input.address,
+      memo: input.memo,
+    };
+
+    const cases: Array<{
+      caseName: string;
+      templateId: string;
+      variables: Record<string, string>;
+      fallbackContent: string;
+      receiverName?: string;
+    }> = [
+      {
+        caseName: 'order-cancel-completed',
+        templateId: KAKAO_TEMPLATE_IDS.orderCancelCompleted,
+        variables: orderVariables,
+        fallbackContent: `주문취소 완료: ${input.orderNo}`,
+      },
+      {
+        caseName: 'order-cancel-requested',
+        templateId: KAKAO_TEMPLATE_IDS.orderCancelRequested,
+        variables: orderVariables,
+        fallbackContent: `주문취소 요청 접수: ${input.orderNo}`,
+      },
+      {
+        caseName: 'payment-confirmed',
+        templateId: KAKAO_TEMPLATE_IDS.paymentConfirmed,
+        variables: orderVariables,
+        fallbackContent: `입금 확인: ${input.amount}`,
+      },
+      {
+        caseName: 'order-received',
+        templateId: KAKAO_TEMPLATE_IDS.orderReceived,
+        variables: {
+          ...orderVariables,
+          bank: input.bank,
+          accountNumber: input.accountNumber,
+          accountOwner: input.accountOwner,
+          dueDate: input.dueDate,
+        },
+        fallbackContent: `주문 접수: ${input.orderNo} / ${input.amount}`,
+      },
+      {
+        caseName: 'auth-number',
+        templateId: KAKAO_TEMPLATE_IDS.authNumber,
+        variables: {
+          number: input.authNumber,
+        },
+        fallbackContent: `인증번호 [${input.authNumber}]`,
+      },
+      {
+        caseName: 'signup-welcome',
+        templateId: KAKAO_TEMPLATE_IDS.signupWelcome,
+        variables: {
+          name: input.name,
+        },
+        fallbackContent: `${input.name}님 회원가입을 환영합니다.`,
+        receiverName: input.name,
+      },
+    ];
+
+    const results: Array<{
+      case: string;
+      templateId: string;
+      success: boolean;
+      fallbackUsed: boolean;
+      receiptNum: string | null;
+      errorMessage: string | null;
+    }> = [];
+
+    for (const item of cases) {
+      try {
+        const sent = await this.sendKakaoTemplateWithFallback({
+          receiver,
+          receiverName: item.receiverName,
+          pfId: SOLAPI_PF_ID,
+          templateId: item.templateId,
+          variables: item.variables,
+          fallbackContent: item.fallbackContent,
+        });
+
+        results.push({
+          case: item.caseName,
+          templateId: item.templateId,
+          success: true,
+          fallbackUsed: sent.fallbackUsed,
+          receiptNum: sent.receiptNum,
+          errorMessage: null,
+        });
+      } catch (error) {
+        results.push({
+          case: item.caseName,
+          templateId: item.templateId,
+          success: false,
+          fallbackUsed: false,
+          receiptNum: null,
+          errorMessage: error instanceof Error ? error.message : '알 수 없는 오류',
+        });
+      }
+    }
+
+    return {
+      receiver,
+      from: SOLAPI_FIXED_SENDER,
+      results,
+    };
   }
 
   async cancelReservedSms(input: { historyId: number }): Promise<{ ok: true }> {
@@ -270,17 +498,6 @@ export class MessagesService {
     };
   }
 
-  private getOptionalSmsConfig(): FixedSmsConfig | null {
-    const corpNum = (process.env.POPBILL_CORP_NUM ?? '').trim();
-    const sender = (process.env.POPBILL_SENDER ?? '').replace(/\D/g, '');
-
-    if (!corpNum && !sender) {
-      return null;
-    }
-
-    return this.getFixedSmsConfig();
-  }
-
   private async applyShopNamePrefix(content: string): Promise<string> {
     const storeConfig = await this.configService.getStoreConfig();
     const shopName = storeConfig.shopName.trim() || '상점';
@@ -299,5 +516,30 @@ export class MessagesService {
     return Array.from(content).reduce((sum, ch) => {
       return sum + (/[^\u0000-\u007f]/.test(ch) ? 2 : 1);
     }, 0);
+  }
+
+  private normalizePhone(value: string): string {
+    return value.replace(/\D/g, '');
+  }
+
+  private async saveHistory(input: SaveHistoryInput): Promise<void> {
+    await this.adminSmsHistoryRepository.save(
+      this.adminSmsHistoryRepository.create({
+        corpNum: input.config?.corpNum ?? SOLAPI_HISTORY_CORP_NUM,
+        sender: input.config?.sender ?? SOLAPI_FIXED_SENDER,
+        senderName: input.config?.senderName ?? null,
+        userID: input.config?.userID ?? null,
+        receiver: input.receiver,
+        receiverName: input.receiverName ?? null,
+        content: input.content,
+        reserveDT: input.reserveDT ?? null,
+        adsYN: Boolean(input.adsYN),
+        receiptNum: input.receiptNum ?? null,
+        channel: input.channel,
+        templateId: input.templateId ?? null,
+        status: input.status,
+        errorMessage: input.errorMessage ?? null,
+      }),
+    );
   }
 }

@@ -19,7 +19,7 @@ export async function sendAdminSmsApi(payload: SendAdminSmsPayload): Promise<{ r
     body: JSON.stringify(payload),
   });
 
-  return parseJsonOrThrow<{ receiptNum: string }>(response, '문자 발송에 실패했습니다.');
+  return parseJsonOrThrow<{ receiptNum: string }>(response, '발송에 실패했습니다.');
 }
 
 export async function cancelAdminReservedSmsApi(historyId: number): Promise<{ ok: true }> {
@@ -58,5 +58,5 @@ export async function fetchAdminSmsHistoryApi(
     cache: 'no-store',
   });
 
-  return parseJsonOrThrow<AdminSmsHistoryPage>(response, '문자 내역을 불러오지 못했습니다.');
+  return parseJsonOrThrow<AdminSmsHistoryPage>(response, '발송 이력을 불러오지 못했습니다.');
 }

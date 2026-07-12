@@ -2,6 +2,8 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeor
 
 export const ADMIN_SMS_STATUS_VALUES = ['success', 'failed', 'cancelled'] as const;
 export type AdminSmsStatus = (typeof ADMIN_SMS_STATUS_VALUES)[number];
+export const ADMIN_MESSAGE_CHANNEL_VALUES = ['sms', 'kakao'] as const;
+export type AdminMessageChannel = (typeof ADMIN_MESSAGE_CHANNEL_VALUES)[number];
 
 @Entity({ name: 'admin_sms_histories' })
 export class AdminSmsHistoryEntity {
@@ -40,6 +42,12 @@ export class AdminSmsHistoryEntity {
 
   @Column({ type: 'varchar', length: 64, nullable: true })
   receiptNum!: string | null;
+
+  @Column({ type: 'varchar', length: 16, default: 'sms' })
+  channel!: AdminMessageChannel;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  templateId!: string | null;
 
   @Column({ type: 'varchar', length: 12 })
   status!: AdminSmsStatus;

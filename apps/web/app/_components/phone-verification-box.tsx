@@ -16,11 +16,11 @@ type PhoneContactMessageProps = {
 export function PhoneContactMessage({ sellerPhone }: PhoneContactMessageProps) {
   return (
     <p className="text-xs text-stone-500">
-      시간이 지나도 문자가 오지 않는 경우 판매자에게 연락해주세요.
+      시간이 지나도 인증 알림이 오지 않는 경우 판매자에게 연락해주세요.
       {sellerPhone && (
         <>
           <br />
-          <a href={`sms:${sellerPhone}`} className="font-semibold text-amber-700">
+          <a href={`tel:${sellerPhone}`} className="font-semibold text-amber-700">
             {formatPhone(sellerPhone)}
           </a>
         </>
@@ -60,13 +60,13 @@ export function PhoneVerificationBox({
 }: PhoneVerificationBoxProps) {
   return (
     <div className="space-y-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
-      <p className="text-xs font-semibold text-stone-600">휴대폰 문자 인증</p>
-      <div className="flex gap-2">
+      <p className="text-xs font-semibold text-stone-600">휴대폰 인증</p>
+      <div className="flex flex-col gap-2 sm:flex-row">
         <button
           type="button"
           onClick={onSend}
           disabled={sending}
-          className="flex-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-bold text-stone-700 disabled:opacity-60"
+          className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-bold text-stone-700 disabled:opacity-60 sm:flex-1"
         >
           {sending ? "요청 중..." : "인증번호 받기"}
         </button>
@@ -74,13 +74,13 @@ export function PhoneVerificationBox({
           value={code}
           onChange={(event) => onCodeChange(event.target.value)}
           placeholder="인증번호"
-          className="w-32 rounded-xl border border-stone-300 px-3 py-2 text-sm"
+          className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm sm:w-32"
         />
         <button
           type="button"
           onClick={onVerify}
           disabled={verifying || !codeSent || remainingSec <= 0}
-          className="rounded-xl bg-lime-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+          className="rounded-xl bg-lime-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60 sm:whitespace-nowrap"
         >
           {verifying ? "확인 중..." : "확인"}
         </button>
@@ -95,7 +95,7 @@ export function PhoneVerificationBox({
       )}
       <PhoneContactMessage sellerPhone={sellerPhone} />
       <p className={`text-xs font-semibold ${verified ? "text-lime-700" : "text-stone-500"}`}>
-        {verified ? "문자 인증 완료" : "문자 인증 필요"}
+        {verified ? "인증 완료" : "인증 필요"}
       </p>
       {children}
     </div>

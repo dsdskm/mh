@@ -35,6 +35,11 @@ type LoginBody = {
   password?: string;
 };
 
+type KakaoLoginBody = {
+  code?: string;
+  redirectUri?: string;
+};
+
 type ProfileBody = {
   userId?: string;
 };
@@ -52,6 +57,15 @@ type WithdrawBody = {
   userId?: string;
   password?: string;
   reason?: string;
+};
+
+type KakaoCompleteProfileBody = {
+  userId?: string;
+  name?: string;
+  phone?: string;
+  address1?: string;
+  address2?: string;
+  verificationToken?: string;
 };
 
 type FindUserIdBody = {
@@ -118,6 +132,21 @@ export class AuthController {
     return this.authService.login(userId, password);
   }
 
+  @Post('kakao/login')
+  kakaoLogin(@Body() body: KakaoLoginBody) {
+    const code = body.code?.trim();
+    const redirectUri = body.redirectUri?.trim();
+
+    if (!code || !redirectUri) {
+      throw new BadRequestException('카카오 로그인에 필요한 정보가 누락되었습니다.');
+    }
+
+    return this.authService.loginWithKakaoCode({
+      code,
+      redirectUri,
+    });
+  }
+
   @Post('profile')
   profile(@Body() body: ProfileBody) {
     const userId = body.userId?.trim();
@@ -137,7 +166,7 @@ export class AuthController {
     const address2 = body.address2?.trim() ?? '';
     const currentPassword = body.currentPassword;
 
-    if (!userId || !name || !address1 || !currentPassword) {
+    if (!userId || !name || !address1) {
       throw new BadRequestException('정보수정에 필요한 항목을 모두 입력해주세요.');
     }
 
@@ -156,14 +185,37 @@ export class AuthController {
     const userId = body.userId?.trim();
     const password = body.password;
 
-    if (!userId || !password) {
-      throw new BadRequestException('탈퇴를 위해 아이디와 비밀번호를 입력해주세요.');
+    if (!userId) {
+      throw new BadRequestException('탈퇴를 위해 아이디가 필요합니다.');
     }
 
     return this.authService.withdraw({
       userId,
       password,
       reason: body.reason,
+    });
+  }
+
+  @Post('kakao/complete-profile')
+  completeKakaoProfile(@Body() body: KakaoCompleteProfileBody) {
+    const userId = body.userId?.trim();
+    const name = body.name?.trim();
+    const phone = body.phone?.trim();
+    const address1 = body.address1?.trim();
+    const address2 = body.address2?.trim() ?? '';
+    const verificationToken = body.verificationToken?.trim();
+
+    if (!userId || !name || !phone || !address1 || !verificationToken) {
+      throw new BadRequestException('카카오 회원 추가정보를 모두 입력해주세요.');
+    }
+
+    return this.authService.completeKakaoProfile({
+      userId,
+      name,
+      phone,
+      address1,
+      address2,
+      verificationToken,
     });
   }
 

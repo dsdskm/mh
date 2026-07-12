@@ -10,7 +10,16 @@ import { usePersistedPagination } from "../../_hooks/use-persisted-pagination";
 type DatePreset = "today" | "week" | "month1" | "month3" | "month6" | "year1" | "all" | "custom";
 
 const VIEW_MODE_STORAGE_KEY = "admin:orders:viewMode";
+const ORDERS_FILTER_STORAGE_KEY = "admin:orders:filters";
 const DIRECT_SMS_MAX_CHARS = 45;
+
+type OrdersFilterState = {
+  searchQuery: string;
+  statusFilter: "all" | OrderStatus;
+  startDate: string;
+  endDate: string;
+  datePreset: DatePreset;
+};
 
 function smsCharLength(content: string): number {
   return Array.from(content).length;
@@ -21,6 +30,22 @@ function formatDateInput(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function toCsvCell(value: string | number): string {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(fileName: string, rows: Array<Array<string | number>>): void {
+  const csv = rows.map((row) => row.map((cell) => toCsvCell(cell)).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function getPresetRange(preset: Exclude<DatePreset, "custom">): { start: string; end: string } {
@@ -67,12 +92,94 @@ type Props = {
 
 export function OrdersTab({ orders, products, accounts, updateOrderStatus, createOrder, updateOrder, deleteOrder }: Props) {
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>("all");
+
   const initialWeekRange = getPresetRange("week");
-  const [startDate, setStartDate] = useState(initialWeekRange.start);
-  const [endDate, setEndDate] = useState(initialWeekRange.end);
-  const [datePreset, setDatePreset] = useState<DatePreset>("week");
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+
+    try {
+      const raw = window.localStorage.getItem(ORDERS_FILTER_STORAGE_KEY);
+      if (!raw) {
+        return "";
+      }
+      const parsed = JSON.parse(raw) as Partial<OrdersFilterState>;
+      return typeof parsed.searchQuery === "string" ? parsed.searchQuery : "";
+    } catch {
+      return "";
+    }
+  });
+  const [statusFilter, setStatusFilter] = useState<"all" | OrderStatus>(() => {
+    if (typeof window === "undefined") {
+      return "all";
+    }
+
+    try {
+      const raw = window.localStorage.getItem(ORDERS_FILTER_STORAGE_KEY);
+      if (!raw) {
+        return "all";
+      }
+      const parsed = JSON.parse(raw) as Partial<OrdersFilterState>;
+      const saved = parsed.statusFilter;
+      return saved === "all" || (typeof saved === "string" && STATUS_OPTIONS.includes(saved as OrderStatus))
+        ? (saved as "all" | OrderStatus)
+        : "all";
+    } catch {
+      return "all";
+    }
+  });
+  const [startDate, setStartDate] = useState(() => {
+    if (typeof window === "undefined") {
+      return initialWeekRange.start;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(ORDERS_FILTER_STORAGE_KEY);
+      if (!raw) {
+        return initialWeekRange.start;
+      }
+      const parsed = JSON.parse(raw) as Partial<OrdersFilterState>;
+      return typeof parsed.startDate === "string" ? parsed.startDate : initialWeekRange.start;
+    } catch {
+      return initialWeekRange.start;
+    }
+  });
+  const [endDate, setEndDate] = useState(() => {
+    if (typeof window === "undefined") {
+      return initialWeekRange.end;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(ORDERS_FILTER_STORAGE_KEY);
+      if (!raw) {
+        return initialWeekRange.end;
+      }
+      const parsed = JSON.parse(raw) as Partial<OrdersFilterState>;
+      return typeof parsed.endDate === "string" ? parsed.endDate : initialWeekRange.end;
+    } catch {
+      return initialWeekRange.end;
+    }
+  });
+  const [datePreset, setDatePreset] = useState<DatePreset>(() => {
+    if (typeof window === "undefined") {
+      return "week";
+    }
+
+    try {
+      const raw = window.localStorage.getItem(ORDERS_FILTER_STORAGE_KEY);
+      if (!raw) {
+        return "week";
+      }
+      const parsed = JSON.parse(raw) as Partial<OrdersFilterState>;
+      const saved = parsed.datePreset;
+      return saved === "today" || saved === "week" || saved === "month1" || saved === "month3" || saved === "month6" || saved === "year1" || saved === "all" || saved === "custom"
+        ? saved
+        : "week";
+    } catch {
+      return "week";
+    }
+  });
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const [pendingStatusByOrderId, setPendingStatusByOrderId] = useState<Record<number, OrderStatus>>({});
   const [confirmState, setConfirmState] = useState<{
@@ -145,6 +252,18 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
   useEffect(() => {
     window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
   }, [viewMode]);
+
+  // 필터 선택을 새로고침 후에도 유지
+  useEffect(() => {
+    const next: OrdersFilterState = {
+      searchQuery,
+      statusFilter,
+      startDate,
+      endDate,
+      datePreset,
+    };
+    window.localStorage.setItem(ORDERS_FILTER_STORAGE_KEY, JSON.stringify(next));
+  }, [searchQuery, statusFilter, startDate, endDate, datePreset]);
 
   const dateFilteredOrders = useMemo(() => {
     const startAt = startDate ? new Date(`${startDate}T00:00:00`).getTime() : null;
@@ -402,7 +521,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
       closeSmsModal();
       setSmsMessage("");
     } catch (error) {
-      setSmsError(error instanceof Error ? error.message : "문자 전송에 실패했습니다.");
+      setSmsError(error instanceof Error ? error.message : "발송에 실패했습니다.");
       setSmsConfirmOpen(false);
     } finally {
       setSmsSending(false);
@@ -743,6 +862,43 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
         <button
           type="button"
           onClick={() => {
+            const exportedRows: Array<Array<string | number>> = [
+              ["주문번호", "일시", "고객", "연락처", "배송지", "입금자명", "품목", "금액", "상태"],
+              ...filteredOrders.map((order) => [
+                order.id,
+                new Date(order.createdAt).toLocaleString(),
+                order.customerName,
+                formatPhone(order.phone),
+                order.shippingAddress,
+                order.depositorName,
+                order.items.map((item) => `${item.name} x${item.quantity}`).join(", "),
+                order.totalAmount,
+                getOrderStatusLabelKo(order.status),
+              ]),
+            ];
+
+            const periodLabel = (() => {
+              if (startDate && endDate) {
+                return `${startDate}_${endDate}`;
+              }
+              if (startDate) {
+                return `${startDate}_from`;
+              }
+              if (endDate) {
+                return `${endDate}_until`;
+              }
+              return "all";
+            })();
+
+            downloadCsv(`주문내역_${periodLabel}.csv`, exportedRows);
+          }}
+          className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+        >
+          엑셀 다운로드
+        </button>
+        <button
+          type="button"
+          onClick={() => {
             resetCreateForm();
             setShowCreateModal(true);
           }}
@@ -957,7 +1113,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
                   <tr key={order.id} className="align-top hover:bg-stone-50">
                     <td className="whitespace-nowrap px-3 py-2 font-semibold text-stone-900">{order.id}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-xs text-stone-500">{new Date(order.createdAt).toLocaleString()}</td>
-                    <td className="px-3 py-2">
+                    <td className="whitespace-nowrap px-3 py-2">
                       <div className="flex items-center gap-1.5">
                         <span className="font-medium text-stone-800">{order.customerName}</span>
                         <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
@@ -966,10 +1122,10 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
                           {order.purchaseType === "member" ? "회원" : "비회원"}
                         </span>
                       </div>
-                      <span className="text-xs text-stone-500">{formatPhone(order.phone)}</span>
+                      <span className="block text-xs text-stone-500">{formatPhone(order.phone)}</span>
                     </td>
-                    <td className="px-3 py-2 text-stone-700">
-                      <span className="line-clamp-1">{order.items.map((item) => `${item.name} x${item.quantity}`).join(", ")}</span>
+                    <td className="max-w-[320px] px-3 py-2 text-stone-700">
+                      <span className="block truncate">{order.items.map((item) => `${item.name} x${item.quantity}`).join(", ")}</span>
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-amber-700">{formatCurrency(order.totalAmount)}</td>
                     <td className="px-3 py-2">
@@ -977,51 +1133,55 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
                         {getOrderStatusLabelKo(order.status)}
                       </span>
                     </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1.5">
-                        <select
-                          value={pendingStatus}
-                          onChange={(event) => setPendingStatus(order.id, event.target.value as OrderStatus)}
-                          aria-label="주문 상태 변경"
-                          className="rounded-lg border border-stone-300 px-2 py-1 text-xs"
-                        >
-                          {STATUS_OPTIONS.map((status) => (
-                            <option key={status} value={status}>{getOrderStatusLabelKo(status)}</option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          disabled={!statusChanged || submittingOrderId === order.id}
-                          onClick={() => {
-                            setConfirmState({ orderId: order.id, currentStatus: order.status, nextStatus: pendingStatus });
-                            setConfirmError(null);
-                          }}
-                          className="rounded-lg bg-lime-600 px-2 py-1 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          변경
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(order)}
-                          className="rounded-lg border border-stone-300 px-2 py-1 text-xs font-semibold text-stone-700"
-                        >
-                          수정
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openSmsModal(order)}
-                          className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700"
-                        >
-                          문자
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => requestDeleteOrder(order)}
-                          disabled={deletingOrderId === order.id}
-                          className="rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 disabled:opacity-60"
-                        >
-                          삭제
-                        </button>
+                    <td className="min-w-[260px] px-3 py-2">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-1.5 whitespace-nowrap">
+                          <select
+                            value={pendingStatus}
+                            onChange={(event) => setPendingStatus(order.id, event.target.value as OrderStatus)}
+                            aria-label="주문 상태 변경"
+                            className="rounded-lg border border-stone-300 px-2 py-1 text-xs"
+                          >
+                            {STATUS_OPTIONS.map((status) => (
+                              <option key={status} value={status}>{getOrderStatusLabelKo(status)}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={!statusChanged || submittingOrderId === order.id}
+                            onClick={() => {
+                              setConfirmState({ orderId: order.id, currentStatus: order.status, nextStatus: pendingStatus });
+                              setConfirmError(null);
+                            }}
+                            className="rounded-lg bg-lime-600 px-2 py-1 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            변경
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1.5 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(order)}
+                            className="rounded-lg border border-stone-300 px-2 py-1 text-xs font-semibold text-stone-700"
+                          >
+                            수정
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openSmsModal(order)}
+                            className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700"
+                          >
+                            문자
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => requestDeleteOrder(order)}
+                            disabled={deletingOrderId === order.id}
+                            className="rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 disabled:opacity-60"
+                          >
+                            삭제
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>

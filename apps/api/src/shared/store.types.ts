@@ -212,6 +212,7 @@ export type StoreConfig = {
   shippingRefundPolicy: string;
   storyImages: StoreStoryImage[];
   videoUrl: string;
+  kakaoChannelUrl: string;
   termsUrl: string;
   privacyUrl: string;
   termsVersion: string;
