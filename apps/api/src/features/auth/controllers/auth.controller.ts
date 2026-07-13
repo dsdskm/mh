@@ -40,6 +40,10 @@ type KakaoLoginBody = {
   redirectUri?: string;
 };
 
+type KakaoLogoutBody = {
+  userId?: string;
+};
+
 type ProfileBody = {
   userId?: string;
 };
@@ -125,6 +129,12 @@ export class AuthController {
     const userId = body.userId?.trim();
     const password = body.password;
 
+    console.info('[auth:login] request body', {
+      rawBody: body,
+      userId,
+      password,
+    });
+
     if (!userId || !password) {
       throw new BadRequestException('아이디와 비밀번호를 입력해주세요.');
     }
@@ -137,6 +147,12 @@ export class AuthController {
     const code = body.code?.trim();
     const redirectUri = body.redirectUri?.trim();
 
+    console.info('[auth:kakao] request body', {
+      rawBody: body,
+      code,
+      redirectUri,
+    });
+
     if (!code || !redirectUri) {
       throw new BadRequestException('카카오 로그인에 필요한 정보가 누락되었습니다.');
     }
@@ -145,6 +161,17 @@ export class AuthController {
       code,
       redirectUri,
     });
+  }
+
+  @Post('kakao/logout')
+  kakaoLogout(@Body() body: KakaoLogoutBody) {
+    const userId = body.userId?.trim();
+
+    if (!userId) {
+      throw new BadRequestException('카카오 로그아웃에 필요한 정보가 누락되었습니다.');
+    }
+
+    return this.authService.logoutKakao(userId);
   }
 
   @Post('profile')

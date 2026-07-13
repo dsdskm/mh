@@ -449,8 +449,24 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   async login(userId: string, password: string): Promise<{ account: LocalAccountProfile }> {
     const normalizedUserId = userId.trim().toLowerCase();
 
+    console.info('[auth:login] service input', {
+      userId,
+      password,
+      normalizedUserId,
+    });
+
     const account = await this.accountRepository.findOne({
       where: { userId: normalizedUserId },
+    });
+
+    console.info('[auth:login] account lookup result', {
+      found: Boolean(account),
+      accountType: account?.type,
+      accountStatus: account?.status,
+      isActive: account?.isActive,
+      hasPassword: Boolean(account?.password),
+      accountId: account?.id,
+      accountUserId: account?.userId,
     });
 
     if (!account || account.type !== 'NORMAL') {
@@ -466,6 +482,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const isPasswordValid = await this.verifyPassword(password, account.password);
+    console.info('[auth:login] password verify result', {
+      normalizedUserId,
+      password,
+      isPasswordValid,
+    });
+
     if (!isPasswordValid) {
       throw new BadRequestException('아이디 또는 비밀번호가 일치하지 않습니다.');
     }
@@ -487,12 +509,30 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     code: string;
     redirectUri: string;
   }): Promise<{ account: LocalAccountProfile }> {
+    console.info('[auth:kakao] service input', {
+      code: input.code,
+      redirectUri: input.redirectUri,
+    });
+
     const kakaoRestApiKey =
       process.env.KAKAO_REST_API_KEY?.trim() ||
-      process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY?.trim() ||
       process.env.KAKAO_CLIENT_ID?.trim() ||
+      process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY?.trim() ||
       '';
-    const kakaoClientSecret = process.env.KAKAO_CLIENT_SECRET?.trim() || '';
+    const kakaoClientSecret =
+      process.env.KAKAO_REST_API_SECRET?.trim() ||
+      process.env.KAKAO_CLIENT_SECRET?.trim() ||
+      '';
+
+    console.info('[auth:kakao] resolved credentials', {
+      KAKAO_REST_API_KEY: process.env.KAKAO_REST_API_KEY,
+      KAKAO_CLIENT_ID: process.env.KAKAO_CLIENT_ID,
+      NEXT_PUBLIC_KAKAO_REST_API_KEY: process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY,
+      KAKAO_REST_API_SECRET: process.env.KAKAO_REST_API_SECRET,
+      KAKAO_CLIENT_SECRET: process.env.KAKAO_CLIENT_SECRET,
+      resolvedClientId: kakaoRestApiKey,
+      resolvedClientSecret: kakaoClientSecret,
+    });
 
     if (!kakaoRestApiKey) {
       throw new BadRequestException('카카오 로그인 설정이 누락되었습니다. 관리자에게 문의해주세요.');
@@ -509,6 +549,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       tokenBody.set('client_secret', kakaoClientSecret);
     }
 
+    console.info('[auth:kakao] token request payload', {
+      tokenEndpoint: 'https://kauth.kakao.com/oauth/token',
+      tokenBody: tokenBody.toString(),
+    });
+
     const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', {
       method: 'POST',
       headers: {
@@ -518,6 +563,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     const tokenData = (await tokenResponse.json().catch(() => ({}))) as KakaoTokenResponse;
+    console.info('[auth:kakao] token response', {
+      status: tokenResponse.status,
+      ok: tokenResponse.ok,
+      tokenData,
+    });
+
     if (!tokenResponse.ok || !tokenData.access_token) {
       throw new BadRequestException(
         tokenData.error_description || tokenData.error || '카카오 토큰 발급에 실패했습니다.',
@@ -532,6 +583,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     const kakaoUser = (await userResponse.json().catch(() => ({}))) as KakaoUserResponse;
+    console.info('[auth:kakao] user response', {
+      status: userResponse.status,
+      ok: userResponse.ok,
+      kakaoUser,
+    });
+
     const providerUserId = String(kakaoUser.id ?? '').trim();
 
     if (!userResponse.ok || !providerUserId) {
@@ -784,6 +841,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    if (account.type === 'KAKAO') {
+      await this.unlinkKakaoAccount(account.providerUserId ?? null, account.userId ?? userId);
+    }
+
     account.status = 'withdraw';
     account.statusReason = reason || '사용자 탈퇴 요청';
     account.isActive = false;
@@ -793,6 +854,25 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return {
       ok: true,
       message: '탈퇴 처리되었습니다.',
+    };
+  }
+
+  async logoutKakao(userId: string) {
+    const normalizedUserId = userId.trim().toLowerCase();
+    const account = await this.findMemberAccountByUserId(normalizedUserId);
+
+    if (!account || account.type !== 'KAKAO') {
+      return {
+        ok: true,
+        message: '카카오 로그아웃 처리되었습니다.',
+      };
+    }
+
+    await this.logoutKakaoAccount(account.providerUserId ?? null, account.userId ?? normalizedUserId);
+
+    return {
+      ok: true,
+      message: '카카오 로그아웃 처리되었습니다.',
     };
   }
 
@@ -1167,5 +1247,111 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     return localPhone;
+  }
+
+  private async unlinkKakaoAccount(providerUserId: string | null, userId: string): Promise<void> {
+    if (!providerUserId) {
+      console.warn('[auth:kakao] withdraw requested without providerUserId, skip unlink', { userId });
+      return;
+    }
+
+    const kakaoAdminKey = process.env.KAKAO_ADMIN_KEY?.trim() || '';
+    if (!kakaoAdminKey) {
+      console.warn('[auth:kakao] KAKAO_ADMIN_KEY is missing, skip unlink', {
+        userId,
+        providerUserId,
+      });
+      return;
+    }
+
+    const unlinkBody = new URLSearchParams({
+      target_id_type: 'user_id',
+      target_id: providerUserId,
+    });
+
+    const unlinkResponse = await fetch('https://kapi.kakao.com/v1/user/unlink', {
+      method: 'POST',
+      headers: {
+        Authorization: `KakaoAK ${kakaoAdminKey}`,
+        'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
+      },
+      body: unlinkBody.toString(),
+    });
+
+    const unlinkData = (await unlinkResponse.json().catch(() => ({}))) as {
+      id?: number;
+      msg?: string;
+      code?: number;
+    };
+
+    if (!unlinkResponse.ok) {
+      console.error('[auth:kakao] unlink failed', {
+        userId,
+        providerUserId,
+        status: unlinkResponse.status,
+        unlinkData,
+      });
+      throw new BadRequestException('카카오 연동 해제에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    }
+
+    console.info('[auth:kakao] unlink success', {
+      userId,
+      providerUserId,
+      unlinkData,
+    });
+  }
+
+  private async logoutKakaoAccount(providerUserId: string | null, userId: string): Promise<void> {
+    if (!providerUserId) {
+      console.warn('[auth:kakao] logout requested without providerUserId, skip kakao logout', {
+        userId,
+      });
+      return;
+    }
+
+    const kakaoAdminKey = process.env.KAKAO_ADMIN_KEY?.trim() || '';
+    if (!kakaoAdminKey) {
+      console.warn('[auth:kakao] KAKAO_ADMIN_KEY is missing, skip kakao logout', {
+        userId,
+        providerUserId,
+      });
+      return;
+    }
+
+    const logoutBody = new URLSearchParams({
+      target_id_type: 'user_id',
+      target_id: providerUserId,
+    });
+
+    const logoutResponse = await fetch('https://kapi.kakao.com/v1/user/logout', {
+      method: 'POST',
+      headers: {
+        Authorization: `KakaoAK ${kakaoAdminKey}`,
+        'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
+      },
+      body: logoutBody.toString(),
+    });
+
+    const logoutData = (await logoutResponse.json().catch(() => ({}))) as {
+      id?: number;
+      msg?: string;
+      code?: number;
+    };
+
+    if (!logoutResponse.ok) {
+      console.error('[auth:kakao] logout failed', {
+        userId,
+        providerUserId,
+        status: logoutResponse.status,
+        logoutData,
+      });
+      return;
+    }
+
+    console.info('[auth:kakao] logout success', {
+      userId,
+      providerUserId,
+      logoutData,
+    });
   }
 }

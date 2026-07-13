@@ -107,6 +107,32 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
   },
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) {
+        return `${baseUrl}${url}`;
+      }
+
+      try {
+        const target = new URL(url);
+        const base = new URL(baseUrl);
+
+        if (target.origin === base.origin) {
+          return url;
+        }
+
+        if (
+          process.env.NODE_ENV === "development" &&
+          target.protocol === "http:" &&
+          target.hostname === "localhost"
+        ) {
+          return url;
+        }
+      } catch {
+        return baseUrl;
+      }
+
+      return baseUrl;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.sub = user.id;

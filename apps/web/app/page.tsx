@@ -27,6 +27,8 @@ type DaumPostcodeData = {
 type KakaoSdk = {
   Auth: {
     authorize: (options: { redirectUri: string; state?: string }) => void;
+    logout?: (callback?: () => void) => void;
+    setAccessToken?: (accessToken: string | null) => void;
   };
   init: (appKey: string) => void;
   isInitialized: () => boolean;
@@ -1035,7 +1037,27 @@ export default function Home() {
     setLogoutSubmitting(true);
 
     try {
-      await signOut({ callbackUrl: "/" });
+      const userId = session?.user?.email?.trim();
+      if (userId) {
+        await fetch(`${API_BASE}/api/auth/kakao/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId }),
+        }).catch(() => null);
+      }
+
+      const kakao = window.Kakao;
+      kakao?.Auth?.setAccessToken?.(null);
+      if (kakao?.Auth?.logout) {
+        await new Promise<void>((resolve) => {
+          kakao.Auth.logout?.(() => resolve());
+          window.setTimeout(() => resolve(), 300);
+        });
+      }
+
+      await signOut({ callbackUrl: window.location.origin });
     } finally {
       setLogoutSubmitting(false);
       setShowLogoutConfirmModal(false);
@@ -2103,7 +2125,7 @@ export default function Home() {
                 {loginSubmitting ? "로그인 중..." : "로그인"}
               </button>
 
-              {/* <button
+              <button
                 type="button"
                 onClick={startKakaoLogin}
                 disabled={loginSubmitting}
@@ -2111,7 +2133,7 @@ export default function Home() {
                 style={{ width: loginModalActionWidth, maxWidth: "100%" }}
               >
                 <Image src={kakaoLoginButton} alt="카카오로 로그인" className="h-auto w-full" priority />
-              </button> */}
+              </button>
             </form>
 
             <div className="mt-3 space-y-2">

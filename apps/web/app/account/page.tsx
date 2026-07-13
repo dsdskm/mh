@@ -227,7 +227,7 @@ export default function AccountPage() {
       });
 
       setShowWithdrawConfirmModal(false);
-      await signOut({ callbackUrl: "/" });
+      await signOut({ callbackUrl: window.location.origin });
     } catch (withdrawError) {
       setError(withdrawError instanceof Error ? withdrawError.message : "탈퇴 실패");
     } finally {
