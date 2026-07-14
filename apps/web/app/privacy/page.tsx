@@ -56,7 +56,11 @@ export default async function PrivacyPolicyPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
+    <main className="mx-auto min-h-screen w-full max-w-5xl space-y-3 px-3 py-4 sm:px-4 sm:py-6">
+      <section className="rounded-2xl border border-stone-200 bg-white p-4 text-sm text-stone-900">
+        <p className="font-semibold">개인정보처리자: 에이비에이테크(ABA TECH)</p>
+        <p className="mt-1">상호: 에이비에이테크(ABA TECH) | 대표: 김기훈 | 사업자등록번호: 179-73-00483</p>
+      </section>
       <iframe
         src={privacyUrl}
         title="개인정보처리방침"

@@ -16,7 +16,7 @@ type PhoneContactMessageProps = {
 export function PhoneContactMessage({ sellerPhone }: PhoneContactMessageProps) {
   return (
     <p className="text-xs text-stone-500">
-      시간이 지나도 인증 알림이 오지 않는 경우 판매자에게 연락해주세요.
+      시간이 지나도 인증 알림이 오지 않는 경우 서비스 운영자에게 연락해주세요.
       {sellerPhone && (
         <>
           <br />

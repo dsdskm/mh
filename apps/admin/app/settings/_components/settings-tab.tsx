@@ -331,41 +331,41 @@ export function SettingsTab({ state }: Props) {
         </section>
 
         <section className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
-          <h3 className="text-sm font-bold text-stone-900">위탁 사업자 정보</h3>
+          <h3 className="text-sm font-bold text-stone-900">서비스 운영자 정보</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1">
-              <span className="text-xs font-semibold text-stone-600">위탁 사업자명</span>
+              <span className="text-xs font-semibold text-stone-600">서비스 운영자 상호</span>
               <input
                 value={state.trusteeBusinessName}
                 onChange={(e) => state.setTrusteeBusinessName(e.target.value)}
-                placeholder="위탁 사업자명"
+                placeholder="서비스 운영자 상호"
                 className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="space-y-1">
-              <span className="text-xs font-semibold text-stone-600">위탁 사업자등록번호</span>
+              <span className="text-xs font-semibold text-stone-600">서비스 운영자 사업자등록번호</span>
               <input
                 value={state.trusteeBusinessNumber}
                 onChange={(e) => state.setTrusteeBusinessNumber(e.target.value)}
-                placeholder="위탁 사업자등록번호"
+                placeholder="서비스 운영자 사업자등록번호"
                 className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="space-y-1">
-              <span className="text-xs font-semibold text-stone-600">위탁 사업자 대표</span>
+              <span className="text-xs font-semibold text-stone-600">서비스 운영자 대표</span>
               <input
                 value={state.trusteeRepresentative}
                 onChange={(e) => state.setTrusteeRepresentative(e.target.value)}
-                placeholder="위탁 사업자 대표"
+                placeholder="서비스 운영자 대표"
                 className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               />
             </label>
             <label className="space-y-1">
-              <span className="text-xs font-semibold text-stone-600">위탁 사업자 연락처</span>
+              <span className="text-xs font-semibold text-stone-600">서비스 운영자 연락처</span>
               <input
                 value={state.trusteePhone}
                 onChange={(e) => state.setTrusteePhone(e.target.value)}
-                placeholder="위탁 사업자 연락처"
+                placeholder="서비스 운영자 연락처"
                 className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
               />
             </label>

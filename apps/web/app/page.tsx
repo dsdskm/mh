@@ -6,6 +6,7 @@ import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency, formatPhone, toEmbedVideoUrl } from "./_lib/format";
+import { OperatorProductInfo } from "./_components/operator-product-info";
 import { PhoneVerificationBox } from "./_components/phone-verification-box";
 import { getProfileApi, getShippingAddressesApi, getMyCouponsApi, getMyMileageApi } from "./account/api/account.api";
 import type { ShippingAddress } from "../types/auth";
@@ -1509,17 +1510,11 @@ export default function Home() {
 
       <footer className="mt-6 border-t border-stone-200 bg-white px-3 py-5 pt-5 text-stone-900 sm:px-4 sm:py-6 sm:pt-6">
         <div className="mx-auto w-full max-w-3xl space-y-3">
-          <div className="space-y-1 text-sm text-stone-900">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em]">사업자 정보</p>
-            <p>판매자: {storeConfig.sellerName || "-"}</p>
-            <p>연락처: {storeConfig.sellerPhone ? formatPhone(storeConfig.sellerPhone) : "-"}</p>
-            <p>원산지: {storeConfig.origin || "-"}</p>
-            <p className="pt-2 text-[11px] font-bold uppercase tracking-[0.12em]">온라인 서비스 위탁 사업자 정보</p>
-            <p>사업자명: {storeConfig.trusteeBusinessName || "-"}</p>
-            <p>사업자등록번호: {storeConfig.trusteeBusinessNumber || "-"}</p>
-            <p>대표: {storeConfig.trusteeRepresentative || "-"}</p>
-            <p>연락처: {storeConfig.trusteePhone ? formatPhone(storeConfig.trusteePhone) : "-"}</p>
-          </div>
+          <OperatorProductInfo
+            producerName={storeConfig.sellerName}
+            producerPhone={storeConfig.sellerPhone}
+            origin={storeConfig.origin}
+          />
           <div className="flex flex-wrap gap-2 text-xs">
             {storeConfig.termsUrl && (
               <Link
@@ -1913,7 +1908,7 @@ export default function Home() {
                       기한 내 미입금 시 주문이 자동 취소됩니다.
                     </p>
                   )}
-                  <p className="mt-2 text-xs">입금 확인 후 판매자가 주문 상태를 변경합니다.</p>
+                  <p className="mt-2 text-xs">입금 확인 후 서비스 운영자가 주문 상태를 변경합니다.</p>
                 </div>
 
                 <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">알림으로 발송되었습니다.</p>
