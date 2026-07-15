@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signIn, signOut, useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency, formatPhone, toEmbedVideoUrl } from "./_lib/format";
 import { OperatorProductInfo } from "./_components/operator-product-info";
@@ -14,7 +14,6 @@ import { getOrderStatusLabelKo } from "@repo/shared-types/order";
 import type { OrderStatus } from "@repo/shared-types/order";
 import type { Notice } from "@repo/shared-types/notice";
 import type { Coupon } from "@repo/shared-types/coupon";
-import kakaoLoginButton from "@repo/ui/assets/kakao_login_medium_narrow.png";
 
 const DAUM_POSTCODE_SCRIPT_URL = "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
 
@@ -160,7 +159,6 @@ function formatCountdown(totalSeconds: number): string {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ||
   (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "");
-const KAKAO_JAVASCRIPT_API_KEY = process.env.NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY?.trim() || "";
 const MEMBER_PHONE_KEY = "cornmarket:member-phone";
 const NOTICE_DISMISS_KEY_PREFIX = "cornmarket:notice:dismissed:";
 const TERMS_SEEN_VERSION_KEY = "cornmarket:terms:seen-version";
@@ -240,11 +238,6 @@ export default function Home() {
   const [purchaseType, setPurchaseType] = useState<"member" | "guest" | null>(null);
   const [savedMemberPhone, setSavedMemberPhone] = useState("");
   const [copyDone, setCopyDone] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [loginUserId, setLoginUserId] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginSubmitting, setLoginSubmitting] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
   const [logoutSubmitting, setLogoutSubmitting] = useState(false);
   const [showMenuDrawer, setShowMenuDrawer] = useState(false);
@@ -267,7 +260,6 @@ export default function Home() {
   const [guestOrderCodeExpiresAt, setGuestOrderCodeExpiresAt] = useState<number | null>(null);
   const [guestOrderCodeRemainingSec, setGuestOrderCodeRemainingSec] = useState(0);
   const videoIframeRef = useRef<HTMLIFrameElement | null>(null);
-  const loginModalActionWidth = kakaoLoginButton.width;
   const resolvedOrderRequestNote =
     orderRequestPreset === ORDER_REQUEST_CUSTOM_VALUE ? orderRequestCustomNote.trim() : orderRequestPreset.trim();
   const inquiryUrl = storeConfig.kakaoChannelUrl.trim();
@@ -979,61 +971,6 @@ export default function Home() {
     }
   }
 
-  async function submitLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoginSubmitting(true);
-    setLoginError(null);
-
-    try {
-      const result = await signIn("credentials", {
-        userId: loginUserId.trim(),
-        password: loginPassword,
-        redirect: false,
-      });
-
-      if (result?.error) {
-        setLoginError(result.error);
-        return;
-      }
-
-      setShowLoginModal(false);
-      setLoginPassword("");
-      setLoginError(null);
-    } catch {
-      setLoginError("로그인에 실패했습니다. 다시 시도해주세요.");
-    } finally {
-      setLoginSubmitting(false);
-    }
-  }
-
-  function startKakaoLogin() {
-    setLoginError(null);
-
-    const kakao = window.Kakao;
-    if (!kakao) {
-      setLoginError("카카오 SDK를 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
-      return;
-    }
-
-    if (!KAKAO_JAVASCRIPT_API_KEY) {
-      setLoginError("카카오 JavaScript API 키가 설정되지 않았습니다.");
-      return;
-    }
-
-    if (!kakao.isInitialized()) {
-      kakao.init(KAKAO_JAVASCRIPT_API_KEY);
-    }
-
-    if (!kakao.isInitialized()) {
-      setLoginError("카카오 SDK 초기화에 실패했습니다. 다시 시도해주세요.");
-      return;
-    }
-
-    const callbackUrl = `${window.location.pathname}${window.location.search}` || "/";
-    const startUrl = `/api/auth/kakao/start?callbackUrl=${encodeURIComponent(callbackUrl)}`;
-    window.location.assign(startUrl);
-  }
-
   async function confirmLogout() {
     setLogoutSubmitting(true);
 
@@ -1154,8 +1091,8 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => {
-                  setShowLoginModal(true);
-                  setLoginError(null);
+                  const callbackUrl = `${window.location.pathname}${window.location.search}` || "/";
+                  router.push(`/login?callback=${encodeURIComponent(callbackUrl)}`);
                 }}
                 className="whitespace-nowrap rounded-full border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800"
               >
@@ -2084,91 +2021,6 @@ export default function Home() {
         </div>
       )}
 
-      {showLoginModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-          <div className="w-full max-w-sm rounded-3xl border border-amber-200 bg-white p-5 shadow-2xl">
-            <h2 className="font-display text-3xl text-amber-800">로그인</h2>
-            <p className="mt-1 text-sm text-stone-600">아이디와 비밀번호를 입력해주세요.</p>
-
-            <form className="mt-4 space-y-3" onSubmit={submitLogin}>
-              <input
-                value={loginUserId}
-                onChange={(event) => setLoginUserId(event.target.value)}
-                placeholder="아이디"
-                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                autoComplete="username"
-                required
-              />
-              <input
-                type="password"
-                value={loginPassword}
-                onChange={(event) => setLoginPassword(event.target.value)}
-                placeholder="비밀번호"
-                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                autoComplete="current-password"
-                required
-              />
-
-              {loginError && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{loginError}</p>}
-
-              <button
-                type="submit"
-                disabled={loginSubmitting}
-                className="mx-auto block rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
-                style={{ width: loginModalActionWidth, maxWidth: "100%" }}
-              >
-                {loginSubmitting ? "로그인 중..." : "로그인"}
-              </button>
-
-              <button
-                type="button"
-                onClick={startKakaoLogin}
-                disabled={loginSubmitting}
-                className="mx-auto block overflow-hidden rounded-xl disabled:opacity-60"
-                style={{ width: loginModalActionWidth, maxWidth: "100%" }}
-              >
-                <Image src={kakaoLoginButton} alt="카카오로 로그인" className="h-auto w-full" priority />
-              </button>
-            </form>
-
-            <div className="mt-3 space-y-2">
-              <Link
-                href="/recover/find-id"
-                onClick={() => setShowLoginModal(false)}
-                className="mx-auto block rounded-xl border border-stone-300 bg-white px-4 py-3 text-center text-sm font-bold text-stone-700"
-                style={{ width: loginModalActionWidth, maxWidth: "100%" }}
-              >
-                아이디 찾기
-              </Link>
-              <Link
-                href="/recover/reset-password"
-                onClick={() => setShowLoginModal(false)}
-                className="mx-auto block rounded-xl border border-stone-300 bg-white px-4 py-3 text-center text-sm font-bold text-stone-700"
-                style={{ width: loginModalActionWidth, maxWidth: "100%" }}
-              >
-                비밀번호 찾기
-              </Link>
-              <Link
-                href="/signup?callback=/"
-                onClick={() => setShowLoginModal(false)}
-                className="mx-auto block rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
-                style={{ width: loginModalActionWidth, maxWidth: "100%" }}
-              >
-                회원가입
-              </Link>
-              <button
-                type="button"
-                onClick={() => setShowLoginModal(false)}
-                className="mx-auto block rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-700"
-                style={{ width: loginModalActionWidth, maxWidth: "100%" }}
-              >
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showLogoutConfirmModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
           <div
@@ -2226,8 +2078,8 @@ export default function Home() {
                 type="button"
                 onClick={() => {
                   setShowMenuDrawer(false);
-                  setShowLoginModal(true);
-                  setLoginError(null);
+                  const callbackUrl = `${window.location.pathname}${window.location.search}` || "/";
+                  router.push(`/login?callback=${encodeURIComponent(callbackUrl)}`);
                 }}
                 className="mt-3 w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold text-amber-800"
               >
@@ -2404,8 +2256,8 @@ export default function Home() {
                 type="button"
                 onClick={() => {
                   setShowContactAuthDialog(false);
-                  setShowLoginModal(true);
-                  setLoginError(null);
+                  const callbackUrl = `${window.location.pathname}${window.location.search}` || "/";
+                  router.push(`/login?callback=${encodeURIComponent(callbackUrl)}`);
                 }}
                 className="flex-1 rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white"
               >
