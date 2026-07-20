@@ -144,6 +144,17 @@ export function SettingsTab({ state }: Props) {
     state.updateStoryImageTitle(index, title);
   }
 
+  async function handleVideoRemove() {
+    if (uploadingVideo) {
+      return;
+    }
+
+    setUploadError(null);
+    setSelectedVideoFile(null);
+    state.setVideoUrl("");
+    state.setConfigSaved(false);
+  }
+
   async function handleStoryImageTitleBlur() {
     state.setConfigSaved(false);
     const saved = await state.saveConfigDirect({ storyImages: state.storyImages });
@@ -525,6 +536,18 @@ export function SettingsTab({ state }: Props) {
                   ? `선택됨: ${selectedVideoFile.name} (저장 시 업로드)`
                   : "파일 선택 후 기본정보 저장 시 업로드됩니다."}
             </p>
+            {(state.videoUrl || selectedVideoFile) && (
+              <button
+                type="button"
+                onClick={() => {
+                  void handleVideoRemove();
+                }}
+                disabled={uploadingVideo}
+                className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-60"
+              >
+                영상 삭제
+              </button>
+            )}
             {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
 
             {videoPreview && (

@@ -2,20 +2,6 @@ export type RequestPhoneVerificationPayload = {
   phone: string;
 };
 
-export type CheckUserIdPayload = {
-  userId: string;
-};
-
-export type CheckUserIdResponse = {
-  available: boolean;
-  message: string;
-};
-
-export type CheckPhoneResponse = {
-  available: boolean;
-  message: string;
-};
-
 export type RequestPhoneVerificationResponse = {
   ok: boolean;
   expiresAt: string;
@@ -32,37 +18,6 @@ export type VerifyPhoneCodeResponse = {
   expiresAt: string;
 };
 
-export type SignupPayload = {
-  userId: string;
-  password: string;
-  name: string;
-  phone: string;
-  address1: string;
-  address2: string;
-  termsAgreed: boolean;
-  verificationToken: string;
-};
-
-export type SignupResponse = {
-  account: {
-    id: number;
-    userId: string;
-    name: string;
-    phone: string;
-    address1: string;
-    address2: string;
-    createdAt: string;
-  signupCoupon: {
-    issued: boolean;
-    name: string | null;
-  };
-  };
-  signupCoupon: {
-    issued: boolean;
-    name: string | null;
-  };
-};
-
 export type UserProfileResponse = {
   profile: {
     id: number;
@@ -72,6 +27,10 @@ export type UserProfileResponse = {
     phone: string;
     address1: string;
     address2: string;
+    kakaoNickname?: string;
+    kakaoProfileImageUrl?: string;
+    kakaoThumbnailImageUrl?: string;
+    kakaoShippingZoneNumber?: string;
     status?: "active" | "deactive" | "withdraw";
     statusReason?: string | null;
   };

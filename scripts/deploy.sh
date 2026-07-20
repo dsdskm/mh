@@ -52,11 +52,13 @@ done
 DEPLOY_API=false
 DEPLOY_WEB=false
 DEPLOY_ADMIN=false
+RUN_WITHOUT_DEPS=false
 if [[ ${#POSITIONAL_TARGETS[@]} -eq 0 ]]; then
   DEPLOY_API=true
   DEPLOY_WEB=true
   DEPLOY_ADMIN=true
 else
+  RUN_WITHOUT_DEPS=true
   for target in "${POSITIONAL_TARGETS[@]}"; do
     case "$target" in
       all)
@@ -213,6 +215,15 @@ KAKAO_REST_API_KEY=${KAKAO_REST_API_KEY:-$(get_merged_env_value "$API_ENV_FILE" 
 if [[ -z "$KAKAO_REST_API_KEY" ]]; then
   KAKAO_REST_API_KEY=$(get_merged_env_value "$WEB_ENV_FILE" "$WEB_FALLBACK_ENV_FILE" "KAKAO_REST_API_KEY")
 fi
+KAKAO_ADMIN_KEY=${KAKAO_ADMIN_KEY:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "KAKAO_ADMIN_KEY")}
+if [[ -z "$KAKAO_ADMIN_KEY" ]]; then
+  KAKAO_ADMIN_KEY=$(get_merged_env_value "$WEB_ENV_FILE" "$WEB_FALLBACK_ENV_FILE" "KAKAO_ADMIN_KEY")
+fi
+KAKAO_REDIRECT_URI=${KAKAO_REDIRECT_URI:-$(get_merged_env_value "$WEB_ENV_FILE" "$WEB_FALLBACK_ENV_FILE" "KAKAO_REDIRECT_URI")}
+NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY=${NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY:-$(get_merged_env_value "$WEB_ENV_FILE" "$WEB_FALLBACK_ENV_FILE" "NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY")}
+if [[ -z "$NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY" ]]; then
+  NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY=$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY")
+fi
 KAKAO_REST_API_SECRET=${KAKAO_REST_API_SECRET:-$(get_merged_env_value "$API_ENV_FILE" "$API_FALLBACK_ENV_FILE" "KAKAO_REST_API_SECRET")}
 if [[ -z "$KAKAO_REST_API_SECRET" ]]; then
   KAKAO_REST_API_SECRET=$(get_merged_env_value "$WEB_ENV_FILE" "$WEB_FALLBACK_ENV_FILE" "KAKAO_REST_API_SECRET")
@@ -261,6 +272,21 @@ fi
 
 if [[ -z "$NEXTAUTH_SECRET" && "$DEPLOY_WEB" == "true" ]]; then
   echo "Error: NEXTAUTH_SECRET is required when deploying web."
+  exit 1
+fi
+
+if [[ "$DEPLOY_WEB" == "true" && -z "$NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY" ]]; then
+  echo "Error: NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY is required when deploying web."
+  exit 1
+fi
+
+if [[ "$DEPLOY_WEB" == "true" && -z "$KAKAO_REDIRECT_URI" ]]; then
+  echo "Error: KAKAO_REDIRECT_URI is required when deploying web."
+  exit 1
+fi
+
+if [[ "$DEPLOY_API" == "true" && -z "$KAKAO_ADMIN_KEY" ]]; then
+  echo "Error: KAKAO_ADMIN_KEY is required when deploying api."
   exit 1
 fi
 
@@ -317,12 +343,12 @@ fi
 if [[ "$DEPLOY_WEB" == "true" ]]; then
   gcloud builds submit "$ROOT_DIR" \
     --config "$BUILD_CONFIG" \
-    --substitutions "_DOCKERFILE=deploy/Dockerfile.web,_IMAGE=$WEB_IMAGE,_APP_ENV=$ENV,_NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL"
+    --substitutions "_DOCKERFILE=deploy/Dockerfile.web,_IMAGE=$WEB_IMAGE,_APP_ENV=$ENV,_NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL,_NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY=$NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY"
 fi
 if [[ "$DEPLOY_ADMIN" == "true" ]]; then
   gcloud builds submit "$ROOT_DIR" \
     --config "$BUILD_CONFIG" \
-    --substitutions "_DOCKERFILE=deploy/Dockerfile.admin,_IMAGE=$ADMIN_IMAGE,_APP_ENV=$ENV,_NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL"
+    --substitutions "_DOCKERFILE=deploy/Dockerfile.admin,_IMAGE=$ADMIN_IMAGE,_APP_ENV=$ENV,_NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL,_NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY=$NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY"
 fi
 
 echo "Preparing remote deployment files..."
@@ -340,9 +366,12 @@ POSTGRES_PORT=$POSTGRES_PORT
 DATABASE_URL=$DATABASE_URL
 ADMIN_AUTH_SECRET=$ADMIN_AUTH_SECRET
 NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY=$NEXT_PUBLIC_KAKAO_JAVASCRIPT_API_KEY
 NEXTAUTH_URL=$NEXTAUTH_URL
 NEXTAUTH_SECRET=$NEXTAUTH_SECRET
 KAKAO_REST_API_KEY=$KAKAO_REST_API_KEY
+KAKAO_ADMIN_KEY=$KAKAO_ADMIN_KEY
+KAKAO_REDIRECT_URI=$KAKAO_REDIRECT_URI
 KAKAO_REST_API_SECRET=$KAKAO_REST_API_SECRET
 KAKAO_CLIENT_ID=$KAKAO_CLIENT_ID
 KAKAO_CLIENT_SECRET=$KAKAO_CLIENT_SECRET
@@ -426,7 +455,7 @@ command -v docker >/dev/null && \
 cd '$REMOTE_DIR' && \
 echo '$ACCESS_TOKEN' | docker login -u oauth2accesstoken --password-stdin https://$REGION-docker.pkg.dev >/dev/null && \
 docker compose --env-file .env pull $SERVICES_ARG && \
-docker compose --env-file .env up -d $SERVICES_ARG && \
+docker compose --env-file .env up -d ${RUN_WITHOUT_DEPS:+--no-deps }$SERVICES_ARG && \
 docker image prune -af >/dev/null 2>&1 || true && \
 docker builder prune -af >/dev/null 2>&1 || true && \
 docker compose ps\

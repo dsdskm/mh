@@ -10,19 +10,13 @@ import { OperatorProductInfo } from "./_components/operator-product-info";
 import { PhoneVerificationBox } from "./_components/phone-verification-box";
 import { getProfileApi, getShippingAddressesApi, getMyCouponsApi, getMyMileageApi } from "./account/api/account.api";
 import type { ShippingAddress } from "../types/auth";
+import type { DaumPostcodeData, DaumPostcodeWindow } from "../types/daum-postcode";
 import { getOrderStatusLabelKo } from "@repo/shared-types/order";
 import type { OrderStatus } from "@repo/shared-types/order";
 import type { Notice } from "@repo/shared-types/notice";
 import type { Coupon } from "@repo/shared-types/coupon";
 
 const DAUM_POSTCODE_SCRIPT_URL = "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
-
-type DaumPostcodeData = {
-  roadAddress: string;
-  jibunAddress: string;
-  buildingName: string;
-  apartment: "Y" | "N";
-};
 
 type KakaoSdk = {
   Auth: {
@@ -36,11 +30,7 @@ type KakaoSdk = {
 
 declare global {
   interface Window {
-    daum?: {
-      Postcode: new (options: { oncomplete: (data: DaumPostcodeData) => void }) => {
-        open: () => void;
-      };
-    };
+    daum?: DaumPostcodeWindow;
     Kakao?: KakaoSdk;
   }
 }
@@ -217,6 +207,8 @@ export default function Home() {
   const [phone, setPhone] = useState("");
   const [depositorName, setDepositorName] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
+  const [memberPostalCode, setMemberPostalCode] = useState("");
+  const [guestPostalCode, setGuestPostalCode] = useState("");
   const [memberShippingAddresses, setMemberShippingAddresses] = useState<ShippingAddress[]>([]);
   const [selectedShippingAddressId, setSelectedShippingAddressId] = useState<number | null>(null);
   const [orderRequestPreset, setOrderRequestPreset] = useState<OrderRequestPresetValue>("");
@@ -237,6 +229,7 @@ export default function Home() {
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [purchaseType, setPurchaseType] = useState<"member" | "guest" | null>(null);
   const [savedMemberPhone, setSavedMemberPhone] = useState("");
+  const [headerProfileThumbnailUrl, setHeaderProfileThumbnailUrl] = useState("");
   const [copyDone, setCopyDone] = useState(false);
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
   const [logoutSubmitting, setLogoutSubmitting] = useState(false);
@@ -290,6 +283,44 @@ export default function Home() {
       setSavedMemberPhone(savedPhone);
     }
   }, []);
+
+  useEffect(() => {
+    if (status !== "authenticated") {
+      setHeaderProfileThumbnailUrl("");
+      return;
+    }
+
+    const userId = session?.user?.email?.trim() ?? "";
+    if (!userId) {
+      setHeaderProfileThumbnailUrl("");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadHeaderProfileThumbnail() {
+      try {
+        const profileData = await getProfileApi(userId);
+        if (cancelled) {
+          return;
+        }
+
+        setHeaderProfileThumbnailUrl(
+          profileData.profile.kakaoThumbnailImageUrl || profileData.profile.kakaoProfileImageUrl || "",
+        );
+      } catch {
+        if (!cancelled) {
+          setHeaderProfileThumbnailUrl("");
+        }
+      }
+    }
+
+    void loadHeaderProfileThumbnail();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.email, status]);
 
   useEffect(() => {
     if (!guestOrderCodeSent || guestOrderPhoneVerified || !guestOrderCodeExpiresAt) {
@@ -565,6 +596,7 @@ export default function Home() {
     purchaseType === "guest"
       ? [guestAddressBase, guestAddressDetail].filter(Boolean).join(" ").trim()
       : shippingAddress.trim();
+  const confirmPostalCode = purchaseType === "guest" ? guestPostalCode.trim() : memberPostalCode.trim();
 
   // 적립 예정 적립금 (배송완료 시)
   const expectedMileageEarn = useMemo(() => {
@@ -769,6 +801,8 @@ export default function Home() {
       setPhone("");
       setDepositorName("");
       setShippingAddress("");
+      setMemberPostalCode("");
+      setGuestPostalCode("");
       setGuestAddressBase("");
       setGuestAddressDetail("");
       setGuestOrderCode("");
@@ -909,7 +943,25 @@ export default function Home() {
       oncomplete: (data) => {
         const baseAddress = data.roadAddress || data.jibunAddress;
         const buildingSuffix = data.apartment === "Y" && data.buildingName ? ` (${data.buildingName})` : "";
+        setGuestPostalCode(data.zonecode?.trim() || "");
         setGuestAddressBase(`${baseAddress}${buildingSuffix}`.trim());
+        setError(null);
+      },
+    }).open();
+  }
+
+  function searchMemberAddress() {
+    if (!window.daum?.Postcode) {
+      setError("주소 검색 준비 중입니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+
+    new window.daum.Postcode({
+      oncomplete: (data) => {
+        const baseAddress = data.roadAddress || data.jibunAddress;
+        const buildingSuffix = data.apartment === "Y" && data.buildingName ? ` (${data.buildingName})` : "";
+        setMemberPostalCode(data.zonecode?.trim() || "");
+        setShippingAddress(`${baseAddress}${buildingSuffix}`.trim());
         setError(null);
       },
     }).open();
@@ -936,7 +988,7 @@ export default function Home() {
     event.preventDefault();
     if (!isLoggedIn) {
       setError("후기 작성은 로그인 후 이용할 수 있어요.");
-      router.push("/signup?callback=/");
+      router.push("/login?callback=/");
       return;
     }
 
@@ -1008,6 +1060,7 @@ export default function Home() {
       setMemberShippingAddresses([]);
       setSelectedShippingAddressId(null);
       setShippingAddress("");
+      setMemberPostalCode("");
       return;
     }
 
@@ -1038,12 +1091,18 @@ export default function Home() {
         shippingData.shippingAddresses.find((item) => item.isDefault) ?? shippingData.shippingAddresses[0];
       setSelectedShippingAddressId(selected?.id ?? null);
 
-      const defaultAddress = [selected?.address1, selected?.address2].filter(Boolean).join(" ");
-      setShippingAddress(defaultAddress);
+      const defaultAddress = [selected?.address1, selected?.address2].filter(Boolean).join(" ").trim();
+      const profileAddress = [profileData.profile.address1, profileData.profile.address2]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      setShippingAddress(defaultAddress || profileAddress);
+      setMemberPostalCode(profileData.profile.kakaoShippingZoneNumber ?? "");
     } catch {
       setMemberShippingAddresses([]);
       setSelectedShippingAddressId(null);
       setShippingAddress("");
+      setMemberPostalCode("");
       setMemberCoupons([]);
       setMileageBalance(0);
     } finally {
@@ -1101,7 +1160,20 @@ export default function Home() {
             )}
             {isLoggedIn && (
               <>
-                <p className="text-xs font-semibold text-amber-900">{session?.user?.name ?? "회원"}님</p>
+                <div className="flex items-center gap-2">
+                  {headerProfileThumbnailUrl ? (
+                    <img
+                      src={headerProfileThumbnailUrl}
+                      alt="프로필 썸네일"
+                      className="h-8 w-8 rounded-full border border-amber-200 object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-[10px] font-bold text-amber-700">
+                      회원
+                    </div>
+                  )}
+                  <p className="text-xs font-semibold text-amber-900">{session?.user?.name ?? "회원"}님</p>
+                </div>
               </>
             )}
             <button
@@ -1231,7 +1303,7 @@ export default function Home() {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-stone-500">등록된 영상이 없습니다.</p>
+            <></>
           )}
 
           <div className="space-y-4 rounded-3xl border border-lime-300 bg-gradient-to-b from-lime-100 to-lime-50 p-5 shadow-lg shadow-lime-900/10">
@@ -1339,7 +1411,7 @@ export default function Home() {
             {!isLoggedIn && (
               <button
                 type="button"
-                onClick={() => router.push("/signup?callback=/")}
+                onClick={() => router.push("/login?callback=/")}
                 className="w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold text-amber-800"
               >
                 로그인하고 후기 쓰기
@@ -1422,12 +1494,15 @@ export default function Home() {
                   setPurchaseType("member");
                   setMemberShippingAddresses([]);
                   setSelectedShippingAddressId(null);
+                  setMemberPostalCode("");
                   void fillDefaultShippingAddress();
                 } else {
                   setPurchaseType(null);
                   setDepositorName("");
                   setPhone("");
                   setShippingAddress("");
+                  setMemberPostalCode("");
+                  setGuestPostalCode("");
                   setMemberShippingAddresses([]);
                   setSelectedShippingAddressId(null);
                 }
@@ -1490,13 +1565,14 @@ export default function Home() {
                       type="button"
                       onClick={async () => {
                         if (!isLoggedIn) {
-                          router.push("/signup?callback=/");
+                          router.push("/login?callback=/");
                           return;
                         }
                         setPurchaseType("member");
                         setExcludeMemberBonus(false);
                         setMemberShippingAddresses([]);
                         setSelectedShippingAddressId(null);
+                        setMemberPostalCode("");
                         void fillDefaultShippingAddress();
                       }}
                       className="w-full rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white"
@@ -1511,6 +1587,8 @@ export default function Home() {
                         setDepositorName("");
                         setPhone("");
                         setShippingAddress("");
+                        setMemberPostalCode("");
+                        setGuestPostalCode("");
                         setGuestAddressBase("");
                         setGuestAddressDetail("");
                         setGuestOrderCode("");
@@ -1609,16 +1687,40 @@ export default function Home() {
                       )}
 
                       {purchaseType === "member" ? (
-                        <input
-                          value={shippingAddress}
-                          onChange={(event) => setShippingAddress(event.target.value)}
-                          placeholder="배송지 주소"
-                          className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                          required
-                        />
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <input
+                              value={memberPostalCode}
+                              readOnly
+                              placeholder="우편번호"
+                              className="w-28 rounded-xl border border-stone-300 bg-stone-50 px-3 py-2 text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={searchMemberAddress}
+                              disabled={!postcodeReady}
+                              className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-bold text-stone-700 disabled:opacity-60"
+                            >
+                              {postcodeReady ? "주소 검색" : "로딩 중..."}
+                            </button>
+                          </div>
+                          <input
+                            value={shippingAddress}
+                            onChange={(event) => setShippingAddress(event.target.value)}
+                            placeholder="배송지 주소"
+                            className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                            required
+                          />
+                        </div>
                       ) : (
                         <div className="space-y-2">
                           <div className="flex gap-2">
+                            <input
+                              value={guestPostalCode}
+                              readOnly
+                              placeholder="우편번호"
+                              className="w-28 rounded-xl border border-stone-300 bg-stone-50 px-3 py-2 text-sm"
+                            />
                             <input
                               value={guestAddressBase}
                               readOnly
@@ -1895,6 +1997,7 @@ export default function Home() {
               <p>구매 유형: {purchaseType === "member" ? "회원" : "비회원"}</p>
               <p>입금자명: {depositorName || "-"}</p>
               <p>연락처: {phone ? formatPhone(phone) : "-"}</p>
+              <p>우편번호: {confirmPostalCode || "-"}</p>
               <p>배송지: {confirmShippingAddress || "-"}</p>
               <p>요청사항: {resolvedOrderRequestNote || "없음"}</p>
             </div>
@@ -2125,15 +2228,6 @@ export default function Home() {
               >
                 문의하기
               </button>
-              {isLoggedIn && (
-                <Link
-                  href="/account/shipping"
-                  onClick={() => setShowMenuDrawer(false)}
-                  className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
-                >
-                  배송지 관리
-                </Link>
-              )}
               {storeConfig.termsUrl && (
                 <Link
                   href="/terms"

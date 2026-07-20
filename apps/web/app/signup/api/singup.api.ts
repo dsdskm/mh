@@ -1,9 +1,5 @@
 import type {
-  CheckPhoneResponse,
-  CheckUserIdResponse,
   RequestPhoneVerificationResponse,
-  SignupPayload,
-  SignupResponse,
   VerifyPhoneCodePayload,
   VerifyPhoneCodeResponse,
 } from "../../../types/auth";
@@ -35,22 +31,6 @@ async function postJson<TResponse>(
   return (await response.json()) as TResponse;
 }
 
-export function checkUserIdApi(userId: string): Promise<CheckUserIdResponse> {
-  return postJson<CheckUserIdResponse>(
-    "/api/auth/check-user-id",
-    { userId },
-    "아이디 중복확인에 실패했습니다.",
-  );
-}
-
-export function checkPhoneApi(phone: string): Promise<CheckPhoneResponse> {
-  return postJson<CheckPhoneResponse>(
-    "/api/auth/check-phone",
-    { phone },
-    "전화번호 확인에 실패했습니다.",
-  );
-}
-
 export function requestPhoneVerificationApi(
   phone: string,
 ): Promise<RequestPhoneVerificationResponse> {
@@ -69,8 +49,4 @@ export function verifyPhoneCodeApi(
     payload,
     "휴대폰 인증에 실패했습니다.",
   );
-}
-
-export function signupApi(payload: SignupPayload): Promise<SignupResponse> {
-  return postJson<SignupResponse>("/api/auth/signup", payload, "회원가입에 실패했습니다.");
 }

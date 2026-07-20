@@ -38,16 +38,76 @@ type KakaoTokenResponse = {
 
 type KakaoUserResponse = {
   id?: number;
+  connected_at?: string;
+  properties?: {
+    nickname?: string;
+    profile_image?: string;
+    thumbnail_image?: string;
+  };
   kakao_account?: {
+    profile_nickname_needs_agreement?: boolean;
+    profile_image_needs_agreement?: boolean;
+    name_needs_agreement?: boolean;
+    phone_number_needs_agreement?: boolean;
+    email_needs_agreement?: boolean;
     email?: string;
+    name?: string;
     phone_number?: string;
     profile?: {
       nickname?: string;
+      profile_image_url?: string;
+      thumbnail_image_url?: string;
+      is_default_image?: boolean;
+      is_default_nickname?: boolean;
     };
   };
-  properties?: {
-    nickname?: string;
+};
+
+type KakaoShippingAddress = {
+  id?: number;
+  name?: string;
+  is_default?: boolean;
+  updated_at?: number;
+  type?: string;
+  base_address?: string;
+  detail_address?: string;
+  receiver_name?: string;
+  receiver_phone_number1?: string;
+  receiver_phone_number2?: string;
+  zone_number?: string;
+};
+
+type KakaoShippingAddressResponse = {
+  user_id?: number;
+  shipping_addresses_needs_agreement?: boolean;
+  shipping_addresses?: KakaoShippingAddress[];
+  has_more?: boolean;
+};
+
+type ParsedKakaoProfile = {
+  providerUserId: string;
+  displayName: string;
+  kakaoNickname: string | null;
+  email: string | null;
+  normalizedPhone: string | null;
+  address1: string | null;
+  address2: string | null;
+  profileImageUrl: string | null;
+  thumbnailImageUrl: string | null;
+  shippingZoneNumber: string | null;
+  shippingName: string | null;
+  shippingReceiverName: string | null;
+  shippingReceiverPhone1: string | null;
+  shippingReceiverPhone2: string | null;
+  consentNeedsAgreement: {
+    name?: boolean;
+    nickname?: boolean;
+    profileImage?: boolean;
+    phoneNumber?: boolean;
+    shippingAddress?: boolean;
   };
+  shippingAddressCount: number;
+  defaultShippingAddress: KakaoShippingAddress | null;
 };
 
 @Injectable()
@@ -463,6 +523,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       found: Boolean(account),
       accountType: account?.type,
       accountStatus: account?.status,
+      accountStatusReason: account?.statusReason,
       isActive: account?.isActive,
       hasPassword: Boolean(account?.password),
       accountId: account?.id,
@@ -470,27 +531,51 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (!account || account.type !== 'NORMAL') {
+      console.warn('[auth:login] rejected by account type or missing account', {
+        normalizedUserId,
+        found: Boolean(account),
+        accountType: account?.type,
+      });
       throw new BadRequestException('아이디 또는 비밀번호가 일치하지 않습니다.');
     }
 
     if (account.status !== 'active' || !account.isActive) {
+      console.warn('[auth:login] rejected by inactive status', {
+        normalizedUserId,
+        accountId: account.id,
+        accountStatus: account.status,
+        accountStatusReason: account.statusReason,
+        isActive: account.isActive,
+      });
       throw new BadRequestException('비활성화된 계정입니다. 고객센터로 문의해주세요.');
     }
 
     if (!account.password) {
+      console.warn('[auth:login] rejected by missing password hash', {
+        normalizedUserId,
+        accountId: account.id,
+      });
       throw new BadRequestException('아이디 또는 비밀번호가 일치하지 않습니다.');
     }
 
     const isPasswordValid = await this.verifyPassword(password, account.password);
     console.info('[auth:login] password verify result', {
       normalizedUserId,
-      password,
       isPasswordValid,
     });
 
     if (!isPasswordValid) {
+      console.warn('[auth:login] rejected by invalid password', {
+        normalizedUserId,
+        accountId: account.id,
+      });
       throw new BadRequestException('아이디 또는 비밀번호가 일치하지 않습니다.');
     }
+
+    console.info('[auth:login] success', {
+      normalizedUserId,
+      accountId: account.id,
+    });
 
     return {
       account: {
@@ -510,190 +595,22 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     redirectUri: string;
   }): Promise<{ account: LocalAccountProfile }> {
     console.info('[auth:kakao] service input', {
-      code: input.code,
+      hasCode: Boolean(input.code),
       redirectUri: input.redirectUri,
     });
 
-    const kakaoRestApiKey =
-      process.env.KAKAO_REST_API_KEY?.trim() ||
-      process.env.KAKAO_CLIENT_ID?.trim() ||
-      process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY?.trim() ||
-      '';
-    const kakaoClientSecret =
-      process.env.KAKAO_REST_API_SECRET?.trim() ||
-      process.env.KAKAO_CLIENT_SECRET?.trim() ||
-      '';
-
-    console.info('[auth:kakao] resolved credentials', {
-      KAKAO_REST_API_KEY: process.env.KAKAO_REST_API_KEY,
-      KAKAO_CLIENT_ID: process.env.KAKAO_CLIENT_ID,
-      NEXT_PUBLIC_KAKAO_REST_API_KEY: process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY,
-      KAKAO_REST_API_SECRET: process.env.KAKAO_REST_API_SECRET,
-      KAKAO_CLIENT_SECRET: process.env.KAKAO_CLIENT_SECRET,
-      resolvedClientId: kakaoRestApiKey,
-      resolvedClientSecret: kakaoClientSecret,
-    });
-
-    if (!kakaoRestApiKey) {
-      throw new BadRequestException('카카오 로그인 설정이 누락되었습니다. 관리자에게 문의해주세요.');
-    }
-
-    const tokenBody = new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: kakaoRestApiKey,
-      redirect_uri: input.redirectUri,
+    const { kakaoRestApiKey, kakaoClientSecret } = this.resolveKakaoCredentials();
+    const accessToken = await this.requestKakaoAccessToken({
       code: input.code,
-    });
-
-    if (kakaoClientSecret) {
-      tokenBody.set('client_secret', kakaoClientSecret);
-    }
-
-    console.info('[auth:kakao] token request payload', {
-      tokenEndpoint: 'https://kauth.kakao.com/oauth/token',
-      tokenBody: tokenBody.toString(),
-    });
-
-    const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
-      },
-      body: tokenBody.toString(),
-    });
-
-    const tokenData = (await tokenResponse.json().catch(() => ({}))) as KakaoTokenResponse;
-    console.info('[auth:kakao] token response', {
-      status: tokenResponse.status,
-      ok: tokenResponse.ok,
-      tokenData,
-    });
-
-    if (!tokenResponse.ok || !tokenData.access_token) {
-      throw new BadRequestException(
-        tokenData.error_description || tokenData.error || '카카오 토큰 발급에 실패했습니다.',
-      );
-    }
-
-    const userResponse = await fetch('https://kapi.kakao.com/v2/user/me', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
-      },
-    });
-
-    const kakaoUser = (await userResponse.json().catch(() => ({}))) as KakaoUserResponse;
-    console.info('[auth:kakao] user response', {
-      status: userResponse.status,
-      ok: userResponse.ok,
-      kakaoUser,
-    });
-
-    const providerUserId = String(kakaoUser.id ?? '').trim();
-
-    if (!userResponse.ok || !providerUserId) {
-      throw new BadRequestException('카카오 사용자 정보를 불러오지 못했습니다.');
-    }
-
-    let account = await this.accountRepository.findOne({
-      where: {
-        type: 'KAKAO',
-        providerUserId,
-      },
-    });
-
-    const displayName =
-      kakaoUser.kakao_account?.profile?.nickname?.trim() ||
-      kakaoUser.properties?.nickname?.trim() ||
-      '카카오회원';
-    const email = kakaoUser.kakao_account?.email?.trim() || null;
-    const normalizedPhone = this.normalizeKakaoPhone(
-      kakaoUser.kakao_account?.phone_number,
-    );
-
-    console.info('[auth:kakao] fetched account info', {
-      providerUserId,
-      nickname: displayName,
-      email,
-      phone: normalizedPhone,
-      hasPhone: Boolean(normalizedPhone),
       redirectUri: input.redirectUri,
+      kakaoRestApiKey,
+      kakaoClientSecret,
     });
-
-    if (!account) {
-      let nextPhone = normalizedPhone;
-
-      if (nextPhone) {
-        const existingByPhone = await this.accountRepository.findOne({
-          where: { phone: nextPhone },
-        });
-
-        if (existingByPhone) {
-          nextPhone = null;
-        }
-      }
-
-      const userId = await this.buildUniqueKakaoUserId(`kakao_${providerUserId}`);
-
-      account = await this.accountRepository.save(
-        this.accountRepository.create({
-          userId,
-          type: 'KAKAO',
-          username: userId,
-          password: null,
-          providerUserId,
-          email,
-          displayName,
-          phone: nextPhone,
-          address1: null,
-          address2: null,
-          status: 'active',
-          statusReason: null,
-          termsAgreed: true,
-          termsAgreedAt: new Date(),
-          phoneVerifiedAt: nextPhone ? new Date() : null,
-          isActive: true,
-        }),
-      );
-    } else {
-      let touched = false;
-
-      if (!account.userId) {
-        account.userId = await this.buildUniqueKakaoUserId(`kakao_${providerUserId}`);
-        account.username = account.userId;
-        touched = true;
-      }
-
-      if (!account.displayName && displayName) {
-        account.displayName = displayName;
-        touched = true;
-      }
-
-      if (!account.email && email) {
-        account.email = email;
-        touched = true;
-      }
-
-      if (!account.phone && normalizedPhone) {
-        const existingByPhone = await this.accountRepository.findOne({
-          where: { phone: normalizedPhone },
-        });
-
-        if (!existingByPhone || existingByPhone.id === account.id) {
-          account.phone = normalizedPhone;
-          account.phoneVerifiedAt = account.phoneVerifiedAt ?? new Date();
-          touched = true;
-        }
-      }
-
-      if (touched) {
-        account = await this.accountRepository.save(account);
-      }
-    }
-
-    if (account.status !== 'active' || !account.isActive) {
-      throw new BadRequestException('비활성화된 계정입니다. 고객센터로 문의해주세요.');
-    }
+    const kakaoUser = await this.fetchKakaoUserProfile(accessToken);
+    const kakaoShipping = await this.fetchKakaoShippingAddress(accessToken);
+    const parsed = this.parseKakaoProfile(kakaoUser, kakaoShipping);
+    const account = await this.upsertKakaoAccount(parsed);
+    this.assertKakaoAccountActive(account, parsed.providerUserId);
 
     console.info('[auth:kakao] login success', {
       accountId: account.id,
@@ -716,6 +633,420 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  private resolveKakaoCredentials(): {
+    kakaoRestApiKey: string;
+    kakaoClientSecret: string;
+  } {
+    const kakaoRestApiKey =
+      process.env.KAKAO_REST_API_KEY?.trim() ||
+      process.env.KAKAO_CLIENT_ID?.trim() ||
+      process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY?.trim() ||
+      '';
+    const kakaoClientSecret =
+      process.env.KAKAO_REST_API_SECRET?.trim() ||
+      process.env.KAKAO_CLIENT_SECRET?.trim() ||
+      '';
+
+    console.info('[auth:kakao] resolved credentials', {
+      hasRestApiKey: Boolean(kakaoRestApiKey),
+      hasClientSecret: Boolean(kakaoClientSecret),
+      clientIdSuffix: kakaoRestApiKey ? kakaoRestApiKey.slice(-4) : null,
+    });
+
+    if (!kakaoRestApiKey) {
+      throw new BadRequestException('카카오 로그인 설정이 누락되었습니다. 관리자에게 문의해주세요.');
+    }
+
+    return {
+      kakaoRestApiKey,
+      kakaoClientSecret,
+    };
+  }
+
+  private async requestKakaoAccessToken(input: {
+    code: string;
+    redirectUri: string;
+    kakaoRestApiKey: string;
+    kakaoClientSecret: string;
+  }): Promise<string> {
+    const tokenBody = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: input.kakaoRestApiKey,
+      redirect_uri: input.redirectUri,
+      code: input.code,
+    });
+
+    if (input.kakaoClientSecret) {
+      tokenBody.set('client_secret', input.kakaoClientSecret);
+    }
+
+    console.info('[auth:kakao] token request payload', {
+      tokenEndpoint: 'https://kauth.kakao.com/oauth/token',
+      redirectUri: input.redirectUri,
+      hasCode: Boolean(input.code),
+      hasClientSecret: Boolean(input.kakaoClientSecret),
+    });
+
+    const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
+      },
+      body: tokenBody.toString(),
+    });
+
+    const tokenData = (await tokenResponse.json().catch(() => ({}))) as KakaoTokenResponse;
+    console.info('[auth:kakao] token response', {
+      status: tokenResponse.status,
+      ok: tokenResponse.ok,
+      hasAccessToken: Boolean(tokenData.access_token),
+      error: tokenData.error,
+      errorDescription: tokenData.error_description,
+    });
+
+    if (!tokenResponse.ok || !tokenData.access_token) {
+      throw new BadRequestException(
+        tokenData.error_description || tokenData.error || '카카오 토큰 발급에 실패했습니다.',
+      );
+    }
+
+    return tokenData.access_token;
+  }
+
+  private async fetchKakaoUserProfile(accessToken: string): Promise<KakaoUserResponse> {
+    const userUrl = new URL('https://kapi.kakao.com/v2/user/me');
+    userUrl.searchParams.set('secure_resource', 'true');
+    userUrl.searchParams.set(
+      'property_keys',
+      JSON.stringify([
+        'kakao_account.profile',
+        'kakao_account.name',
+        'kakao_account.email',
+        'kakao_account.phone_number',
+      ]),
+    );
+
+    const userResponse = await fetch(userUrl, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const kakaoUser = (await userResponse.json().catch(() => ({}))) as KakaoUserResponse;
+    console.info('[auth:kakao] /v2/user/me raw response', {
+      status: userResponse.status,
+      ok: userResponse.ok,
+      body: JSON.stringify(kakaoUser, null, 2),
+    });
+
+    if (!userResponse.ok) {
+      throw new BadRequestException('카카오 사용자 정보를 불러오지 못했습니다.');
+    }
+
+    return kakaoUser;
+  }
+
+  private async fetchKakaoShippingAddress(accessToken: string): Promise<KakaoShippingAddressResponse> {
+    const shippingResponse = await fetch('https://kapi.kakao.com/v1/user/shipping_address', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    const kakaoShipping = (await shippingResponse.json().catch(() => ({}))) as KakaoShippingAddressResponse;
+
+    console.info('[auth:kakao] /v1/user/shipping_address raw response', {
+      status: shippingResponse.status,
+      ok: shippingResponse.ok,
+      body: JSON.stringify(kakaoShipping, null, 2),
+    });
+
+    return kakaoShipping;
+  }
+
+  private parseKakaoProfile(
+    kakaoUser: KakaoUserResponse,
+    kakaoShipping: KakaoShippingAddressResponse,
+  ): ParsedKakaoProfile {
+    const providerUserId = String(kakaoUser.id ?? '').trim();
+    if (!providerUserId) {
+      console.warn('[auth:kakao] rejected by missing provider user id', {
+        providerUserId,
+      });
+      throw new BadRequestException('카카오 사용자 정보를 불러오지 못했습니다.');
+    }
+
+    const kakaoProfile = kakaoUser.kakao_account?.profile;
+    const kakaoName = kakaoUser.kakao_account?.name?.trim() || null;
+    const kakaoNickname =
+      kakaoProfile?.nickname?.trim() || kakaoUser.properties?.nickname?.trim() || null;
+    const kakaoProfileImage =
+      kakaoProfile?.profile_image_url || kakaoUser.properties?.profile_image || null;
+    const kakaoThumbnailImage =
+      kakaoProfile?.thumbnail_image_url || kakaoUser.properties?.thumbnail_image || null;
+    const kakaoPhoneRaw = kakaoUser.kakao_account?.phone_number || null;
+    const defaultShippingAddress =
+      kakaoShipping.shipping_addresses?.find((item) => item.is_default) ??
+      kakaoShipping.shipping_addresses?.[0] ??
+      null;
+
+    const address1 = defaultShippingAddress?.base_address?.trim() || null;
+    const address2 = defaultShippingAddress?.detail_address?.trim() || null;
+    const shippingZoneNumber = defaultShippingAddress?.zone_number?.trim() || null;
+    const shippingName = defaultShippingAddress?.name?.trim() || null;
+    const shippingReceiverName = defaultShippingAddress?.receiver_name?.trim() || null;
+    const shippingReceiverPhone1 = defaultShippingAddress?.receiver_phone_number1?.trim() || null;
+    const shippingReceiverPhone2 = defaultShippingAddress?.receiver_phone_number2?.trim() || null;
+    const normalizedPhone = this.normalizeKakaoPhone(kakaoPhoneRaw ?? undefined);
+    const displayName = kakaoName || kakaoNickname || '카카오회원';
+    const email = kakaoUser.kakao_account?.email?.trim() || null;
+
+    const parsed: ParsedKakaoProfile = {
+      providerUserId,
+      displayName,
+      kakaoNickname,
+      email,
+      normalizedPhone,
+      address1,
+      address2,
+      profileImageUrl: kakaoProfileImage,
+      thumbnailImageUrl: kakaoThumbnailImage,
+      shippingZoneNumber,
+      shippingName,
+      shippingReceiverName,
+      shippingReceiverPhone1,
+      shippingReceiverPhone2,
+      consentNeedsAgreement: {
+        name: kakaoUser.kakao_account?.name_needs_agreement,
+        nickname: kakaoUser.kakao_account?.profile_nickname_needs_agreement,
+        profileImage: kakaoUser.kakao_account?.profile_image_needs_agreement,
+        phoneNumber: kakaoUser.kakao_account?.phone_number_needs_agreement,
+        shippingAddress: kakaoShipping.shipping_addresses_needs_agreement,
+      },
+      shippingAddressCount: kakaoShipping.shipping_addresses?.length ?? 0,
+      defaultShippingAddress,
+    };
+
+    console.info('[auth:kakao] parsed kakao consent data', {
+      providerUserId: Number(parsed.providerUserId),
+      name: kakaoName,
+      nickname: kakaoNickname,
+      profileImageUrl: parsed.profileImageUrl,
+      thumbnailImageUrl: parsed.thumbnailImageUrl,
+      phoneNumberRaw: kakaoPhoneRaw,
+      phoneNumberNormalized: parsed.normalizedPhone,
+      shippingZoneNumber: parsed.shippingZoneNumber,
+      consentNeedsAgreement: parsed.consentNeedsAgreement,
+      shippingAddressCount: parsed.shippingAddressCount,
+      defaultShippingAddress: parsed.defaultShippingAddress,
+    });
+
+    return parsed;
+  }
+
+  private async upsertKakaoAccount(parsed: ParsedKakaoProfile): Promise<AccountEntity> {
+    let account = await this.accountRepository.findOne({
+      where: {
+        type: 'KAKAO',
+        providerUserId: parsed.providerUserId,
+      },
+    });
+
+    if (!account) {
+      console.info('[auth:kakao] first login account provisioning start', {
+        providerUserId: parsed.providerUserId,
+      });
+
+      const nextPhone = await this.resolveAvailableKakaoPhone(parsed.normalizedPhone, parsed.providerUserId);
+      const userId = await this.buildUniqueKakaoUserId(`kakao_${parsed.providerUserId}`);
+
+      account = await this.accountRepository.save(
+        this.accountRepository.create({
+          userId,
+          type: 'KAKAO',
+          username: userId,
+          password: null,
+          providerUserId: parsed.providerUserId,
+          email: parsed.email,
+          displayName: parsed.displayName,
+          phone: nextPhone,
+          address1: parsed.address1,
+          address2: parsed.address2,
+          kakaoNickname: parsed.kakaoNickname,
+          kakaoProfileImageUrl: parsed.profileImageUrl,
+          kakaoThumbnailImageUrl: parsed.thumbnailImageUrl,
+          kakaoShippingName: parsed.shippingName,
+          kakaoShippingReceiverName: parsed.shippingReceiverName,
+          kakaoShippingReceiverPhone1: parsed.shippingReceiverPhone1,
+          kakaoShippingReceiverPhone2: parsed.shippingReceiverPhone2,
+          kakaoShippingZoneNumber: parsed.shippingZoneNumber,
+          kakaoSyncedAt: new Date(),
+          status: 'active',
+          statusReason: null,
+          termsAgreed: true,
+          termsAgreedAt: new Date(),
+          phoneVerifiedAt: nextPhone ? new Date() : null,
+          isActive: true,
+        }),
+      );
+
+      console.info('[auth:kakao] first login account provisioning done', {
+        providerUserId: parsed.providerUserId,
+        accountId: account.id,
+        userId: account.userId,
+      });
+
+      return account;
+    }
+
+    console.info('[auth:kakao] existing account found', {
+      providerUserId: parsed.providerUserId,
+      accountId: account.id,
+      userId: account.userId,
+      accountStatus: account.status,
+      accountStatusReason: account.statusReason,
+      isActive: account.isActive,
+    });
+
+    let touched = false;
+
+    if (!account.userId) {
+      account.userId = await this.buildUniqueKakaoUserId(`kakao_${parsed.providerUserId}`);
+      account.username = account.userId;
+      touched = true;
+    }
+
+    if (parsed.displayName && account.displayName !== parsed.displayName) {
+      account.displayName = parsed.displayName;
+      touched = true;
+    }
+
+    if (parsed.email && account.email !== parsed.email) {
+      account.email = parsed.email;
+      touched = true;
+    }
+
+    if (parsed.address1 && account.address1 !== parsed.address1) {
+      account.address1 = parsed.address1;
+      touched = true;
+    }
+
+    if (parsed.address2 && account.address2 !== parsed.address2) {
+      account.address2 = parsed.address2;
+      touched = true;
+    }
+
+    if (account.kakaoNickname !== parsed.kakaoNickname) {
+      account.kakaoNickname = parsed.kakaoNickname;
+      touched = true;
+    }
+
+    if (account.kakaoProfileImageUrl !== parsed.profileImageUrl) {
+      account.kakaoProfileImageUrl = parsed.profileImageUrl;
+      touched = true;
+    }
+
+    if (account.kakaoThumbnailImageUrl !== parsed.thumbnailImageUrl) {
+      account.kakaoThumbnailImageUrl = parsed.thumbnailImageUrl;
+      touched = true;
+    }
+
+    if (account.kakaoShippingName !== parsed.shippingName) {
+      account.kakaoShippingName = parsed.shippingName;
+      touched = true;
+    }
+
+    if (account.kakaoShippingReceiverName !== parsed.shippingReceiverName) {
+      account.kakaoShippingReceiverName = parsed.shippingReceiverName;
+      touched = true;
+    }
+
+    if (account.kakaoShippingReceiverPhone1 !== parsed.shippingReceiverPhone1) {
+      account.kakaoShippingReceiverPhone1 = parsed.shippingReceiverPhone1;
+      touched = true;
+    }
+
+    if (account.kakaoShippingReceiverPhone2 !== parsed.shippingReceiverPhone2) {
+      account.kakaoShippingReceiverPhone2 = parsed.shippingReceiverPhone2;
+      touched = true;
+    }
+
+    if (account.kakaoShippingZoneNumber !== parsed.shippingZoneNumber) {
+      account.kakaoShippingZoneNumber = parsed.shippingZoneNumber;
+      touched = true;
+    }
+
+    account.kakaoSyncedAt = new Date();
+    touched = true;
+
+    if (parsed.normalizedPhone && account.phone !== parsed.normalizedPhone) {
+      const existingByPhone = await this.accountRepository.findOne({
+        where: { phone: parsed.normalizedPhone },
+      });
+
+      if (!existingByPhone || existingByPhone.id === account.id) {
+        account.phone = parsed.normalizedPhone;
+        account.phoneVerifiedAt = account.phoneVerifiedAt ?? new Date();
+        touched = true;
+      } else {
+        console.info('[auth:kakao] existing account phone update skipped by conflict', {
+          providerUserId: parsed.providerUserId,
+          accountId: account.id,
+          conflictedAccountId: existingByPhone.id,
+        });
+      }
+    }
+
+    if (touched) {
+      account = await this.accountRepository.save(account);
+      console.info('[auth:kakao] existing account updated', {
+        providerUserId: parsed.providerUserId,
+        accountId: account.id,
+        userId: account.userId,
+      });
+    }
+
+    return account;
+  }
+
+  private async resolveAvailableKakaoPhone(
+    normalizedPhone: string | null,
+    providerUserId: string,
+  ): Promise<string | null> {
+    if (!normalizedPhone) {
+      return null;
+    }
+
+    const existingByPhone = await this.accountRepository.findOne({
+      where: { phone: normalizedPhone },
+    });
+
+    if (existingByPhone) {
+      console.info('[auth:kakao] phone conflict on first login, omit phone', {
+        providerUserId,
+        conflictedAccountId: existingByPhone.id,
+      });
+      return null;
+    }
+
+    return normalizedPhone;
+  }
+
+  private assertKakaoAccountActive(account: AccountEntity, providerUserId: string): void {
+    if (account.status !== 'active' || !account.isActive) {
+      console.warn('[auth:kakao] rejected by inactive status', {
+        providerUserId,
+        accountId: account.id,
+        userId: account.userId,
+        accountStatus: account.status,
+        accountStatusReason: account.statusReason,
+        isActive: account.isActive,
+      });
+      throw new BadRequestException('비활성화된 계정입니다. 고객센터로 문의해주세요.');
+    }
+  }
+
   async getProfile(userId: string) {
     const normalizedUserId = userId.trim().toLowerCase();
     const account = await this.findMemberAccountByUserId(normalizedUserId);
@@ -729,13 +1060,20 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     // Backward compatibility: old rows may still have only legacy `address` populated.
     if (!address1) {
-      const legacyRows = (await this.accountRepository.query(
-        'SELECT address FROM accounts WHERE id = $1 LIMIT 1',
-        [account.id],
-      )) as Array<{ address?: string | null }>;
-      const legacyAddress = legacyRows[0]?.address?.trim();
-      if (legacyAddress) {
-        address1 = legacyAddress;
+      try {
+        const legacyRows = (await this.accountRepository.query(
+          'SELECT address FROM accounts WHERE id = $1 LIMIT 1',
+          [account.id],
+        )) as Array<{ address?: string | null }>;
+        const legacyAddress = legacyRows[0]?.address?.trim();
+        if (legacyAddress) {
+          address1 = legacyAddress;
+        }
+      } catch (error) {
+        console.info('[auth:profile] legacy address column lookup skipped', {
+          accountId: account.id,
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -748,6 +1086,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         phone: account.phone ?? '',
         address1,
         address2,
+        kakaoNickname: account.kakaoNickname ?? '',
+        kakaoProfileImageUrl: account.kakaoProfileImageUrl ?? '',
+        kakaoThumbnailImageUrl: account.kakaoThumbnailImageUrl ?? '',
+        kakaoShippingZoneNumber: account.kakaoShippingZoneNumber ?? '',
         status: account.status,
         statusReason: account.statusReason,
       },
@@ -878,29 +1220,22 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async completeKakaoProfile(input: {
     userId: string;
-    name: string;
-    phone: string;
+    postalCode: string;
     address1: string;
     address2: string;
-    verificationToken: string;
   }) {
     const userId = input.userId.trim().toLowerCase();
-    const name = input.name.trim();
-    const phone = this.normalizePhone(input.phone);
+    const postalCode = input.postalCode.trim();
     const address1 = input.address1.trim();
     const address2 = input.address2.trim();
-    const verificationToken = input.verificationToken.trim();
-
-    if (!name) {
-      throw new BadRequestException('이름을 입력해주세요.');
-    }
 
     if (!address1) {
       throw new BadRequestException('주소를 입력해주세요.');
     }
 
-    this.assertPhoneFormat(phone);
-    this.assertVerifiedPhoneToken(phone, verificationToken);
+    if (!postalCode) {
+      throw new BadRequestException('우편번호를 입력해주세요.');
+    }
 
     const account = await this.accountRepository.findOne({
       where: { userId, type: 'KAKAO' },
@@ -910,16 +1245,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('카카오 회원 정보를 찾을 수 없습니다.');
     }
 
-    const conflictByPhone = await this.accountRepository.findOne({ where: { phone } });
-    if (conflictByPhone && conflictByPhone.id !== account.id) {
-      throw new BadRequestException('이미 사용 중인 번호입니다.');
-    }
-
-    account.displayName = name;
-    account.phone = phone;
     account.address1 = address1;
     account.address2 = address2;
-    account.phoneVerifiedAt = new Date();
+    account.kakaoShippingZoneNumber = postalCode;
+    account.kakaoSyncedAt = new Date();
     account.termsAgreed = true;
     account.termsAgreedAt = account.termsAgreedAt ?? new Date();
 

@@ -517,7 +517,7 @@ export default function OrdersPage() {
 
             <button
               type="button"
-              onClick={() => router.push("/signup?callback=/orders")}
+              onClick={() => router.push("/login?callback=/orders")}
               className="mt-3 w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-bold text-amber-800"
             >
               로그인/회원가입하고 내 주문 보기

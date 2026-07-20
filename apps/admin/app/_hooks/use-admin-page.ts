@@ -524,6 +524,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
     setNotice(null);
     try {
       await deleteBackofficeOrderApi(id);
+      setOrders(await fetchAdminOrdersApi());
       setNotice("주문을 삭제했습니다.");
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "주문 삭제에 실패했습니다.");

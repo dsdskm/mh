@@ -35,7 +35,7 @@ export default function CouponMileagePage() {
 
   useEffect(() => {
     if (status === "unauthenticated") {
-      router.replace("/signup?callback=/account/coupon-mileage");
+      router.replace("/login?callback=/account/coupon-mileage");
       return;
     }
 

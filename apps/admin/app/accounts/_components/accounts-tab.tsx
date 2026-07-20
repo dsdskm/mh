@@ -58,6 +58,10 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
     return account.type.toUpperCase() === "MASTER";
   }
 
+  function getProfileThumbnail(account: AdminUser): string | null {
+    return account.kakaoThumbnailImageUrl || account.kakaoProfileImageUrl || null;
+  }
+
   // ── modal state ──────────────────────────────────────────────────────────
   const [showModal, setShowModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<AdminUser | null>(null);
@@ -516,6 +520,7 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
                 />
               </th>
               <th className="px-3 py-2 text-left">ID</th>
+              <th className="px-3 py-2 text-left">썸네일</th>
               <th className="px-3 py-2 text-left">이름</th>
               <th className="px-3 py-2 text-left">아이디</th>
               <th className="px-3 py-2 text-left">전화번호</th>
@@ -527,7 +532,7 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
           <tbody className="divide-y divide-stone-100 bg-white">
             {filteredAccounts.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-stone-400">결과 없음</td>
+                <td colSpan={9} className="px-3 py-6 text-center text-stone-400">결과 없음</td>
               </tr>
             )}
             {paginatedAccounts.map((acc) => (
@@ -543,6 +548,19 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
                   />
                 </td>
                 <td className="px-3 py-2 text-stone-500">#{acc.id}</td>
+                <td className="px-3 py-2">
+                  {getProfileThumbnail(acc) ? (
+                    <img
+                      src={getProfileThumbnail(acc) ?? ""}
+                      alt={`${acc.displayName ?? acc.userId ?? "계정"} 프로필`}
+                      className="h-9 w-9 rounded-full border border-stone-200 object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full border border-stone-200 bg-stone-100 text-[10px] font-bold text-stone-500">
+                      없음
+                    </div>
+                  )}
+                </td>
                 <td className="px-3 py-2 font-medium text-stone-900">{acc.displayName ?? "-"}</td>
                 <td className="px-3 py-2 text-stone-700">{acc.userId ?? "-"}</td>
                 <td className="px-3 py-2 text-stone-700">{acc.phone ?? "-"}</td>
@@ -715,6 +733,20 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
             </div>
 
             <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <div className="col-span-2">
+                <dt className="text-xs font-semibold text-stone-500">프로필 썸네일</dt>
+                <dd className="mt-1">
+                  {getProfileThumbnail(detailAccount) ? (
+                    <img
+                      src={getProfileThumbnail(detailAccount) ?? ""}
+                      alt={`${detailAccount.displayName ?? detailAccount.userId ?? "계정"} 프로필`}
+                      className="h-14 w-14 rounded-full border border-stone-200 object-cover"
+                    />
+                  ) : (
+                    <span className="text-stone-400">-</span>
+                  )}
+                </dd>
+              </div>
               <div>
                 <dt className="text-xs font-semibold text-stone-500">아이디</dt>
                 <dd className="mt-0.5 text-stone-800">{detailAccount.userId ?? "-"}</dd>

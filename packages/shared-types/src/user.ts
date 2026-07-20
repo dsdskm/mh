@@ -9,6 +9,9 @@ export type SharedUser = {
   username: string | null;
   providerUserId: string | null;
   displayName: string | null;
+  kakaoNickname?: string | null;
+  kakaoProfileImageUrl?: string | null;
+  kakaoThumbnailImageUrl?: string | null;
   phone: string | null;
   address1: string | null;
   address2: string | null;

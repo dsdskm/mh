@@ -37,9 +37,16 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("callbackUrl"),
   );
 
-  const redirectUri =
-    process.env.KAKAO_REDIRECT_URI?.trim() ||
-    `${request.nextUrl.origin}/auth/kakao/callback`;
+  const redirectUri = process.env.KAKAO_REDIRECT_URI?.trim() || "";
+
+  if (!redirectUri) {
+    return NextResponse.json(
+      {
+        message: "KAKAO_REDIRECT_URI가 설정되지 않았습니다.",
+      },
+      { status: 500 },
+    );
+  }
   const stateValue: KakaoLoginState = { callbackUrl };
   const state = Buffer.from(JSON.stringify(stateValue), "utf8").toString("base64url");
 

@@ -3,36 +3,12 @@ import { AuthService } from '../services/auth.service';
 
 type RequestPhoneVerificationBody = {
   phone?: string;
-  purpose?: 'signup' | 'recover';
+  purpose?: 'signup';
 };
 
 type VerifyPhoneCodeBody = {
   phone?: string;
   code?: string;
-};
-
-type SignupBody = {
-  userId?: string;
-  password?: string;
-  name?: string;
-  phone?: string;
-  address1?: string;
-  address2?: string;
-  termsAgreed?: boolean;
-  verificationToken?: string;
-};
-
-type CheckUserIdBody = {
-  userId?: string;
-};
-
-type CheckPhoneBody = {
-  phone?: string;
-};
-
-type LoginBody = {
-  userId?: string;
-  password?: string;
 };
 
 type KakaoLoginBody = {
@@ -65,24 +41,9 @@ type WithdrawBody = {
 
 type KakaoCompleteProfileBody = {
   userId?: string;
-  name?: string;
-  phone?: string;
+  postalCode?: string;
   address1?: string;
   address2?: string;
-  verificationToken?: string;
-};
-
-type FindUserIdBody = {
-  name?: string;
-  phone?: string;
-  verificationToken?: string;
-};
-
-type ResetPasswordBody = {
-  userId?: string;
-  phone?: string;
-  newPassword?: string;
-  verificationToken?: string;
 };
 
 type ShippingAddressesBody = {
@@ -101,46 +62,6 @@ type ShippingAddressSaveBody = {
 @Controller('api/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
-
-  @Post('check-user-id')
-  checkUserId(@Body() body: CheckUserIdBody) {
-    const userId = body.userId?.trim();
-
-    if (!userId) {
-      throw new BadRequestException('아이디를 입력해주세요.');
-    }
-
-    return this.authService.checkUserIdAvailability(userId);
-  }
-
-  @Post('check-phone')
-  checkPhone(@Body() body: CheckPhoneBody) {
-    const phone = body.phone?.trim();
-
-    if (!phone) {
-      throw new BadRequestException('전화번호를 입력해주세요.');
-    }
-
-    return this.authService.checkPhoneAvailability(phone);
-  }
-
-  @Post('login')
-  login(@Body() body: LoginBody) {
-    const userId = body.userId?.trim();
-    const password = body.password;
-
-    console.info('[auth:login] request body', {
-      rawBody: body,
-      userId,
-      password,
-    });
-
-    if (!userId || !password) {
-      throw new BadRequestException('아이디와 비밀번호를 입력해주세요.');
-    }
-
-    return this.authService.login(userId, password);
-  }
 
   @Post('kakao/login')
   kakaoLogin(@Body() body: KakaoLoginBody) {
@@ -226,61 +147,22 @@ export class AuthController {
   @Post('kakao/complete-profile')
   completeKakaoProfile(@Body() body: KakaoCompleteProfileBody) {
     const userId = body.userId?.trim();
-    const name = body.name?.trim();
-    const phone = body.phone?.trim();
+    const postalCode = body.postalCode?.trim();
     const address1 = body.address1?.trim();
     const address2 = body.address2?.trim() ?? '';
-    const verificationToken = body.verificationToken?.trim();
 
-    if (!userId || !name || !phone || !address1 || !verificationToken) {
+    if (!userId || !postalCode || !address1) {
       throw new BadRequestException('카카오 회원 추가정보를 모두 입력해주세요.');
     }
 
     return this.authService.completeKakaoProfile({
       userId,
-      name,
-      phone,
+      postalCode,
       address1,
       address2,
-      verificationToken,
     });
   }
 
-  @Post('find-user-id')
-  findUserId(@Body() body: FindUserIdBody) {
-    const name = body.name?.trim();
-    const phone = body.phone?.trim();
-    const verificationToken = body.verificationToken?.trim();
-
-    if (!name || !phone || !verificationToken) {
-      throw new BadRequestException('이름, 전화번호, 문자 인증을 모두 완료해주세요.');
-    }
-
-    return this.authService.findUserId({
-      name,
-      phone,
-      verificationToken,
-    });
-  }
-
-  @Post('reset-password')
-  resetPassword(@Body() body: ResetPasswordBody) {
-    const userId = body.userId?.trim();
-    const phone = body.phone?.trim();
-    const newPassword = body.newPassword;
-    const verificationToken = body.verificationToken?.trim();
-
-    if (!userId || !phone || !newPassword || !verificationToken) {
-      throw new BadRequestException('아이디, 전화번호, 문자 인증, 새 비밀번호를 입력해주세요.');
-    }
-
-    return this.authService.resetPassword({
-      userId,
-      phone,
-      newPassword,
-      verificationToken,
-    });
-  }
 
   @Post('shipping-addresses')
   shippingAddresses(@Body() body: ShippingAddressesBody) {
@@ -317,7 +199,6 @@ export class AuthController {
   @Post('phone/request')
   requestPhoneVerification(@Body() body: RequestPhoneVerificationBody) {
     const phone = body.phone?.trim();
-    const purpose = body.purpose;
 
     if (!phone) {
       throw new BadRequestException('전화번호를 입력해주세요.');
@@ -325,7 +206,7 @@ export class AuthController {
 
     return this.authService.requestPhoneVerification({
       phone,
-      purpose: purpose === 'recover' ? 'recover' : 'signup',
+      purpose: 'signup',
     });
   }
 
@@ -339,36 +220,5 @@ export class AuthController {
     }
 
     return this.authService.verifyPhoneCode({ phone, code });
-  }
-
-  @Post('signup')
-  signup(@Body() body: SignupBody) {
-    const userId = body.userId?.trim();
-    const password = body.password;
-    const name = body.name?.trim();
-    const phone = body.phone?.trim();
-    const address1 = body.address1?.trim();
-    const address2 = body.address2?.trim() ?? '';
-    const termsAgreed = body.termsAgreed;
-    const verificationToken = body.verificationToken?.trim();
-
-    if (!userId || !password || !name || !phone || !address1 || !verificationToken) {
-      throw new BadRequestException('회원가입 정보를 모두 입력해주세요.');
-    }
-
-    if (termsAgreed !== true) {
-      throw new BadRequestException('약관 동의가 필요합니다.');
-    }
-
-    return this.authService.signup({
-      userId,
-      password,
-      name,
-      phone,
-      address1,
-      address2,
-      termsAgreed,
-      verificationToken,
-    });
   }
 }

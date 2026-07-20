@@ -16,47 +16,6 @@ const API_BASE =
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
-      name: "Credentials",
-      credentials: {
-        userId: { label: "User ID", type: "text" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        if (!credentials?.userId || !credentials?.password) {
-          throw new Error("아이디와 비밀번호를 입력해주세요.");
-        }
-
-        try {
-          const response = await fetch(`${API_BASE}/api/auth/login`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              userId: credentials.userId,
-              password: credentials.password,
-            }),
-          });
-
-          if (!response.ok) {
-            const data = (await response.json()) as { message?: string };
-            throw new Error(data.message ?? "로그인에 실패했습니다.");
-          }
-
-          const data = (await response.json()) as {
-            account: { id: number; userId: string; name: string };
-          };
-          return {
-            id: String(data.account.id),
-            name: data.account.name,
-            email: data.account.userId,
-          };
-        } catch (error) {
-          throw error instanceof Error ? error : new Error("로그인에 실패했습니다.");
-        }
-      },
-    }),
-    CredentialsProvider({
       id: "kakao-rest",
       name: "Kakao REST",
       credentials: {
@@ -91,6 +50,12 @@ export const authOptions: NextAuthOptions = {
           const data = (await response.json()) as {
             account: { id: number; userId: string; name: string };
           };
+
+          console.info("[auth:web:kakao] authorize response", {
+            accountId: data.account.id,
+            userId: data.account.userId,
+            name: data.account.name,
+          });
 
           return {
             id: String(data.account.id),
@@ -138,6 +103,12 @@ export const authOptions: NextAuthOptions = {
         token.sub = user.id;
         token.name = user.name;
         token.email = user.email;
+
+        console.info("[auth:web] jwt updated from user", {
+          sub: token.sub,
+          name: token.name,
+          email: token.email,
+        });
       }
 
       return token;
@@ -147,6 +118,12 @@ export const authOptions: NextAuthOptions = {
         session.user.id = typeof token.sub === "string" ? token.sub : undefined;
         session.user.name = typeof token.name === "string" ? token.name : session.user.name;
         session.user.email = typeof token.email === "string" ? token.email : session.user.email;
+
+        console.info("[auth:web] session built", {
+          id: session.user.id,
+          name: session.user.name,
+          email: session.user.email,
+        });
       }
 
       return session;

@@ -46,6 +46,47 @@ function KakaoCallbackContent() {
   const callbackUrl = useMemo(() => decodeState(searchParams.get("state")), [searchParams]);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [supportPhone, setSupportPhone] = useState("");
+  const [supportKakaoChannelUrl, setSupportKakaoChannelUrl] = useState("");
+  const shouldShowSupportContact =
+    !!errorMessage && errorMessage.includes("비활성화된 계정입니다");
+
+  useEffect(() => {
+    if (!shouldShowSupportContact) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadSupportContact() {
+      try {
+        const response = await fetch(`${API_BASE}/api/config`, { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as {
+          sellerPhone?: string;
+          kakaoChannelUrl?: string;
+        };
+
+        if (cancelled) {
+          return;
+        }
+
+        setSupportPhone(data.sellerPhone?.trim() ?? "");
+        setSupportKakaoChannelUrl(data.kakaoChannelUrl?.trim() ?? "");
+      } catch {
+        // ignore
+      }
+    }
+
+    void loadSupportContact();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldShowSupportContact]);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +109,13 @@ function KakaoCallbackContent() {
         redirect: false,
       });
 
+      console.info("[kakao:callback] signIn result", {
+        ok: result?.ok,
+        error: result?.error,
+        status: result?.status,
+        url: result?.url,
+      });
+
       if (cancelled) {
         return;
       }
@@ -78,8 +126,15 @@ function KakaoCallbackContent() {
       }
 
       const userId = await resolveSessionUserId();
+      console.info("[kakao:callback] resolved session userId", {
+        userId,
+      });
       if (userId) {
         const needOnboarding = await hasIncompleteKakaoProfile(userId);
+        console.info("[kakao:callback] profile onboarding check", {
+          userId,
+          needOnboarding,
+        });
         if (needOnboarding) {
           router.replace(`/auth/kakao/welcome?callbackUrl=${encodeURIComponent(callbackUrl)}`);
           return;
@@ -116,24 +171,31 @@ function KakaoCallbackContent() {
       });
 
       if (!response.ok) {
+        console.info("[kakao:callback] profile fetch failed", {
+          userId,
+          status: response.status,
+        });
         return false;
       }
 
       const data = (await response.json()) as {
         profile?: {
           accountType?: string;
-          name?: string;
-          phone?: string;
           address1?: string;
+          kakaoShippingZoneNumber?: string;
         };
       };
 
       const profile = data.profile;
+      console.info("[kakao:callback] profile response", {
+        userId,
+        profile,
+      });
       if (!profile || profile.accountType !== "KAKAO") {
         return false;
       }
 
-      return !profile.name?.trim() || !profile.phone?.trim() || !profile.address1?.trim();
+      return !profile.address1?.trim() || !profile.kakaoShippingZoneNumber?.trim();
     }
 
     void runLogin();
@@ -157,6 +219,28 @@ function KakaoCallbackContent() {
           <>
             <h1 className="font-display text-2xl text-amber-800">카카오 로그인 실패</h1>
             <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{errorMessage}</p>
+            {shouldShowSupportContact && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left text-xs text-amber-900">
+                <p className="font-semibold">고객센터 문의</p>
+                <p className="mt-1">
+                  판매자 연락처: {supportPhone || "확인 중"}
+                </p>
+                <p className="mt-1 break-all">
+                  카카오 채널 문의 URL: {supportKakaoChannelUrl ? (
+                    <a
+                      href={supportKakaoChannelUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold underline"
+                    >
+                      {supportKakaoChannelUrl}
+                    </a>
+                  ) : (
+                    "확인 중"
+                  )}
+                </p>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => router.replace(callbackUrl)}
