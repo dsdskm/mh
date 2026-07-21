@@ -229,7 +229,6 @@ export default function Home() {
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [purchaseType, setPurchaseType] = useState<"member" | "guest" | null>(null);
   const [savedMemberPhone, setSavedMemberPhone] = useState("");
-  const [headerProfileThumbnailUrl, setHeaderProfileThumbnailUrl] = useState("");
   const [copyDone, setCopyDone] = useState(false);
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
   const [logoutSubmitting, setLogoutSubmitting] = useState(false);
@@ -283,44 +282,6 @@ export default function Home() {
       setSavedMemberPhone(savedPhone);
     }
   }, []);
-
-  useEffect(() => {
-    if (status !== "authenticated") {
-      setHeaderProfileThumbnailUrl("");
-      return;
-    }
-
-    const userId = session?.user?.email?.trim() ?? "";
-    if (!userId) {
-      setHeaderProfileThumbnailUrl("");
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadHeaderProfileThumbnail() {
-      try {
-        const profileData = await getProfileApi(userId);
-        if (cancelled) {
-          return;
-        }
-
-        setHeaderProfileThumbnailUrl(
-          profileData.profile.kakaoThumbnailImageUrl || profileData.profile.kakaoProfileImageUrl || "",
-        );
-      } catch {
-        if (!cancelled) {
-          setHeaderProfileThumbnailUrl("");
-        }
-      }
-    }
-
-    void loadHeaderProfileThumbnail();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.user?.email, status]);
 
   useEffect(() => {
     if (!guestOrderCodeSent || guestOrderPhoneVerified || !guestOrderCodeExpiresAt) {
@@ -1047,7 +1008,9 @@ export default function Home() {
         });
       }
 
-      await signOut({ callbackUrl: window.location.origin });
+      await signOut({ redirect: false });
+      router.refresh();
+      window.location.reload();
     } finally {
       setLogoutSubmitting(false);
       setShowLogoutConfirmModal(false);
@@ -1066,10 +1029,15 @@ export default function Home() {
 
     setLoadingDefaultShipping(true);
     try {
-      const [profileData, shippingData] = await Promise.all([getProfileApi(userId), getShippingAddressesApi(userId)]);
+      const profileData = await getProfileApi(userId);
+
+      const storedMemberPhone =
+        typeof window !== "undefined" ? localStorage.getItem(MEMBER_PHONE_KEY)?.trim() || "" : "";
+      const resolvedPhone =
+        profileData.profile.phone?.trim() || savedMemberPhone.trim() || storedMemberPhone;
 
       setDepositorName(profileData.profile.name || session?.user?.name || "");
-      setPhone(profileData.profile.phone || savedMemberPhone);
+      setPhone(resolvedPhone);
 
       // 회원 쿠폰/적립금 로드
       const accountId = profileData.profile.id;
@@ -1085,18 +1053,26 @@ export default function Home() {
         setMileageBalance(0);
       }
 
-      setMemberShippingAddresses(shippingData.shippingAddresses);
+      try {
+        const shippingData = await getShippingAddressesApi(userId);
+        setMemberShippingAddresses(shippingData.shippingAddresses);
 
-      const selected =
-        shippingData.shippingAddresses.find((item) => item.isDefault) ?? shippingData.shippingAddresses[0];
-      setSelectedShippingAddressId(selected?.id ?? null);
+        const selected =
+          shippingData.shippingAddresses.find((item) => item.isDefault) ?? shippingData.shippingAddresses[0];
+        setSelectedShippingAddressId(selected?.id ?? null);
 
-      const defaultAddress = [selected?.address1, selected?.address2].filter(Boolean).join(" ").trim();
-      const profileAddress = [profileData.profile.address1, profileData.profile.address2]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-      setShippingAddress(defaultAddress || profileAddress);
+        const defaultAddress = [selected?.address1, selected?.address2].filter(Boolean).join(" ").trim();
+        const profileAddress = [profileData.profile.address1, profileData.profile.address2]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        setShippingAddress(defaultAddress || profileAddress);
+      } catch {
+        setMemberShippingAddresses([]);
+        setSelectedShippingAddressId(null);
+        setShippingAddress([profileData.profile.address1, profileData.profile.address2].filter(Boolean).join(" ").trim());
+      }
+
       setMemberPostalCode(profileData.profile.kakaoShippingZoneNumber ?? "");
     } catch {
       setMemberShippingAddresses([]);
@@ -1161,18 +1137,9 @@ export default function Home() {
             {isLoggedIn && (
               <>
                 <div className="flex items-center gap-2">
-                  {headerProfileThumbnailUrl ? (
-                    <img
-                      src={headerProfileThumbnailUrl}
-                      alt="프로필 썸네일"
-                      className="h-8 w-8 rounded-full border border-amber-200 object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-[10px] font-bold text-amber-700">
-                      회원
-                    </div>
-                  )}
-                  <p className="text-xs font-semibold text-amber-900">{session?.user?.name ?? "회원"}님</p>
+                  <p className="whitespace-nowrap text-xs font-semibold text-amber-900">
+                    {session?.user?.name ?? "회원"}님
+                  </p>
                 </div>
               </>
             )}
@@ -1264,7 +1231,7 @@ export default function Home() {
 
         <section className="space-y-4 rounded-3xl border border-lime-200 bg-white p-5 shadow-lg">
           <div className="space-y-2">
-            <h3 className="text-base font-bold text-stone-900">상점 이미지</h3>
+            <h3 className="text-base font-bold text-stone-900">이미지</h3>
             {storeConfig.storyImages.length > 0 ? (
               <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
                 {storeConfig.storyImages.map((item, index) => (
@@ -1274,7 +1241,7 @@ export default function Home() {
                   >
                     <Image
                       src={item.imageUrl}
-                      alt={item.title || `상점 이미지 ${index + 1}`}
+                      alt={item.title || `이미지 ${index + 1}`}
                       width={1200}
                       height={800}
                       className="h-36 w-full object-cover sm:h-44"
@@ -2174,7 +2141,9 @@ export default function Home() {
 
             {isLoggedIn ? (
               <div className="mt-3">
-                <p className="text-sm font-semibold text-amber-900">{session?.user?.name ?? "회원"}님</p>
+                <p className="max-w-[180px] truncate whitespace-nowrap text-sm font-semibold text-amber-900">
+                  {session?.user?.name ?? "회원"}님
+                </p>
               </div>
             ) : (
               <button

@@ -10,6 +10,7 @@ import { CouponTemplateEntity } from '../../../database/entities/coupon-template
 import { MessagesService } from '../../messages/services/messages.service';
 import { KAKAO_TEMPLATE_IDS, SOLAPI_PF_ID } from '../../messages/services/kakao-template.constants';
 import { ConfigService } from '../../config/services/config.service';
+import { postKakaoAdminUserAction } from '../../../shared/kakao/kakao-admin.client';
 import {
   CreateLocalAccountInput,
   LocalAccountProfile,
@@ -1165,7 +1166,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async withdraw(input: { userId: string; password?: string; reason?: string }) {
     const userId = input.userId.trim().toLowerCase();
-    const reason = input.reason?.trim();
     const account = await this.findMemberAccountByUserId(userId);
 
     if (!account) {
@@ -1187,11 +1187,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       await this.unlinkKakaoAccount(account.providerUserId ?? null, account.userId ?? userId);
     }
 
-    account.status = 'withdraw';
-    account.statusReason = reason || '사용자 탈퇴 요청';
-    account.isActive = false;
-
-    await this.accountRepository.save(account);
+    const deleted = await this.accountRepository.delete({ id: account.id });
+    if ((deleted.affected ?? 0) < 1) {
+      throw new BadRequestException('탈퇴 처리 중 계정 삭제에 실패했습니다. 다시 시도해주세요.');
+    }
 
     return {
       ok: true,
@@ -1593,31 +1592,19 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const unlinkBody = new URLSearchParams({
-      target_id_type: 'user_id',
-      target_id: providerUserId,
+    const unlinkResult = await postKakaoAdminUserAction({
+      action: 'unlink',
+      providerUserId,
+      kakaoAdminKey,
     });
 
-    const unlinkResponse = await fetch('https://kapi.kakao.com/v1/user/unlink', {
-      method: 'POST',
-      headers: {
-        Authorization: `KakaoAK ${kakaoAdminKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
-      },
-      body: unlinkBody.toString(),
-    });
+    const unlinkData = unlinkResult.data;
 
-    const unlinkData = (await unlinkResponse.json().catch(() => ({}))) as {
-      id?: number;
-      msg?: string;
-      code?: number;
-    };
-
-    if (!unlinkResponse.ok) {
+    if (!unlinkResult.ok) {
       console.error('[auth:kakao] unlink failed', {
         userId,
         providerUserId,
-        status: unlinkResponse.status,
+        status: unlinkResult.status,
         unlinkData,
       });
       throw new BadRequestException('카카오 연동 해제에 실패했습니다. 잠시 후 다시 시도해주세요.');
@@ -1647,31 +1634,19 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const logoutBody = new URLSearchParams({
-      target_id_type: 'user_id',
-      target_id: providerUserId,
+    const logoutResult = await postKakaoAdminUserAction({
+      action: 'logout',
+      providerUserId,
+      kakaoAdminKey,
     });
 
-    const logoutResponse = await fetch('https://kapi.kakao.com/v1/user/logout', {
-      method: 'POST',
-      headers: {
-        Authorization: `KakaoAK ${kakaoAdminKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
-      },
-      body: logoutBody.toString(),
-    });
+    const logoutData = logoutResult.data;
 
-    const logoutData = (await logoutResponse.json().catch(() => ({}))) as {
-      id?: number;
-      msg?: string;
-      code?: number;
-    };
-
-    if (!logoutResponse.ok) {
+    if (!logoutResult.ok) {
       console.error('[auth:kakao] logout failed', {
         userId,
         providerUserId,
-        status: logoutResponse.status,
+        status: logoutResult.status,
         logoutData,
       });
       return;

@@ -7,6 +7,7 @@ import {
 import { AccountRepository } from '../repositories/account.repository';
 import type { AdminUserCreateInput, AdminUserUpdateInput, SharedUser } from '@repo/shared-types/user';
 import type { AccountEntity } from '../../../database/entities/account.entity';
+import { postKakaoAdminUserAction } from '../../../shared/kakao/kakao-admin.client';
 
 @Injectable()
 export class AccountsService {
@@ -113,33 +114,21 @@ export class AccountsService {
       throw new InternalServerErrorException('KAKAO_ADMIN_KEY가 없어 카카오 탈퇴를 진행할 수 없습니다.');
     }
 
-    const unlinkBody = new URLSearchParams({
-      target_id_type: 'user_id',
-      target_id: providerUserId,
+    const unlinkResult = await postKakaoAdminUserAction({
+      action: 'unlink',
+      providerUserId,
+      kakaoAdminKey,
     });
 
-    const unlinkResponse = await fetch('https://kapi.kakao.com/v1/user/unlink', {
-      method: 'POST',
-      headers: {
-        Authorization: `KakaoAK ${kakaoAdminKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
-      },
-      body: unlinkBody.toString(),
-    });
+    const unlinkData = unlinkResult.data;
 
-    const unlinkData = (await unlinkResponse.json().catch(() => ({}))) as {
-      id?: number;
-      msg?: string;
-      code?: number;
-    };
-
-    if (!unlinkResponse.ok) {
-      if (this.isAlreadyUnlinkedKakaoError(unlinkResponse.status, unlinkData)) {
+    if (!unlinkResult.ok) {
+      if (this.isAlreadyUnlinkedKakaoError(unlinkResult.status, unlinkData)) {
         console.info('[accounts] kakao already unlinked, continue delete', {
           accountId: account.id,
           userId: account.userId,
           providerUserId,
-          status: unlinkResponse.status,
+          status: unlinkResult.status,
           unlinkData,
         });
         return;
@@ -149,7 +138,7 @@ export class AccountsService {
         accountId: account.id,
         userId: account.userId,
         providerUserId,
-        status: unlinkResponse.status,
+        status: unlinkResult.status,
         unlinkData,
       });
 

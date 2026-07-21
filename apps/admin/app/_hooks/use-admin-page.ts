@@ -884,7 +884,7 @@ export function useAdminPage(initialTab: AdminTab): AdminPageState {
       return [
         ...prev,
         {
-          title: title?.trim() || `상점 이미지 ${nextIndex}`,
+          title: title?.trim() || `이미지 ${nextIndex}`,
           imageUrl,
         },
       ];

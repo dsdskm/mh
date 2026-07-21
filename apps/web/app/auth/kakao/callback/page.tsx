@@ -2,39 +2,11 @@
 
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ||
   (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "");
-
-type KakaoStatePayload = {
-  callbackUrl?: string;
-};
-
-function normalizeCallbackUrl(rawValue: string | undefined): string {
-  if (!rawValue || !rawValue.startsWith("/") || rawValue.startsWith("//")) {
-    return "/";
-  }
-
-  return rawValue;
-}
-
-function decodeState(stateParam: string | null): string {
-  if (!stateParam) {
-    return "/";
-  }
-
-  try {
-    const padded = stateParam + "=".repeat((4 - (stateParam.length % 4)) % 4);
-    const base64 = padded.replace(/-/g, "+").replace(/_/g, "/");
-    const decoded = atob(base64);
-    const payload = JSON.parse(decoded) as KakaoStatePayload;
-    return normalizeCallbackUrl(payload.callbackUrl);
-  } catch {
-    return "/";
-  }
-}
 
 function KakaoCallbackContent() {
   const router = useRouter();
@@ -43,7 +15,6 @@ function KakaoCallbackContent() {
   const code = searchParams.get("code");
   const kakaoError = searchParams.get("error");
   const kakaoErrorDescription = searchParams.get("error_description");
-  const callbackUrl = useMemo(() => decodeState(searchParams.get("state")), [searchParams]);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [supportPhone, setSupportPhone] = useState("");
@@ -136,12 +107,12 @@ function KakaoCallbackContent() {
           needOnboarding,
         });
         if (needOnboarding) {
-          router.replace(`/auth/kakao/welcome?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+          router.replace("/auth/kakao/welcome?callbackUrl=%2F");
           return;
         }
       }
 
-      router.replace(callbackUrl);
+      router.replace("/");
     }
 
     async function resolveSessionUserId(): Promise<string | null> {
@@ -203,7 +174,7 @@ function KakaoCallbackContent() {
     return () => {
       cancelled = true;
     };
-  }, [callbackUrl, code, kakaoError, kakaoErrorDescription, router]);
+  }, [code, kakaoError, kakaoErrorDescription, router]);
 
   return (
     <main className="mx-auto flex min-h-[60vh] w-full max-w-md items-center justify-center px-4 py-10">
@@ -243,7 +214,7 @@ function KakaoCallbackContent() {
             )}
             <button
               type="button"
-              onClick={() => router.replace(callbackUrl)}
+              onClick={() => router.replace("/")}
               className="mt-4 w-full rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-700"
             >
               돌아가기

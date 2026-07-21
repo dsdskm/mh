@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { FormEvent, useEffect, useState } from "react";
 import { formatCurrency, formatPhone } from "../_lib/format";
-import { getProfileApi } from "../account/api/account.api";
 import { PhoneContactMessage } from "../_components/phone-verification-box";
 import {
   ORDER_STATUS,
@@ -43,6 +42,10 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || (process.env.NO
 const GUEST_LOOKUP_PHONE_KEY = "cornmarket:guest-lookup-phone";
 const GUEST_LOOKUP_TOKEN_KEY = "cornmarket:guest-lookup-token";
 const STATUS_FLOW: Order["status"][] = ORDER_STATUS_FLOW;
+
+function logOrdersDebug(event: string, payload?: unknown) {
+  console.info(`[orders:web] ${event}`, payload ?? {});
+}
 
 function formatCountdown(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60)
@@ -135,6 +138,12 @@ export default function OrdersPage() {
   const [sellerPhone, setSellerPhone] = useState("");
 
   useEffect(() => {
+    logOrdersDebug("page-mounted", {
+      apiBase: API_BASE,
+      origin: typeof window !== "undefined" ? window.location.origin : "",
+      path: typeof window !== "undefined" ? window.location.pathname : "",
+    });
+
     fetch(`${API_BASE}/api/config`, { cache: "no-store" })
       .then((res) => res.ok ? res.json() : {})
       .then((data: { sellerPhone?: string }) => setSellerPhone(data.sellerPhone?.trim() ?? ""))
@@ -204,21 +213,43 @@ export default function OrdersPage() {
     return () => window.clearInterval(timer);
   }, [guestCodeSent, guestLookupToken, guestCodeExpiresAt]);
 
-  async function loadMemberOrders(phone: string) {
+  async function loadMemberOrders(userId: string) {
     setMemberLoading(true);
     setMemberError(null);
     setMemberOrders([]);
 
     try {
-      const response = await fetch(`${API_BASE}/api/orders?phone=${encodeURIComponent(phone)}`);
+      const params = new URLSearchParams({ userId: userId.trim().toLowerCase() });
+      const query = params.toString();
+      const requestUrl = `${API_BASE}/api/orders${query ? `?${query}` : ""}`;
+      logOrdersDebug("member-orders-request", {
+        requestUrl,
+        userId,
+      });
+
+      const response = await fetch(requestUrl);
 
       if (!response.ok) {
         const body = (await response.json()) as { message?: string };
+        logOrdersDebug("member-orders-response-error", {
+          status: response.status,
+          body,
+        });
         throw new Error(body.message ?? "주문 내역 조회에 실패했습니다.");
       }
 
-      setMemberOrders((await response.json()) as Order[]);
+      const orders = (await response.json()) as Order[];
+      logOrdersDebug("member-orders-response-ok", {
+        status: response.status,
+        count: orders.length,
+        orderIds: orders.slice(0, 5).map((order) => order.id),
+      });
+      setMemberOrders(orders);
     } catch (fetchError) {
+      logOrdersDebug("member-orders-request-failed", {
+        message: fetchError instanceof Error ? fetchError.message : String(fetchError),
+        userId,
+      });
       setMemberError(fetchError instanceof Error ? fetchError.message : "조회 실패");
     } finally {
       setMemberLoading(false);
@@ -231,16 +262,13 @@ export default function OrdersPage() {
     setMemberOrders([]);
 
     try {
-      const profileData = await getProfileApi(userId);
-      const phone = profileData.profile.phone?.trim();
-
-      if (!phone) {
-        setMemberOrders([]);
-        return;
-      }
-
-      await loadMemberOrders(phone);
+      logOrdersDebug("member-profile-request", { userId });
+      await loadMemberOrders(userId);
     } catch (fetchError) {
+      logOrdersDebug("member-profile-request-failed", {
+        message: fetchError instanceof Error ? fetchError.message : String(fetchError),
+        userId,
+      });
       setMemberError(fetchError instanceof Error ? fetchError.message : "조회 실패");
       setMemberLoading(false);
     }
@@ -388,6 +416,7 @@ export default function OrdersPage() {
     setCancelError(null);
 
     try {
+      let userIdForCancel: string | undefined;
       let phoneForCancel = "";
       let lookupTokenForCancel: string | undefined;
 
@@ -397,14 +426,13 @@ export default function OrdersPage() {
           throw new Error("로그인 정보를 확인할 수 없습니다.");
         }
 
-        const profileData = await getProfileApi(userId);
-        phoneForCancel = profileData.profile.phone?.trim() ?? "";
+        userIdForCancel = userId.trim().toLowerCase();
       } else {
         phoneForCancel = guestPhone.replace(/\D/g, "");
         lookupTokenForCancel = guestLookupToken ?? undefined;
       }
 
-      if (!phoneForCancel) {
+      if (!userIdForCancel && !phoneForCancel) {
         throw new Error("주문자 연락처를 확인할 수 없습니다.");
       }
 
@@ -414,6 +442,7 @@ export default function OrdersPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          userId: userIdForCancel,
           phone: phoneForCancel,
           reason: normalizedReason,
           lookupToken: lookupTokenForCancel,
@@ -457,7 +486,7 @@ export default function OrdersPage() {
       <section className="rounded-3xl border border-amber-200 bg-white p-5 shadow">
         <h1 className="font-display text-3xl text-amber-800">주문내역 조회</h1>
         {isLoggedIn ? (
-          <p className="mt-1 text-sm text-stone-600">로그인된 회원 주문내역을 바로 보여드려요.</p>
+          <></>
         ) : (
           <p className="mt-1 text-sm text-stone-600">비회원은 휴대폰 인증 후 주문내역을 확인할 수 있어요.</p>
         )}

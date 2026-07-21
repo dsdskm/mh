@@ -13,6 +13,7 @@ import type { DaumPostcodeData, DaumPostcodeWindow } from "../../types/daum-post
 
 const DAUM_POSTCODE_SCRIPT_URL =
   "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
+const POST_WITHDRAW_REDIRECT_FLAG = "cornmarket:post-withdraw-redirect";
 
 declare global {
   interface Window {
@@ -37,6 +38,7 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawingSignOut, setWithdrawingSignOut] = useState(false);
   const [showWithdrawConfirmModal, setShowWithdrawConfirmModal] = useState(false);
   const [postcodeReady, setPostcodeReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +67,18 @@ export default function AccountPage() {
 
   useEffect(() => {
     if (status === "unauthenticated") {
+      const shouldRedirectHome =
+        withdrawingSignOut ||
+        (typeof window !== "undefined" &&
+          window.sessionStorage.getItem(POST_WITHDRAW_REDIRECT_FLAG) === "1");
+
+      if (shouldRedirectHome) {
+        if (typeof window !== "undefined") {
+          window.sessionStorage.removeItem(POST_WITHDRAW_REDIRECT_FLAG);
+        }
+        router.replace("/");
+        return;
+      }
       router.replace("/login?callback=/account");
       return;
     }
@@ -96,7 +110,7 @@ export default function AccountPage() {
     }
 
     void loadProfile();
-  }, [router, status, userId]);
+  }, [router, status, userId, withdrawingSignOut]);
 
   async function submitUpdate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -189,7 +203,12 @@ export default function AccountPage() {
       });
 
       setShowWithdrawConfirmModal(false);
-      await signOut({ callbackUrl: window.location.origin });
+      setWithdrawingSignOut(true);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(POST_WITHDRAW_REDIRECT_FLAG, "1");
+      }
+      await signOut({ redirect: false });
+      window.location.replace("/");
     } catch (withdrawError) {
       setError(withdrawError instanceof Error ? withdrawError.message : "탈퇴 실패");
     } finally {

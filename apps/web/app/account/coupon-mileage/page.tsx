@@ -75,8 +75,6 @@ export default function CouponMileagePage() {
     <main className="mx-auto min-h-screen w-full max-w-3xl space-y-4 px-4 py-6">
       <div className="flex items-center gap-3 text-sm font-semibold text-amber-700">
         <Link href="/">← 홈으로</Link>
-        <span className="text-stone-300">|</span>
-        <Link href="/account">정보수정/탈퇴</Link>
       </div>
 
       {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}

@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import kakaoLoginButton from "@repo/ui/assets/kakao_login_medium_narrow.png";
 
 type KakaoSdk = {
@@ -73,28 +73,16 @@ function LoginPageFallback() {
 
 function LoginPageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { status } = useSession();
   const [loginSubmitting, setLoginSubmitting] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [shopName, setShopName] = useState("옥수수 가게");
 
-  const callbackUrl = useMemo(() => {
-    const raw = searchParams.get("callback")?.trim();
-    if (!raw) {
-      return "/";
-    }
-    if (!raw.startsWith("/")) {
-      return "/";
-    }
-    return raw;
-  }, [searchParams]);
-
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace(callbackUrl);
+      router.replace("/");
     }
-  }, [status, router, callbackUrl]);
+  }, [status, router]);
 
   useEffect(() => {
     let mounted = true;
@@ -158,7 +146,7 @@ function LoginPageContent() {
       return;
     }
 
-    const startUrl = `/api/auth/kakao/start?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+    const startUrl = `/api/auth/kakao/start?callbackUrl=${encodeURIComponent("/")}`;
     window.location.assign(startUrl);
   }
 

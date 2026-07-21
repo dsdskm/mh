@@ -7,7 +7,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '../../config/services/config.service';
-import { DataSource, EntityManager, In, LessThan, Like, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, LessThan, QueryFailedError, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { OrderEntity } from '../../../database/entities/order.entity';
 import { OrderItemEntity } from '../../../database/entities/order-item.entity';
@@ -595,17 +595,45 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     return { ok: true };
   }
 
-  async getOrders(phone?: string): Promise<Order[]> {
-    const orders = phone
-      ? await this.orderRepository.find({
-          where: { phone: Like(`%${phone}%`) },
-          relations: { items: true },
-          order: { createdAt: 'DESC' },
-        })
-      : await this.orderRepository.find({
-          relations: { items: true },
-          order: { createdAt: 'DESC' },
-        });
+  async getOrdersByUserId(userId: string): Promise<Order[]> {
+    const normalizedUserId = userId.trim().toLowerCase();
+    const account = await this.accountRepository.findOne({
+      where: { userId: normalizedUserId },
+    });
+
+    if (!account) {
+      this.logger.log('[orders] getOrdersByUserId account-not-found', {
+        userId: normalizedUserId,
+      });
+      return [];
+    }
+
+    this.logger.log('[orders] getOrdersByUserId start', {
+      userId: normalizedUserId,
+      accountId: account.id,
+    });
+
+    const orders = await this.orderRepository.find({
+      where: { accountId: account.id },
+      relations: { items: true },
+      order: { createdAt: 'DESC' },
+    });
+
+    this.logger.log('[orders] getOrdersByUserId result', {
+      userId: normalizedUserId,
+      accountId: account.id,
+      count: orders.length,
+      sampleOrderIds: orders.slice(0, 5).map((order) => order.id),
+    });
+
+    return orders.map((order) => this.toOrder(order));
+  }
+
+  async getOrders(): Promise<Order[]> {
+    const orders = await this.orderRepository.find({
+      relations: { items: true },
+      order: { createdAt: 'DESC' },
+    });
 
     return orders.map((order) => this.toOrder(order));
   }
@@ -739,15 +767,42 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
   async cancelOrderByCustomer(input: {
     id: number;
-    phone: string;
+    userId?: string;
+    phone?: string;
     reason: string;
     lookupToken?: string;
   }): Promise<Order> {
-    const normalizedPhone = this.normalizePhone(input.phone);
-    this.assertPhoneFormat(normalizedPhone);
+    const normalizedUserId = input.userId?.trim().toLowerCase();
+
+    if (normalizedUserId && !/^[a-z0-9._-]{4,30}$/.test(normalizedUserId)) {
+      throw new BadRequestException('userId 형식이 올바르지 않습니다.');
+    }
+
+    const normalizedPhone = input.phone?.trim()
+      ? this.normalizePhone(input.phone)
+      : undefined;
+
+    if (!normalizedUserId && !normalizedPhone) {
+      throw new BadRequestException('userId 또는 전화번호가 필요합니다.');
+    }
+
+    if (normalizedPhone) {
+      this.assertPhoneFormat(normalizedPhone);
+    }
 
     if (input.lookupToken?.trim()) {
+      if (!normalizedPhone) {
+        throw new BadRequestException('비회원 취소에는 전화번호가 필요합니다.');
+      }
       this.assertGuestLookupVerified(normalizedPhone, input.lookupToken.trim());
+    }
+
+    const memberAccount = normalizedUserId
+      ? await this.accountRepository.findOne({ where: { userId: normalizedUserId } })
+        : undefined;
+
+    if (normalizedUserId && !memberAccount) {
+      throw new BadRequestException('주문자 계정을 찾을 수 없습니다.');
     }
 
     const cancelReason = input.reason.trim();
@@ -773,7 +828,11 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       const currentStatus = this.normalizeOrderStatus(order.status);
       previousStatus = currentStatus;
 
-      if (this.normalizePhone(order.phone) !== normalizedPhone) {
+      if (memberAccount) {
+        if (order.accountId !== memberAccount.id) {
+          throw new BadRequestException('주문자 계정이 일치하지 않습니다.');
+        }
+      } else if (normalizedPhone && this.normalizePhone(order.phone) !== normalizedPhone) {
         throw new BadRequestException('주문자 연락처가 일치하지 않습니다.');
       }
 
@@ -904,7 +963,14 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
     this.assertGuestLookupVerified(phone, lookupToken.trim());
 
-    return this.getOrders(phone);
+    const orders = await this.orderRepository.find({
+      relations: { items: true },
+      order: { createdAt: 'DESC' },
+    });
+
+    return orders
+      .filter((order) => this.normalizePhone(order.phone) === phone)
+      .map((order) => this.toOrder(order));
   }
 
   private assertGuestLookupVerified(phone: string, lookupToken: string): void {

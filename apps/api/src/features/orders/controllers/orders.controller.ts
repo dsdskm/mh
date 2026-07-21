@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Logger,
   Param,
   Patch,
   Post,
@@ -41,6 +42,7 @@ type GuestLookupVerifyBody = {
 };
 
 type CancelOrderBody = {
+  userId?: string;
   phone?: string;
   reason?: string;
   lookupToken?: string;
@@ -75,6 +77,8 @@ type BackofficeUpdateOrderBody = {
 
 @Controller('api')
 export class OrdersController {
+  private readonly logger = new Logger(OrdersController.name);
+
   constructor(private readonly ordersService: OrdersService) {}
 
   @Post('orders')
@@ -132,8 +136,23 @@ export class OrdersController {
   }
 
   @Get('orders')
-  getOrders(@Query('phone') phone?: string) {
-    return this.ordersService.getOrders(phone);
+  getOrders(
+    @Query('userId') userIdRaw?: string,
+  ) {
+    const userId =
+      typeof userIdRaw === 'string' && userIdRaw.trim()
+        ? userIdRaw.trim().toLowerCase()
+        : undefined;
+
+    if (!userId) {
+      throw new BadRequestException('userId가 필요합니다.');
+    }
+
+    this.logger.log('[orders] getOrders request', {
+      userId,
+    });
+
+    return this.ordersService.getOrdersByUserId(userId);
   }
 
   @Post('orders/lookup/request')
@@ -188,20 +207,22 @@ export class OrdersController {
     @Param('id') id: string,
     @Body() body: CancelOrderBody,
   ) {
+    const userId = body.userId?.trim().toLowerCase();
     const phone = body.phone?.trim();
     const reason = body.reason?.trim();
     const lookupToken = body.lookupToken?.trim();
-
-    if (!phone) {
-      throw new BadRequestException('전화번호를 입력해주세요.');
-    }
 
     if (!reason) {
       throw new BadRequestException('주문 취소 사유를 입력해주세요.');
     }
 
+    if (!userId && !phone) {
+      throw new BadRequestException('userId 또는 전화번호가 필요합니다.');
+    }
+
     return this.ordersService.cancelOrderByCustomer({
       id: this.parseOrderId(id),
+      userId,
       phone,
       reason,
       lookupToken,
