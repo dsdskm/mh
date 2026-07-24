@@ -4,7 +4,7 @@ import {
   Entity,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import type { CouponDiscountType } from '@repo/shared-types/coupon';
+import type { CouponDiscountType, CouponTemplateUsage } from '@repo/shared-types/coupon';
 
 @Entity({ name: 'coupon_templates' })
 export class CouponTemplateEntity {
@@ -13,6 +13,9 @@ export class CouponTemplateEntity {
 
   @Column({ type: 'varchar' })
   name!: string;
+
+  @Column({ type: 'varchar', default: 'general' })
+  usage!: CouponTemplateUsage;
 
   @Column({ type: 'varchar' })
   discountType!: CouponDiscountType;

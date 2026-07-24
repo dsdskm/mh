@@ -12,7 +12,7 @@ type Callbacks = {
   onReviews?: () => void;
 };
 
-const FALLBACK_POLL_MS = 15000;
+const POLL_INTERVAL_MS = 15000;
 
 /**
  * Firestore admin-triggers 컬렉션을 구독하여 변경 감지 시 콜백을 호출합니다.
@@ -23,27 +23,26 @@ export function useFirestoreTriggers(callbacks: Callbacks) {
   callbacksRef.current = callbacks;
 
   useEffect(() => {
-    let fallbackTimer: ReturnType<typeof setInterval> | null = null;
+    let pollingTimer: ReturnType<typeof setInterval> | null = null;
 
-    const startFallbackPolling = () => {
-      if (fallbackTimer) {
+    const startPolling = () => {
+      if (pollingTimer) {
         return;
       }
 
-      fallbackTimer = setInterval(() => {
+      pollingTimer = setInterval(() => {
         callbacksRef.current.onOrders?.();
         callbacksRef.current.onInquiries?.();
         callbacksRef.current.onReviews?.();
-      }, FALLBACK_POLL_MS);
+      }, POLL_INTERVAL_MS);
     };
 
     const db = getFirestoreClient();
     if (!db) {
-      // Firebase 설정 누락/초기화 실패 시 폴링으로 최신 상태를 주기적으로 가져옵니다.
-      startFallbackPolling();
+      startPolling();
       return () => {
-        if (fallbackTimer) {
-          clearInterval(fallbackTimer);
+        if (pollingTimer) {
+          clearInterval(pollingTimer);
         }
       };
     }
@@ -70,8 +69,7 @@ export function useFirestoreTriggers(callbacks: Callbacks) {
           if (type === "reviews") callbacksRef.current.onReviews?.();
         },
         () => {
-          // 권한/연결 이슈로 snapshot 구독 실패 시 폴링으로 대체
-          startFallbackPolling();
+          startPolling();
         },
       );
 
@@ -80,8 +78,8 @@ export function useFirestoreTriggers(callbacks: Callbacks) {
 
     return () => {
       for (const unsub of unsubscribes) unsub();
-      if (fallbackTimer) {
-        clearInterval(fallbackTimer);
+      if (pollingTimer) {
+        clearInterval(pollingTimer);
       }
     };
   }, []);

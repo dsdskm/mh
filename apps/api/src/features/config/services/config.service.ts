@@ -200,49 +200,34 @@ export class ConfigService implements OnModuleInit {
 
   private buildInitialSetting(): Partial<AppSettingEntity> {
     return {
-      shopName: process.env.SHOP_NAME ?? '',
-      sellerName: process.env.SELLER_NAME ?? '',
-      sellerPhone: process.env.SELLER_PHONE ?? '',
-      trusteeBusinessName: process.env.TRUSTEE_BUSINESS_NAME ?? '',
-      trusteeBusinessNumber: process.env.TRUSTEE_BUSINESS_NUMBER ?? '',
-      trusteeRepresentative: process.env.TRUSTEE_REPRESENTATIVE ?? '',
-      trusteePhone: process.env.TRUSTEE_PHONE ?? '',
-      origin: process.env.SELLER_ORIGIN ?? '',
-      bankName: process.env.BANK_NAME ?? '',
-      accountNumber: process.env.BANK_ACCOUNT ?? '',
-      accountHolder: process.env.BANK_HOLDER ?? '',
-      transferNote: process.env.TRANSFER_NOTE ?? '',
-      detailDescription: process.env.DETAIL_DESCRIPTION ?? '',
-      shippingRefundPolicy:
-        process.env.SHIPPING_REFUND_POLICY ??
-        [
-          '배송: 평일 오전 결제 확인 건은 당일 출고, 이후 건은 익일 출고합니다.',
-          '배송비: 기본 3,500원이며 도서산간 지역은 추가 비용이 발생할 수 있습니다.',
-          '취소: 상품 준비 전에는 취소 가능하며, 준비중 이후에는 고객센터 문의가 필요합니다.',
-          '환불: 신선식품 특성상 단순 변심 환불은 어렵고, 오배송/하자 시 사진 첨부 후 처리합니다.',
-          '문의: 문의하기 페이지를 통해 주문번호/연락처와 함께 접수해주세요.',
-        ].join('\n'),
-      storyImages: this.parseJsonEnv<StoreStoryImage[]>('STORY_IMAGES', []),
-      videoUrl: process.env.PRODUCT_VIDEO_URL ?? '',
-      kakaoChannelUrl: this.normalizeTermsUrl(process.env.KAKAO_CHANNEL_URL ?? ''),
-      recipes: this.parseJsonEnv<StoreRecipe[]>('RECIPES', []),
-      paymentDueDays: Number(process.env.PAYMENT_DUE_DAYS ?? 0) || 0,
-      deliveryFee: Number(process.env.DELIVERY_FEE ?? 0) || 0,
-      chargeDeliveryFee: process.env.CHARGE_DELIVERY_FEE === 'true',
-      memberBonusProductId:
-        Number(process.env.MEMBER_BONUS_PRODUCT_ID ?? 0) || null,
+      shopName: '',
+      sellerName: '',
+      sellerPhone: '',
+      trusteeBusinessName: '',
+      trusteeBusinessNumber: '',
+      trusteeRepresentative: '',
+      trusteePhone: '',
+      origin: '',
+      bankName: '',
+      accountNumber: '',
+      accountHolder: '',
+      transferNote: '',
+      detailDescription: '',
+      shippingRefundPolicy: '',
+      storyImages: [],
+      videoUrl: '',
+      kakaoChannelUrl: '',
+      recipes: [],
+      paymentDueDays: 0,
+      deliveryFee: 0,
+      chargeDeliveryFee: false,
+      memberBonusProductId: null,
       signupCouponTemplateId: null,
-      mileageEarnRate: Number(process.env.MILEAGE_EARN_RATE ?? 0) || 0,
-      businessStatus: (process.env.BUSINESS_STATUS ?? 'open') as
-        | 'open'
-        | 'standby'
-        | 'closed',
-      businessStatusOpenText:
-        process.env.BUSINESS_STATUS_OPEN_TEXT ?? '현재 정상 영업 중입니다.',
-      businessStatusStandbyText:
-        process.env.BUSINESS_STATUS_STANDBY_TEXT ?? '영업 준비 중입니다. 잠시 후 다시 방문해주세요.',
-      businessStatusClosedText:
-        process.env.BUSINESS_STATUS_CLOSED_TEXT ?? '영업이 종료되었습니다. 다음 영업 시간에 주문 가능합니다.',
+      mileageEarnRate: 0,
+      businessStatus: 'open',
+      businessStatusOpenText: '현재 정상 영업 중입니다.',
+      businessStatusStandbyText: '영업 준비 중입니다. 잠시 후 다시 방문해주세요.',
+      businessStatusClosedText: '영업이 종료되었습니다. 다음 영업 시간에 주문 가능합니다.',
     };
   }
 
@@ -325,19 +310,6 @@ export class ConfigService implements OnModuleInit {
     }
 
     return 'open';
-  }
-
-  private parseJsonEnv<T>(name: string, fallback: T): T {
-    const raw = process.env[name];
-    if (!raw) {
-      return fallback;
-    }
-
-    try {
-      return JSON.parse(raw) as T;
-    } catch {
-      return fallback;
-    }
   }
 
   private normalizeTermsUrl(raw: string): string {

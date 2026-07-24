@@ -67,11 +67,7 @@ export class BackofficeAuthGuard implements CanActivate {
   }
 
   private hasValidDatabaseSyncSecret(request: Request): boolean {
-    const configuredSecret =
-      process.env.DATABASE_SYNC_SECRET?.trim() ||
-      (process.env.NODE_ENV === 'production'
-        ? ''
-        : 'dev-database-sync-secret-change-me');
+    const configuredSecret = process.env.ADMIN_AUTH_SECRET?.trim() || '';
     const providedHeader = request.headers['x-database-sync-secret'];
     const providedSecret = Array.isArray(providedHeader)
       ? providedHeader[0]?.trim()

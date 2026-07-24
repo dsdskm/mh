@@ -883,7 +883,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
     const isMasterCheckoutException =
       purpose === 'checkout' &&
-      existingAccount?.type?.toUpperCase() === 'MASTER';
+      (existingAccount?.userId ?? '').trim().toLowerCase() === 'master';
 
     if (existingAccount && !isMasterCheckoutException) {
       return {
@@ -1171,7 +1171,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     const storeConfig = await this.configService.getStoreConfig();
     const sellerReceiver = this.normalizePhone(storeConfig.sellerPhone ?? '');
     const masterAccount = await this.accountRepository.findOne({
-      where: { type: 'MASTER' },
+      where: { userId: 'master' },
     });
     const masterReceiver = this.normalizePhone(masterAccount?.phone ?? '');
 
@@ -1281,7 +1281,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
       const sellerReceiver = this.normalizePhone(storeConfig.sellerPhone ?? '');
       const masterAccount = await this.accountRepository.findOne({
-        where: { type: 'MASTER' },
+        where: { userId: 'master' },
       });
       const masterReceiver = this.normalizePhone(masterAccount?.phone ?? '');
 

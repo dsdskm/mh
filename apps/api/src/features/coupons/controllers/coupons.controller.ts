@@ -54,6 +54,7 @@ export class CouponsController {
 
     return this.couponsService.createTemplate({
       name: body.name ?? '',
+      usage: body.usage === 'signup' ? 'signup' : 'general',
       discountType: body.discountType,
       discountValue: Number(body.discountValue) || 0,
       minOrderAmount: body.minOrderAmount,

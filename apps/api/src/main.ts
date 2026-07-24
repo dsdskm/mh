@@ -65,25 +65,9 @@ function extractProjectIdFromBucket(bucketName?: string): string | null {
 
 function logGcpIntegrationStatus() {
   const bucketName = process.env.FIREBASE_STORAGE_BUCKET?.trim() || '';
-  const keyRaw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   const keyPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH?.trim() || '';
-  const base64Raw = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
-  const googleAppCredPath =
-    process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim() || '';
-
-  const credentialSource = keyRaw
-    ? 'FIREBASE_SERVICE_ACCOUNT_KEY'
-    : keyPath
-      ? 'FIREBASE_SERVICE_ACCOUNT_PATH'
-      : base64Raw
-        ? 'FIREBASE_SERVICE_ACCOUNT_BASE64'
-        : googleAppCredPath
-          ? 'GOOGLE_APPLICATION_CREDENTIALS'
-          : 'none';
-
-  const serviceAccountProjectId =
-    extractProjectIdFromServiceAccount(keyRaw) ??
-    extractProjectIdFromServiceAccount(decodeBase64Utf8(base64Raw));
+  const credentialSource = keyPath ? 'FIREBASE_SERVICE_ACCOUNT_PATH' : 'none';
+  const serviceAccountProjectId = null;
   const bucketProjectId = extractProjectIdFromBucket(bucketName);
   const projectIdStatus = serviceAccountProjectId
     ? serviceAccountProjectId === bucketProjectId
@@ -96,7 +80,7 @@ function logGcpIntegrationStatus() {
       : 'unknown';
 
   bootstrapLogger.log(
-    `[startup] firebase/gcp bucketSet=${Boolean(bucketName)} bucket=${bucketName || '-'} credentialSource=${credentialSource} keyPathSet=${Boolean(keyPath)} googleApplicationCredentialsSet=${Boolean(googleAppCredPath)} serviceAccountProjectId=${serviceAccountProjectId ?? '-'} bucketProjectId=${bucketProjectId ?? '-'} projectIdStatus=${projectIdStatus}`,
+    `[startup] firebase/gcp bucketSet=${Boolean(bucketName)} bucket=${bucketName || '-'} credentialSource=${credentialSource} keyPathSet=${Boolean(keyPath)} serviceAccountProjectId=${serviceAccountProjectId ?? '-'} bucketProjectId=${bucketProjectId ?? '-'} projectIdStatus=${projectIdStatus}`,
   );
 
   if (!bucketName || credentialSource === 'none') {

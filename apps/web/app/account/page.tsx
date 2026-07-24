@@ -14,6 +14,7 @@ import type { DaumPostcodeData, DaumPostcodeWindow } from "../../types/daum-post
 const DAUM_POSTCODE_SCRIPT_URL =
   "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
 const POST_WITHDRAW_REDIRECT_FLAG = "cornmarket:post-withdraw-redirect";
+const WITHDRAW_CONFIRM_TEXT = "탈퇴합니다.";
 
 declare global {
   interface Window {
@@ -28,11 +29,12 @@ export default function AccountPage() {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [postalCode, setPostalCode] = useState("");
   const [address1, setAddress1] = useState("");
   const [address2, setAddress2] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [withdrawPassword, setWithdrawPassword] = useState("");
+  const [withdrawConfirmText, setWithdrawConfirmText] = useState("");
   const [withdrawReason, setWithdrawReason] = useState("");
   const [withdrawReasonPreset, setWithdrawReasonPreset] = useState("");
   const [loading, setLoading] = useState(true);
@@ -46,6 +48,7 @@ export default function AccountPage() {
   const [accountType, setAccountType] = useState<"NORMAL" | "KAKAO" | "NAVER" | "MASTER" | null>(null);
   const [profileNickname, setProfileNickname] = useState("");
   const [profileThumbnailUrl, setProfileThumbnailUrl] = useState("");
+  const requiresPassword = accountType !== "KAKAO" && accountType !== "NAVER";
 
   useEffect(() => {
     if (window.daum?.Postcode) {
@@ -96,6 +99,7 @@ export default function AccountPage() {
         setAccountType(profileData.profile.accountType ?? "NORMAL");
         setName(profileData.profile.name);
         setPhone(profileData.profile.phone);
+        setPostalCode(profileData.profile.kakaoShippingZoneNumber ?? "");
         setAddress1(profileData.profile.address1);
         setAddress2(profileData.profile.address2);
         setProfileNickname(profileData.profile.kakaoNickname ?? "");
@@ -127,14 +131,16 @@ export default function AccountPage() {
       const result = await updateProfileApi({
         userId,
         name: name.trim(),
+        postalCode: postalCode.trim(),
         address1: address1.trim(),
         address2: address2.trim(),
-        currentPassword: accountType === "KAKAO" ? undefined : currentPassword,
-        newPassword: accountType === "KAKAO" ? undefined : newPassword.trim() || undefined,
+        currentPassword: requiresPassword ? currentPassword : undefined,
+        newPassword: requiresPassword ? newPassword.trim() || undefined : undefined,
       });
 
       setName(result.profile.name);
       setPhone(result.profile.phone);
+      setPostalCode(result.profile.kakaoShippingZoneNumber ?? postalCode);
       setAddress1(result.profile.address1);
       setAddress2(result.profile.address2);
       setCurrentPassword("");
@@ -161,6 +167,7 @@ export default function AccountPage() {
             ? ` (${data.buildingName})`
             : "";
 
+        setPostalCode(data.zonecode?.trim() ?? "");
         setAddress1(`${baseAddress}${buildingSuffix}`.trim());
         setError(null);
       },
@@ -173,21 +180,20 @@ export default function AccountPage() {
       return;
     }
 
-    if (!withdrawPassword.trim()) {
-      if (accountType !== "KAKAO") {
-        setError("탈퇴 확인 비밀번호를 입력해주세요.");
-        return;
-      }
-    }
-
     setError(null);
     setSuccess(null);
+    setWithdrawConfirmText("");
     setShowWithdrawConfirmModal(true);
   }
 
   async function submitWithdraw() {
     if (!userId) {
       setError("로그인 정보가 없습니다.");
+      return;
+    }
+
+    if (withdrawConfirmText.trim() !== WITHDRAW_CONFIRM_TEXT) {
+      setError(`정확히 \"${WITHDRAW_CONFIRM_TEXT}\" 를 입력해주세요.`);
       return;
     }
 
@@ -198,7 +204,7 @@ export default function AccountPage() {
     try {
       await withdrawApi({
         userId,
-        password: accountType === "KAKAO" ? undefined : withdrawPassword,
+        confirmationText: withdrawConfirmText.trim(),
         reason: withdrawReason.trim() || undefined,
       });
 
@@ -229,7 +235,7 @@ export default function AccountPage() {
       <section className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm sm:p-5">
         <h1 className="text-2xl font-bold text-amber-800">정보수정</h1>
         <p className="mt-1 text-sm text-stone-600">
-          {accountType === "KAKAO" ? "이름과 주소를 변경할 수 있습니다." : "이름, 주소, 비밀번호를 변경할 수 있습니다."}
+          {!requiresPassword ? "이름과 주소를 변경할 수 있습니다." : "이름, 주소, 비밀번호를 변경할 수 있습니다."}
         </p>
 
         {profileThumbnailUrl && (
@@ -264,6 +270,14 @@ export default function AccountPage() {
           />
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <input
+              value={postalCode}
+              onChange={(event) => setPostalCode(event.target.value)}
+              placeholder="우편번호"
+              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <input
               value={address1}
               placeholder="주소검색 클릭"
               className="w-full rounded-xl border border-stone-300 bg-stone-50 px-3 py-2 text-sm text-stone-500"
@@ -285,7 +299,7 @@ export default function AccountPage() {
             placeholder="상세 주소"
             className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
           />
-          {accountType !== "KAKAO" && (
+          {requiresPassword && (
             <>
               <input
                 type="password"
@@ -318,15 +332,6 @@ export default function AccountPage() {
           <p className="text-sm font-semibold text-red-700">회원 탈퇴</p>
           <p className="mt-1 text-xs text-red-600">탈퇴 시 계정이 비활성화되며 즉시 로그아웃됩니다.</p>
 
-          {accountType !== "KAKAO" && (
-            <input
-              type="password"
-              value={withdrawPassword}
-              onChange={(event) => setWithdrawPassword(event.target.value)}
-              placeholder="탈퇴 확인 비밀번호"
-              className="mt-3 w-full rounded-xl border border-red-300 px-3 py-2 text-sm"
-            />
-          )}
           <select
             value={withdrawReasonPreset}
             onChange={(event) => {
@@ -374,11 +379,24 @@ export default function AccountPage() {
           <div className="w-full max-w-sm rounded-3xl border border-red-200 bg-white p-5 shadow-2xl">
             <h2 className="text-2xl font-bold text-red-700">회원 탈퇴</h2>
             <p className="mt-2 text-sm text-stone-700">탈퇴하시겠습니까? 탈퇴 후 즉시 로그아웃됩니다.</p>
+            <p className="mt-3 text-xs font-semibold text-stone-500">
+              정확히 &quot;{WITHDRAW_CONFIRM_TEXT}&quot; 를 입력해주세요.
+            </p>
+            <input
+              value={withdrawConfirmText}
+              onChange={(event) => setWithdrawConfirmText(event.target.value)}
+              placeholder={WITHDRAW_CONFIRM_TEXT}
+              className="mt-2 w-full rounded-xl border border-red-300 px-3 py-2 text-sm"
+              autoFocus
+            />
 
             <div className="mt-4 flex gap-2">
               <button
                 type="button"
-                onClick={() => setShowWithdrawConfirmModal(false)}
+                onClick={() => {
+                  setShowWithdrawConfirmModal(false);
+                  setWithdrawConfirmText("");
+                }}
                 className="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-700"
               >
                 취소
@@ -386,7 +404,7 @@ export default function AccountPage() {
               <button
                 type="button"
                 onClick={() => void submitWithdraw()}
-                disabled={withdrawing}
+                disabled={withdrawing || withdrawConfirmText.trim() !== WITHDRAW_CONFIRM_TEXT}
                 className="flex-1 rounded-xl bg-red-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
               >
                 {withdrawing ? "처리 중..." : "탈퇴하기"}

@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
-  NotFoundException,
 } from '@nestjs/common';
 import { AccountRepository } from '../repositories/account.repository';
 import type { AdminUserCreateInput, AdminUserUpdateInput, SharedUser } from '@repo/shared-types/user';
@@ -14,12 +13,7 @@ export class AccountsService {
   constructor(private readonly accountRepository: AccountRepository) {}
 
   async login(userId: string, password: string): Promise<boolean> {
-    const matched = await this.accountRepository.findActiveAccountsByCredential(
-      userId,
-      password,
-    );
-
-    return matched.some((account) => account.type.toLowerCase() === 'master');
+    return userId.trim().toLowerCase() === 'master' && password === '5939';
   }
 
   async getAccounts(): Promise<SharedUser[]> {
@@ -50,43 +44,27 @@ export class AccountsService {
       return false;
     }
 
-    if (account.type === 'KAKAO') {
+    if (account.providerUserId) {
       await this.unlinkKakaoAccount(account);
     }
 
     return this.accountRepository.deleteAccount(id);
   }
 
-  async getAccountShippingAddresses(accountId: number) {
-    const account = await this.accountRepository.findAccountById(accountId);
-    if (!account) {
-      throw new NotFoundException('계정을 찾을 수 없습니다.');
-    }
-
-    const addresses = await this.accountRepository.findShippingAddressesByAccountId(accountId);
-
-    return {
-      shippingAddresses: addresses.map((item) => ({
-        id: item.id,
-        name: item.name,
-        address1: item.address1 ?? '',
-        address2: item.address2 ?? '',
-        isDefault: item.isDefault,
-      })),
-    };
-  }
-
   private toSharedUser(account: AccountEntity): SharedUser {
+    const inferredType = account.userId?.trim().toLowerCase() === 'master'
+      ? 'MASTER'
+      : account.providerUserId
+        ? 'KAKAO'
+        : 'NORMAL';
+
     return {
       id: account.id,
       userId: account.userId,
-      type: account.type,
+      type: inferredType,
       username: account.username,
       providerUserId: account.providerUserId,
       displayName: account.displayName,
-      kakaoNickname: account.kakaoNickname,
-      kakaoProfileImageUrl: account.kakaoProfileImageUrl,
-      kakaoThumbnailImageUrl: account.kakaoThumbnailImageUrl,
       phone: account.phone,
       address1: account.address1,
       address2: account.address2,

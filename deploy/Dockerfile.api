@@ -38,6 +38,7 @@ COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 
 # Copy built files from builder
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/firebase-service-account.local.json ./apps/api/firebase-service-account.local.json
 COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/package.json

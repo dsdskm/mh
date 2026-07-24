@@ -231,15 +231,6 @@ export class AccountsController {
     return updated;
   }
 
-  @Get('accounts/:id/shipping-addresses')
-  async getAccountShippingAddresses(@Param('id') id: string) {
-    const parsedId = Number(id);
-    if (Number.isNaN(parsedId)) {
-      throw new BadRequestException('계정 id가 올바르지 않습니다.');
-    }
-    return this.accountsService.getAccountShippingAddresses(parsedId);
-  }
-
   @Delete('accounts/:id')
   async deleteAccount(@Param('id') id: string) {
     const parsedId = Number(id);

@@ -2,11 +2,12 @@ import { randomBytes, randomInt, scrypt as nodeScrypt } from 'node:crypto';
 import { promisify } from 'node:util';
 import { BadRequestException, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { AccountEntity } from '../../../database/entities/account.entity';
-import { AccountShippingAddressEntity } from '../../../database/entities/account-shipping-address.entity';
+import { AccountKakaoEntity } from '../../../database/entities/account-kakao.entity';
 import { CouponEntity } from '../../../database/entities/coupon.entity';
 import { CouponTemplateEntity } from '../../../database/entities/coupon-template.entity';
+import { SignupCouponClaimEntity } from '../../../database/entities/signup-coupon-claim.entity';
 import { MessagesService } from '../../messages/services/messages.service';
 import { KAKAO_TEMPLATE_IDS, SOLAPI_PF_ID } from '../../messages/services/kakao-template.constants';
 import { ConfigService } from '../../config/services/config.service';
@@ -143,12 +144,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @InjectRepository(AccountEntity)
     private readonly accountRepository: Repository<AccountEntity>,
-    @InjectRepository(AccountShippingAddressEntity)
-    private readonly shippingAddressRepository: Repository<AccountShippingAddressEntity>,
+    @InjectRepository(AccountKakaoEntity)
+    private readonly accountKakaoRepository: Repository<AccountKakaoEntity>,
     @InjectRepository(CouponEntity)
     private readonly couponRepository: Repository<CouponEntity>,
     @InjectRepository(CouponTemplateEntity)
     private readonly couponTemplateRepository: Repository<CouponTemplateEntity>,
+    @InjectRepository(SignupCouponClaimEntity)
+    private readonly signupCouponClaimRepository: Repository<SignupCouponClaimEntity>,
     private readonly configService: ConfigService,
     private readonly messagesService: MessagesService,
   ) {}
@@ -327,7 +330,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const created = await this.accountRepository.save(
       this.accountRepository.create({
         userId,
-        type: 'NORMAL',
+            // Removed type-based branches
         username: userId,
         password: passwordHash,
         providerUserId: null,
@@ -345,20 +348,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       }),
     );
 
-    await this.shippingAddressRepository.save(
-      this.shippingAddressRepository.create({
-        accountId: created.id,
-        name: '기본 배송지',
-        address1: created.address1 ?? address1,
-        address2: created.address2 ?? address2,
-        isDefault: true,
-      }),
-    );
-
     this.verifiedPhoneStore.delete(verificationToken);
 
     // 가입 쿠폰 자동 발급
-    const signupCoupon = await this.issueSignupCouponIfConfigured(created.id);
+    const signupCoupon = await this.issueSignupCouponIfConfigured({
+      accountId: created.id,
+      phone,
+      providerUserId: null,
+    });
     void this.sendSignupWelcomeMessage(created.phone ?? phone, created.displayName ?? name);
 
     return {
@@ -375,41 +372,106 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async issueSignupCouponIfConfigured(
-    accountId: number,
+  private async issueSignupCouponIfConfigured(input: {
+    accountId: number;
+    phone: string | null;
+    providerUserId: string | null;
+  },
   ): Promise<{ issued: boolean; name: string | null }> {
-    try {
-      const config = await this.configService.getStoreConfig();
-      const templateId = config.signupCouponTemplateId;
-      if (!templateId) {
-        return { issued: false, name: null };
-      }
+    console.info('[auth:signup-coupon] issuance check start', {
+      accountId: input.accountId,
+      providerUserId: input.providerUserId,
+      hasPhone: Boolean(input.phone),
+      phoneTail: input.phone ? input.phone.slice(-4) : null,
+    });
 
-      const template = await this.couponTemplateRepository.findOne({
-        where: { id: templateId },
+    const config = await this.configService.getStoreConfig();
+    const configuredTemplateId = config.signupCouponTemplateId;
+
+    let template = configuredTemplateId
+      ? await this.couponTemplateRepository.findOne({
+          where: { id: configuredTemplateId },
+        })
+      : null;
+
+    // 운영 중 설정값이 general로 남아 있어도, 명시적으로 선택된 템플릿이면 가입 쿠폰으로 사용합니다.
+    if (template && !this.isSignupTemplateUsage(template.usage)) {
+      console.warn('[auth:signup-coupon] configured template usage is not signup, but will be used', {
+        templateId: template.id,
+        usage: template.usage,
       });
-      if (!template) {
-        return { issued: false, name: null };
-      }
+    }
 
-      await this.couponRepository.save(
-        this.couponRepository.create({
-          accountId,
-          name: template.name,
-          discountType: template.discountType,
-          discountValue: template.discountValue,
-          minOrderAmount: template.minOrderAmount,
-          maxDiscountAmount: template.maxDiscountAmount,
-          validUntil: template.validUntil,
-          status: 'available',
-        }),
-      );
+    if (!template) {
+      template = await this.findLatestSignupTemplate();
+    }
 
-      return { issued: true, name: template.name ?? null };
-    } catch {
-      // 쿠폰 발급 실패 시 가입 자체는 정상 처리되도록 에러를 삼킨다
+    if (!template) {
+      console.warn('[auth:signup-coupon] no signup template found, skip issuance', {
+        accountId: input.accountId,
+        configuredTemplateId,
+      });
       return { issued: false, name: null };
     }
+
+    console.info('[auth:signup-coupon] template selected', {
+      accountId: input.accountId,
+      templateId: template.id,
+      templateName: template.name,
+      usage: template.usage,
+      configuredTemplateId,
+    });
+
+    const savedCoupon = await this.couponRepository.save(
+      this.couponRepository.create({
+        accountId: input.accountId,
+        name: template.name,
+        discountType: template.discountType,
+        discountValue: template.discountValue,
+        minOrderAmount: template.minOrderAmount,
+        maxDiscountAmount: template.maxDiscountAmount,
+        validUntil: template.validUntil,
+        status: 'available',
+      }),
+    );
+
+    console.info('[auth:signup-coupon] coupon row inserted', {
+      couponId: savedCoupon.id,
+      accountId: savedCoupon.accountId,
+      name: savedCoupon.name,
+      status: savedCoupon.status,
+    });
+
+    const savedClaim = await this.signupCouponClaimRepository.save(
+      this.signupCouponClaimRepository.create({
+        accountId: input.accountId,
+        phone: input.phone,
+        providerUserId: input.providerUserId,
+        templateName: template.name,
+      }),
+    );
+
+    console.info('[auth:signup-coupon] claim row inserted', {
+      claimId: savedClaim.id,
+      accountId: savedClaim.accountId,
+      providerUserId: savedClaim.providerUserId,
+      hasPhone: Boolean(savedClaim.phone),
+      templateName: savedClaim.templateName,
+    });
+
+    return { issued: true, name: template.name ?? null };
+  }
+
+  private async findLatestSignupTemplate(): Promise<CouponTemplateEntity | null> {
+    const templates = await this.couponTemplateRepository.find({
+      order: { createdAt: 'DESC' },
+    });
+
+    return templates.find((item) => this.isSignupTemplateUsage(item.usage)) ?? null;
+  }
+
+  private isSignupTemplateUsage(usage: string | null | undefined): boolean {
+    return (usage ?? '').trim().toLowerCase() === 'signup';
   }
 
   private normalizePhone(phone: string): string {
@@ -522,7 +584,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     console.info('[auth:login] account lookup result', {
       found: Boolean(account),
-      accountType: account?.type,
       accountStatus: account?.status,
       accountStatusReason: account?.statusReason,
       isActive: account?.isActive,
@@ -531,11 +592,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       accountUserId: account?.userId,
     });
 
-    if (!account || account.type !== 'NORMAL') {
+    if (!account || !account.password) {
       console.warn('[auth:login] rejected by account type or missing account', {
         normalizedUserId,
         found: Boolean(account),
-        accountType: account?.type,
+        hasPassword: Boolean(account?.password),
       });
       throw new BadRequestException('아이디 또는 비밀번호가 일치하지 않습니다.');
     }
@@ -594,7 +655,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   async loginWithKakaoCode(input: {
     code: string;
     redirectUri: string;
-  }): Promise<{ account: LocalAccountProfile }> {
+  }): Promise<{ account: LocalAccountProfile; showSignupCouponPopup: boolean }> {
     console.info('[auth:kakao] service input', {
       hasCode: Boolean(input.code),
       redirectUri: input.redirectUri,
@@ -610,15 +671,16 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const kakaoUser = await this.fetchKakaoUserProfile(accessToken);
     const kakaoShipping = await this.fetchKakaoShippingAddress(accessToken);
     const parsed = this.parseKakaoProfile(kakaoUser, kakaoShipping);
-    const account = await this.upsertKakaoAccount(parsed);
+    const { account, showSignupCouponPopup } = await this.upsertKakaoAccount(parsed, kakaoUser, kakaoShipping);
     this.assertKakaoAccountActive(account, parsed.providerUserId);
 
     console.info('[auth:kakao] login success', {
       accountId: account.id,
       userId: account.userId,
-      accountType: account.type,
+      accountType: account.providerUserId ? 'KAKAO' : 'NORMAL',
       hasPhone: Boolean(account.phone),
       hasAddress1: Boolean(account.address1),
+      showSignupCouponPopup,
     });
 
     return {
@@ -631,6 +693,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         address2: account.address2 ?? '',
         createdAt: account.createdAt.toISOString(),
       },
+      showSignupCouponPopup,
     };
   }
 
@@ -640,13 +703,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   } {
     const kakaoRestApiKey =
       process.env.KAKAO_REST_API_KEY?.trim() ||
-      process.env.KAKAO_CLIENT_ID?.trim() ||
       process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY?.trim() ||
       '';
-    const kakaoClientSecret =
-      process.env.KAKAO_REST_API_SECRET?.trim() ||
-      process.env.KAKAO_CLIENT_SECRET?.trim() ||
-      '';
+    const kakaoClientSecret = process.env.KAKAO_CLIENT_SECRET?.trim() || '';
 
     console.info('[auth:kakao] resolved credentials', {
       hasRestApiKey: Boolean(kakaoRestApiKey),
@@ -846,10 +905,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return parsed;
   }
 
-  private async upsertKakaoAccount(parsed: ParsedKakaoProfile): Promise<AccountEntity> {
+  private async upsertKakaoAccount(
+    parsed: ParsedKakaoProfile,
+    rawUser: KakaoUserResponse,
+    rawShipping: KakaoShippingAddressResponse,
+  ): Promise<{ account: AccountEntity; showSignupCouponPopup: boolean }> {
     let account = await this.accountRepository.findOne({
       where: {
-        type: 'KAKAO',
         providerUserId: parsed.providerUserId,
       },
     });
@@ -865,7 +927,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       account = await this.accountRepository.save(
         this.accountRepository.create({
           userId,
-          type: 'KAKAO',
           username: userId,
           password: null,
           providerUserId: parsed.providerUserId,
@@ -874,15 +935,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           phone: nextPhone,
           address1: parsed.address1,
           address2: parsed.address2,
-          kakaoNickname: parsed.kakaoNickname,
-          kakaoProfileImageUrl: parsed.profileImageUrl,
-          kakaoThumbnailImageUrl: parsed.thumbnailImageUrl,
-          kakaoShippingName: parsed.shippingName,
-          kakaoShippingReceiverName: parsed.shippingReceiverName,
-          kakaoShippingReceiverPhone1: parsed.shippingReceiverPhone1,
-          kakaoShippingReceiverPhone2: parsed.shippingReceiverPhone2,
-          kakaoShippingZoneNumber: parsed.shippingZoneNumber,
-          kakaoSyncedAt: new Date(),
           status: 'active',
           statusReason: null,
           termsAgreed: true,
@@ -898,7 +950,26 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         userId: account.userId,
       });
 
-      return account;
+      // 카카오 첫 로그인(신규 계정 생성)도 일반 회원가입과 동일하게 가입 쿠폰 1회 자동 발급
+      const signupCoupon = await this.issueSignupCouponIfConfigured({
+        accountId: account.id,
+        phone: nextPhone,
+        providerUserId: parsed.providerUserId,
+      });
+
+      console.info('[auth:kakao] first login signup coupon result', {
+        accountId: account.id,
+        providerUserId: parsed.providerUserId,
+        issued: signupCoupon.issued,
+        name: signupCoupon.name,
+      });
+
+      await this.upsertKakaoSnapshot(account.id, parsed, rawUser, rawShipping);
+
+      return {
+        account,
+        showSignupCouponPopup: signupCoupon.issued,
+      };
     }
 
     console.info('[auth:kakao] existing account found', {
@@ -908,6 +979,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       accountStatus: account.status,
       accountStatusReason: account.statusReason,
       isActive: account.isActive,
+      showSignupCouponPopup: false,
     });
 
     let touched = false;
@@ -938,49 +1010,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       touched = true;
     }
 
-    if (account.kakaoNickname !== parsed.kakaoNickname) {
-      account.kakaoNickname = parsed.kakaoNickname;
-      touched = true;
-    }
-
-    if (account.kakaoProfileImageUrl !== parsed.profileImageUrl) {
-      account.kakaoProfileImageUrl = parsed.profileImageUrl;
-      touched = true;
-    }
-
-    if (account.kakaoThumbnailImageUrl !== parsed.thumbnailImageUrl) {
-      account.kakaoThumbnailImageUrl = parsed.thumbnailImageUrl;
-      touched = true;
-    }
-
-    if (account.kakaoShippingName !== parsed.shippingName) {
-      account.kakaoShippingName = parsed.shippingName;
-      touched = true;
-    }
-
-    if (account.kakaoShippingReceiverName !== parsed.shippingReceiverName) {
-      account.kakaoShippingReceiverName = parsed.shippingReceiverName;
-      touched = true;
-    }
-
-    if (account.kakaoShippingReceiverPhone1 !== parsed.shippingReceiverPhone1) {
-      account.kakaoShippingReceiverPhone1 = parsed.shippingReceiverPhone1;
-      touched = true;
-    }
-
-    if (account.kakaoShippingReceiverPhone2 !== parsed.shippingReceiverPhone2) {
-      account.kakaoShippingReceiverPhone2 = parsed.shippingReceiverPhone2;
-      touched = true;
-    }
-
-    if (account.kakaoShippingZoneNumber !== parsed.shippingZoneNumber) {
-      account.kakaoShippingZoneNumber = parsed.shippingZoneNumber;
-      touched = true;
-    }
-
-    account.kakaoSyncedAt = new Date();
-    touched = true;
-
     if (parsed.normalizedPhone && account.phone !== parsed.normalizedPhone) {
       const existingByPhone = await this.accountRepository.findOne({
         where: { phone: parsed.normalizedPhone },
@@ -1008,7 +1037,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    return account;
+    await this.upsertKakaoSnapshot(account.id, parsed, rawUser, rawShipping);
+
+    return {
+      account,
+      showSignupCouponPopup: false,
+    };
   }
 
   private async resolveAvailableKakaoPhone(
@@ -1078,19 +1112,24 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    const kakaoProfile = await this.accountKakaoRepository.findOne({ where: { accountId: account.id } });
+    // Keep account type aligned with auth checks that use accounts.providerUserId.
+    const inferredAccountType = account.providerUserId ? 'KAKAO' : 'NORMAL';
+
     return {
       profile: {
         id: account.id,
         userId: account.userId ?? '',
-        accountType: account.type,
+        accountType: inferredAccountType,
         name: account.displayName ?? '',
         phone: account.phone ?? '',
+        createdAt: account.createdAt.toISOString(),
         address1,
         address2,
-        kakaoNickname: account.kakaoNickname ?? '',
-        kakaoProfileImageUrl: account.kakaoProfileImageUrl ?? '',
-        kakaoThumbnailImageUrl: account.kakaoThumbnailImageUrl ?? '',
-        kakaoShippingZoneNumber: account.kakaoShippingZoneNumber ?? '',
+        kakaoNickname: kakaoProfile?.nickname ?? '',
+        kakaoProfileImageUrl: kakaoProfile?.profileImageUrl ?? '',
+        kakaoThumbnailImageUrl: kakaoProfile?.profileThumbnailUrl ?? '',
+        kakaoShippingZoneNumber: account.postalCode ?? kakaoProfile?.shippingPostalCode ?? '',
         status: account.status,
         statusReason: account.statusReason,
       },
@@ -1100,6 +1139,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   async updateProfile(input: {
     userId: string;
     name: string;
+    postalCode?: string;
     address1: string;
     address2: string;
     currentPassword?: string;
@@ -1107,6 +1147,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }) {
     const userId = input.userId.trim().toLowerCase();
     const name = input.name.trim();
+    const postalCode = input.postalCode?.trim();
     const address1 = input.address1.trim();
     const address2 = input.address2.trim();
     const currentPassword = input.currentPassword;
@@ -1126,7 +1167,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('회원 정보를 찾을 수 없습니다.');
     }
 
-    if (account.type === 'NORMAL') {
+    if (!account.providerUserId) {
       if (!account.password || !currentPassword) {
         throw new BadRequestException('현재 비밀번호를 입력해주세요.');
       }
@@ -1146,6 +1187,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     account.displayName = name;
+    account.postalCode = postalCode === undefined ? account.postalCode : (postalCode || null);
     account.address1 = address1;
     account.address2 = address2;
     account.password = nextPasswordHash;
@@ -1156,8 +1198,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       profile: {
         id: updated.id,
         userId: updated.userId ?? '',
+        accountType: updated.providerUserId ? 'KAKAO' : 'NORMAL',
         name: updated.displayName ?? '',
         phone: updated.phone ?? '',
+        kakaoShippingZoneNumber: updated.postalCode ?? '',
         address1: updated.address1 ?? '',
         address2: updated.address2 ?? '',
       },
@@ -1172,20 +1216,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('회원 정보를 찾을 수 없습니다.');
     }
 
-    if (account.type === 'NORMAL') {
-      if (!account.password || !input.password) {
-        throw new BadRequestException('탈퇴 확인 비밀번호를 입력해주세요.');
-      }
-
-      const passwordMatched = await this.verifyPassword(input.password, account.password);
-      if (!passwordMatched) {
-        throw new BadRequestException('비밀번호가 일치하지 않습니다.');
-      }
-    }
-
-    if (account.type === 'KAKAO') {
+    if (account.providerUserId) {
       await this.unlinkKakaoAccount(account.providerUserId ?? null, account.userId ?? userId);
     }
+
+    await this.cleanupSignupCouponClaims(account);
 
     const deleted = await this.accountRepository.delete({ id: account.id });
     if ((deleted.affected ?? 0) < 1) {
@@ -1198,11 +1233,43 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  private async cleanupSignupCouponClaims(account: AccountEntity): Promise<void> {
+    try {
+      const qb = this.signupCouponClaimRepository
+        .createQueryBuilder()
+        .delete()
+        .where('accountId = :accountId', { accountId: account.id });
+
+      if (account.providerUserId?.trim()) {
+        qb.orWhere('providerUserId = :providerUserId', {
+          providerUserId: account.providerUserId.trim(),
+        });
+      }
+
+      if (account.phone?.trim()) {
+        qb.orWhere('phone = :phone', {
+          phone: account.phone.trim(),
+        });
+      }
+
+      const result = await qb.execute();
+      console.info('[auth:signup-coupon] claim rows cleaned on withdraw', {
+        accountId: account.id,
+        affected: result.affected ?? 0,
+      });
+    } catch (error) {
+      console.warn('[auth:signup-coupon] claim cleanup failed on withdraw', {
+        accountId: account.id,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   async logoutKakao(userId: string) {
     const normalizedUserId = userId.trim().toLowerCase();
     const account = await this.findMemberAccountByUserId(normalizedUserId);
 
-    if (!account || account.type !== 'KAKAO') {
+    if (!account || !account.providerUserId) {
       return {
         ok: true,
         message: '카카오 로그아웃 처리되었습니다.',
@@ -1237,7 +1304,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const account = await this.accountRepository.findOne({
-      where: { userId, type: 'KAKAO' },
+      where: { userId },
     });
 
     if (!account) {
@@ -1246,34 +1313,43 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     account.address1 = address1;
     account.address2 = address2;
-    account.kakaoShippingZoneNumber = postalCode;
-    account.kakaoSyncedAt = new Date();
+    account.postalCode = postalCode;
     account.termsAgreed = true;
     account.termsAgreedAt = account.termsAgreedAt ?? new Date();
 
     const updated = await this.accountRepository.save(account);
 
-    const existingDefault = await this.shippingAddressRepository.findOne({
-      where: { accountId: updated.id, isDefault: true },
+    const existingKakao = await this.accountKakaoRepository.findOne({
+      where: { accountId: updated.id },
     });
 
-    if (!existingDefault) {
-      await this.shippingAddressRepository.save(
-        this.shippingAddressRepository.create({
-          accountId: updated.id,
-          name: '기본 배송지',
+    // 카카오 동의 항목이 일부만 있는 계정도 수동 입력 주소를 동일한 스키마로 보관합니다.
+    await this.accountKakaoRepository.save(
+      this.accountKakaoRepository.create({
+        ...(existingKakao ?? {}),
+        accountId: updated.id,
+        providerUserId: updated.providerUserId ?? null,
+        shippingName: existingKakao?.shippingName ?? 'manual',
+        shippingReceiverName:
+          existingKakao?.shippingReceiverName ?? updated.displayName ?? null,
+        shippingReceiverPhone1:
+          existingKakao?.shippingReceiverPhone1 ?? updated.phone ?? null,
+        rawShipping: {
+          source: 'manual',
+          postalCode,
           address1,
           address2,
-          isDefault: true,
-        }),
-      );
-    }
+        },
+        shippingPostalCode: postalCode,
+        syncedAt: new Date(),
+      }),
+    );
 
     return {
       profile: {
         id: updated.id,
         userId: updated.userId ?? '',
-        accountType: updated.type,
+        accountType: 'KAKAO',
         name: updated.displayName ?? '',
         phone: updated.phone ?? '',
         address1: updated.address1 ?? '',
@@ -1291,7 +1367,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     const account = await this.accountRepository.findOne({
       where: {
-        type: 'NORMAL',
         displayName: name,
         phone,
       },
@@ -1324,7 +1399,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     const account = await this.accountRepository.findOne({
       where: {
-        type: 'NORMAL',
         userId,
         phone,
       },
@@ -1341,165 +1415,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       ok: true,
       message: '비밀번호가 재설정되었습니다.',
     };
-  }
-
-  async getShippingAddresses(userIdRaw: string) {
-    const userId = userIdRaw.trim().toLowerCase();
-    const account = await this.findMemberAccountByUserId(userId);
-
-    if (!account) {
-      throw new BadRequestException('회원 정보를 찾을 수 없습니다.');
-    }
-
-    const addresses = await this.shippingAddressRepository.find({
-      where: { accountId: account.id },
-      order: { updatedAt: 'DESC', id: 'DESC' },
-    });
-
-    return {
-      shippingAddresses: addresses.map((item) => ({
-        id: item.id,
-        name: item.name,
-        address1: item.address1 ?? '',
-        address2: item.address2 ?? '',
-        isDefault: item.isDefault,
-      })),
-    };
-  }
-
-  async upsertShippingAddress(input: {
-    userId: string;
-    id?: number;
-    name: string;
-    address1: string;
-    address2?: string;
-    isDefault?: boolean;
-  }) {
-    const userId = input.userId.trim().toLowerCase();
-    const name = input.name.trim();
-    const address1 = input.address1.trim();
-    const address2 = input.address2?.trim() ?? '';
-
-    if (!name) {
-      throw new BadRequestException('배송지 이름을 입력해주세요.');
-    }
-
-    if (!address1) {
-      throw new BadRequestException('배송지 주소를 입력해주세요.');
-    }
-
-    const account = await this.findMemberAccountByUserId(userId);
-
-    if (!account) {
-      throw new BadRequestException('회원 정보를 찾을 수 없습니다.');
-    }
-
-    let preferAnotherDefaultAddressId: number | undefined;
-
-    if (input.id) {
-      const existing = await this.shippingAddressRepository.findOne({
-        where: { id: input.id, accountId: account.id },
-      });
-
-      if (!existing) {
-        throw new BadRequestException('수정할 배송지를 찾을 수 없습니다.');
-      }
-
-      const wasDefault = existing.isDefault;
-      existing.name = name;
-      existing.address1 = address1;
-      existing.address2 = address2;
-      if (typeof input.isDefault === 'boolean') {
-        existing.isDefault = input.isDefault;
-      }
-
-      // If the current default is unchecked, promote another address as default after save.
-      if (wasDefault && input.isDefault === false) {
-        preferAnotherDefaultAddressId = existing.id;
-      }
-
-      if (existing.isDefault) {
-        await this.shippingAddressRepository.update(
-          { accountId: account.id, isDefault: true },
-          { isDefault: false },
-        );
-      }
-
-      await this.shippingAddressRepository.save(existing);
-    } else {
-      const hasAnyAddress = await this.shippingAddressRepository.count({
-        where: { accountId: account.id },
-      });
-      const nextIsDefault = input.isDefault === true || hasAnyAddress === 0;
-
-      if (nextIsDefault) {
-        await this.shippingAddressRepository.update(
-          { accountId: account.id, isDefault: true },
-          { isDefault: false },
-        );
-      }
-
-      await this.shippingAddressRepository.save(
-        this.shippingAddressRepository.create({
-          accountId: account.id,
-          name,
-          address1,
-          address2,
-          isDefault: nextIsDefault,
-        }),
-      );
-    }
-
-    await this.ensureSingleDefaultShippingAddress(
-      account.id,
-      preferAnotherDefaultAddressId,
-    );
-
-    return this.getShippingAddresses(userId);
-  }
-
-  private async ensureSingleDefaultShippingAddress(
-    accountId: number,
-    preferAnotherThanId?: number,
-  ): Promise<void> {
-    const addresses = await this.shippingAddressRepository.find({
-      where: { accountId },
-      order: { updatedAt: 'DESC', id: 'DESC' },
-    });
-
-    if (addresses.length === 0) {
-      return;
-    }
-
-    const defaults = addresses.filter((item) => item.isDefault);
-
-    if (defaults.length === 1) {
-      return;
-    }
-
-    if (defaults.length > 1) {
-      const keepDefaultId = defaults[0].id;
-
-      for (const item of defaults) {
-        if (item.id === keepDefaultId) {
-          continue;
-        }
-
-        await this.shippingAddressRepository.update(
-          { id: item.id, accountId },
-          { isDefault: false },
-        );
-      }
-      return;
-    }
-
-    const replacement =
-      addresses.find((item) => item.id !== preferAnotherThanId) ?? addresses[0];
-
-    await this.shippingAddressRepository.update(
-      { id: replacement.id, accountId },
-      { isDefault: true },
-    );
   }
 
   private async hashPassword(password: string): Promise<string> {
@@ -1536,10 +1451,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private async findMemberAccountByUserId(userId: string): Promise<AccountEntity | null> {
     return this.accountRepository.findOne({
-      where: {
-        userId,
-        type: In(['NORMAL', 'KAKAO']),
-      },
+      where: { userId },
     });
   }
 
@@ -1575,6 +1487,33 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     return localPhone;
+  }
+
+  private async upsertKakaoSnapshot(
+    accountId: number,
+    parsed: ParsedKakaoProfile,
+    rawUser: KakaoUserResponse,
+    rawShipping: KakaoShippingAddressResponse,
+  ): Promise<void> {
+    const existing = await this.accountKakaoRepository.findOne({ where: { accountId } });
+    const payload = this.accountKakaoRepository.create({
+      ...(existing ?? {}),
+      accountId,
+      providerUserId: parsed.providerUserId,
+      rawUser: rawUser as unknown as Record<string, unknown>,
+      rawShipping: rawShipping as unknown as Record<string, unknown>,
+      nickname: parsed.kakaoNickname,
+      profileImageUrl: parsed.profileImageUrl,
+      profileThumbnailUrl: parsed.thumbnailImageUrl,
+      shippingName: parsed.shippingName,
+      shippingReceiverName: parsed.shippingReceiverName,
+      shippingReceiverPhone1: parsed.shippingReceiverPhone1,
+      shippingReceiverPhone2: parsed.shippingReceiverPhone2,
+      shippingPostalCode: parsed.shippingZoneNumber,
+      syncedAt: new Date(),
+    });
+
+    await this.accountKakaoRepository.save(payload);
   }
 
   private async unlinkKakaoAccount(providerUserId: string | null, userId: string): Promise<void> {

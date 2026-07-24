@@ -8,6 +8,8 @@ import { getProfileApi, getMyCouponsApi, getMyMileageApi } from "../api/account.
 import type { Coupon } from "@repo/shared-types/coupon";
 import type { MileageTransaction } from "@repo/shared-types/mileage";
 
+const ENABLE_REWARDS = false;
+
 const KRW = new Intl.NumberFormat("ko-KR");
 
 function formatCurrency(value: number): string {
@@ -34,6 +36,15 @@ export default function CouponMileagePage() {
   const [mileageHistory, setMileageHistory] = useState<MileageTransaction[]>([]);
 
   useEffect(() => {
+    if (!ENABLE_REWARDS) {
+      setLoading(false);
+      setError(null);
+      setCoupons([]);
+      setMileageBalance(0);
+      setMileageHistory([]);
+      return;
+    }
+
     if (status === "unauthenticated") {
       router.replace("/login?callback=/account/coupon-mileage");
       return;
@@ -69,6 +80,21 @@ export default function CouponMileagePage() {
 
   if (status === "loading" || loading) {
     return <main className="mx-auto max-w-3xl px-4 py-8 text-sm text-stone-600">불러오는 중...</main>;
+  }
+
+  if (!ENABLE_REWARDS) {
+    return (
+      <main className="mx-auto min-h-screen w-full max-w-3xl space-y-4 px-4 py-6">
+        <div className="flex items-center gap-3 text-sm font-semibold text-amber-700">
+          <Link href="/">← 홈으로</Link>
+        </div>
+
+        <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-5">
+          <h1 className="text-2xl font-bold text-stone-800">쿠폰 / 적립금</h1>
+          <p className="mt-2 text-sm text-stone-600">현재 해당 기능은 일시적으로 비활성화되어 있습니다.</p>
+        </section>
+      </main>
+    );
   }
 
   return (

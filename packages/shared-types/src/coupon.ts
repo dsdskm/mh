@@ -1,4 +1,5 @@
 export type CouponDiscountType = "fixed" | "percent";
+export type CouponTemplateUsage = "general" | "signup";
 
 export type CouponStatus = "available" | "used" | "revoked";
 
@@ -37,6 +38,7 @@ export type IssueCouponInput = {
 export type CouponTemplate = {
   id: number;
   name: string;
+  usage: CouponTemplateUsage;
   discountType: CouponDiscountType;
   discountValue: number;
   minOrderAmount: number;
@@ -47,6 +49,7 @@ export type CouponTemplate = {
 
 export type CreateCouponTemplateInput = {
   name: string;
+  usage?: CouponTemplateUsage;
   discountType: CouponDiscountType;
   discountValue: number;
   minOrderAmount?: number;

@@ -520,7 +520,6 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
                 />
               </th>
               <th className="px-3 py-2 text-left">ID</th>
-              <th className="px-3 py-2 text-left">썸네일</th>
               <th className="px-3 py-2 text-left">이름</th>
               <th className="px-3 py-2 text-left">아이디</th>
               <th className="px-3 py-2 text-left">전화번호</th>
@@ -532,7 +531,7 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
           <tbody className="divide-y divide-stone-100 bg-white">
             {filteredAccounts.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-stone-400">결과 없음</td>
+                <td colSpan={8} className="px-3 py-6 text-center text-stone-400">결과 없음</td>
               </tr>
             )}
             {paginatedAccounts.map((acc) => (
@@ -548,19 +547,6 @@ export function AccountsTab({ accounts, createAccount, updateAccount, deleteAcco
                   />
                 </td>
                 <td className="px-3 py-2 text-stone-500">#{acc.id}</td>
-                <td className="px-3 py-2">
-                  {getProfileThumbnail(acc) ? (
-                    <img
-                      src={getProfileThumbnail(acc) ?? ""}
-                      alt={`${acc.displayName ?? acc.userId ?? "계정"} 프로필`}
-                      className="h-9 w-9 rounded-full border border-stone-200 object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full border border-stone-200 bg-stone-100 text-[10px] font-bold text-stone-500">
-                      없음
-                    </div>
-                  )}
-                </td>
                 <td className="px-3 py-2 font-medium text-stone-900">{acc.displayName ?? "-"}</td>
                 <td className="px-3 py-2 text-stone-700">{acc.userId ?? "-"}</td>
                 <td className="px-3 py-2 text-stone-700">{acc.phone ?? "-"}</td>

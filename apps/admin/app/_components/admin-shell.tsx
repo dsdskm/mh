@@ -6,7 +6,7 @@ import { TABS } from "../_lib/constants";
 import { AdminPageState } from "../_hooks/use-admin-page";
 import { AdminTab } from "../_lib/types";
 import { AdminNotificationType } from "../_lib/types";
-import { markAdminNotificationAsReadApi } from "../_lib/api-notifications";
+import { dismissAdminAlertApi, markAdminNotificationAsReadApi } from "../_lib/api-notifications";
 import { ORDER_STATUS } from "@repo/shared-types/order";
 
 type AlertKind = "ORDER" | "INQUIRY" | "REVIEW" | "INQUIRY_COMMENT" | "REVIEW_COMMENT";
@@ -156,24 +156,32 @@ export function AdminShell({ activeTab, state, children }: Props) {
     setClosedTextDraft(state.config.businessStatusClosedText ?? "");
   }, [state.config]);
 
+  const dismissAlertId = useCallback((alertId: string) => {
+    setReadAlertIds((prev) => new Set([...prev, alertId]));
+  }, []);
+
   const markAlertAsRead = useCallback(async (alertId: string) => {
     const notificationId = parseInt(alertId, 10);
     if (Number.isNaN(notificationId)) {
+      dismissAlertId(alertId);
+      void dismissAdminAlertApi(alertId);
       return;
     }
 
     try {
       await markAdminNotificationAsReadApi(notificationId);
-      setReadAlertIds((prev) => new Set([...prev, alertId]));
+      dismissAlertId(alertId);
     } catch (error) {
       console.error("Failed to mark notification as read:", error);
     }
-  }, []);
+  }, [dismissAlertId]);
 
   const onAlertClick = useCallback((alertId: string, kind: AlertKind) => {
     void kind;
     const notificationId = parseInt(alertId, 10);
     if (Number.isNaN(notificationId)) {
+      dismissAlertId(alertId);
+      void dismissAdminAlertApi(alertId);
       // 주문내역에서 직접 생성한 합성 알림(주문 접수/취소 요청)은 해당 주문으로 이동
       const orderPrefix = ["order-received-", "order-cancel-"].find((prefix) =>
         alertId.startsWith(prefix),
@@ -190,13 +198,13 @@ export function AdminShell({ activeTab, state, children }: Props) {
       return;
     }
 
-    setReadAlertIds((prev) => new Set([...prev, alertId]));
+    dismissAlertId(alertId);
     void markAdminNotificationAsReadApi(notificationId);
     window.location.href = notification.url;
-  }, [state.notifications]);
+  }, [dismissAlertId, state.notifications]);
 
   const hideAlert = useCallback((alertId: string) => {
-    setReadAlertIds((prev) => new Set([...prev, alertId]));
+    dismissAlertId(alertId);
 
     const notificationId = parseInt(alertId, 10);
     if (Number.isNaN(notificationId)) {
@@ -204,7 +212,7 @@ export function AdminShell({ activeTab, state, children }: Props) {
     }
 
     void markAdminNotificationAsReadApi(notificationId);
-  }, []);
+  }, [dismissAlertId]);
 
   const commonAlerts = useMemo<AlertItem[]>(() => {
     const notificationAlerts: AlertItem[] = state.notifications
@@ -218,6 +226,12 @@ export function AdminShell({ activeTab, state, children }: Props) {
         createdAt: notification.createdAt,
         url: notification.url,
       }));
+
+    const persistedOrderAlertKeys = new Set(
+      state.notifications
+        .filter((notification) => notification.type === "order")
+        .map((notification) => `${notification.title}::${notification.content}`),
+    );
 
     // 주문 접수·취소 요청은 최신 순서대로 12건만 수집해 알림 레코드 유무와 관계없이 표시합니다.
     const orderRecordAlerts: AlertItem[] = [];
@@ -240,13 +254,20 @@ export function AdminShell({ activeTab, state, children }: Props) {
       }
 
       const isCancel = order.status === ORDER_STATUS.CANCEL_REQUESTED;
+      const nextTitle = isCancel
+        ? "주문 취소 요청이 접수되었습니다."
+        : "신규 주문이 접수되었습니다.";
+      const nextContent = `주문 ${order.id}`;
+
+      if (persistedOrderAlertKeys.has(`${nextTitle}::${nextContent}`)) {
+        continue;
+      }
+
       orderRecordAlerts.push({
         id: `${isCancel ? "order-cancel-" : "order-received-"}${order.id}`,
         kind: "ORDER" as const,
-        text: isCancel
-          ? "주문 취소 요청이 접수되었습니다."
-          : "신규 주문이 접수되었습니다.",
-        preview: `${order.customerName} 님 주문 ${order.id}`,
+        text: nextTitle,
+        preview: nextContent,
         createdAt: order.createdAt,
         url: `/orders#orders:${order.id}`,
       });

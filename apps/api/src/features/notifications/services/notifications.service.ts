@@ -60,12 +60,77 @@ export class NotificationsService {
     return { ok: true, removed: false };
   }
 
+  async dismissAlert(alertId: string): Promise<{ ok: true; persisted: boolean }> {
+    const synthetic = this.resolveSyntheticOrderAlert(alertId);
+    if (!synthetic) {
+      return { ok: true, persisted: false };
+    }
+
+    const existing = await this.notificationRepository.findOne({
+      where: {
+        type: 'order',
+        title: synthetic.title,
+        content: synthetic.content,
+        url: synthetic.url,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (existing) {
+      if (!existing.isRead) {
+        existing.isRead = true;
+        await this.notificationRepository.save(existing);
+      }
+      return { ok: true, persisted: true };
+    }
+
+    await this.notificationRepository.save(
+      this.notificationRepository.create({
+        title: synthetic.title,
+        content: synthetic.content,
+        type: 'order',
+        url: synthetic.url,
+        isRead: true,
+      }),
+    );
+
+    return { ok: true, persisted: true };
+  }
+
   async deleteOrderNotifications(orderId: number): Promise<void> {
     await this.notificationRepository.delete({
       type: 'order',
       url: '/orders',
       content: Like(`%주문 ${orderId}%`),
     });
+  }
+
+  private resolveSyntheticOrderAlert(alertId: string): {
+    title: string;
+    content: string;
+    url: string;
+  } | null {
+    const matchedPrefix = ['order-received-', 'order-cancel-'].find((prefix) =>
+      alertId.startsWith(prefix),
+    );
+
+    if (!matchedPrefix) {
+      return null;
+    }
+
+    const orderId = alertId.slice(matchedPrefix.length).trim();
+    if (!/^\d+$/.test(orderId)) {
+      return null;
+    }
+
+    return {
+      title:
+        matchedPrefix === 'order-cancel-'
+          ? '주문 취소 요청이 접수되었습니다.'
+          : '신규 주문이 접수되었습니다.',
+      content: `주문 ${orderId}`,
+      url: `/orders#orders:${orderId}`,
+    };
   }
 
   private toAdminNotification(notification: NotificationEntity): AdminNotification {

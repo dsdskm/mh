@@ -27,6 +27,7 @@ type ProfileBody = {
 type UpdateProfileBody = {
   userId?: string;
   name?: string;
+  postalCode?: string;
   address1?: string;
   address2?: string;
   currentPassword?: string;
@@ -44,19 +45,6 @@ type KakaoCompleteProfileBody = {
   postalCode?: string;
   address1?: string;
   address2?: string;
-};
-
-type ShippingAddressesBody = {
-  userId?: string;
-};
-
-type ShippingAddressSaveBody = {
-  userId?: string;
-  id?: number;
-  name?: string;
-  address1?: string;
-  address2?: string;
-  isDefault?: boolean;
 };
 
 @Controller('api/auth')
@@ -110,6 +98,7 @@ export class AuthController {
   updateProfile(@Body() body: UpdateProfileBody) {
     const userId = body.userId?.trim();
     const name = body.name?.trim();
+    const postalCode = body.postalCode?.trim();
     const address1 = body.address1?.trim();
     const address2 = body.address2?.trim() ?? '';
     const currentPassword = body.currentPassword;
@@ -121,6 +110,7 @@ export class AuthController {
     return this.authService.updateProfile({
       userId,
       name,
+      postalCode,
       address1,
       address2,
       currentPassword,
@@ -160,39 +150,6 @@ export class AuthController {
       postalCode,
       address1,
       address2,
-    });
-  }
-
-
-  @Post('shipping-addresses')
-  shippingAddresses(@Body() body: ShippingAddressesBody) {
-    const userId = body.userId?.trim();
-
-    if (!userId) {
-      throw new BadRequestException('아이디가 필요합니다.');
-    }
-
-    return this.authService.getShippingAddresses(userId);
-  }
-
-  @Post('shipping-addresses/save')
-  saveShippingAddress(@Body() body: ShippingAddressSaveBody) {
-    const userId = body.userId?.trim();
-    const name = body.name?.trim();
-    const address1 = body.address1?.trim();
-    const address2 = body.address2?.trim() ?? '';
-
-    if (!userId || !name || !address1) {
-      throw new BadRequestException('배송지 저장에 필요한 정보를 입력해주세요.');
-    }
-
-    return this.authService.upsertShippingAddress({
-      userId,
-      id: typeof body.id === 'number' ? body.id : undefined,
-      name,
-      address1,
-      address2,
-      isDefault: body.isDefault === true,
     });
   }
 

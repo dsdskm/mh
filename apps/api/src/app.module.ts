@@ -37,6 +37,7 @@ import { PopbillSmsClient } from './features/messages/services/popbill-sms.clien
 import { SolapiMessageClient } from './features/messages/services/solapi-message.client';
 
 import { AccountEntity } from './database/entities/account.entity';
+import { AccountKakaoEntity } from './database/entities/account-kakao.entity';
 import { AppSettingEntity } from './database/entities/app-setting.entity';
 import { InquiryEntity } from './database/entities/inquiry.entity';
 import { InquiryCommentEntity } from './database/entities/inquiry-comment.entity';
@@ -47,13 +48,13 @@ import { OrderTransactionLogEntity } from './database/entities/order-transaction
 import { ProductEntity } from './database/entities/product.entity';
 import { ReviewCommentEntity } from './database/entities/review-comment.entity';
 import { ReviewEntity } from './database/entities/review.entity';
-import { AccountShippingAddressEntity } from './database/entities/account-shipping-address.entity';
 import { NotificationEntity } from './database/entities/notification.entity';
 import { CouponEntity } from './database/entities/coupon.entity';
 import { CouponTemplateEntity } from './database/entities/coupon-template.entity';
 import { MileageTransactionEntity } from './database/entities/mileage-transaction.entity';
 import { AdminSmsHistoryEntity } from './database/entities/admin-sms-history.entity';
 import { TermsHistoryEntity } from './database/entities/terms-history.entity';
+import { SignupCouponClaimEntity } from './database/entities/signup-coupon-claim.entity';
 import { FirestoreTriggerService } from './shared/firestore-trigger.service';
 import { AdminAuthService } from './shared/auth/admin-auth.service';
 import { BackofficeAuthGuard } from './shared/auth/backoffice-auth.guard';
@@ -92,7 +93,7 @@ if (!databaseUrl) {
       autoLoadEntities: true,
       entities: [
         AccountEntity,
-        AccountShippingAddressEntity,
+        AccountKakaoEntity,
         AppSettingEntity,
         ProductEntity,
         NoticeEntity,
@@ -106,6 +107,7 @@ if (!databaseUrl) {
         NotificationEntity,
         CouponEntity,
         CouponTemplateEntity,
+        SignupCouponClaimEntity,
         MileageTransactionEntity,
         AdminSmsHistoryEntity,
         TermsHistoryEntity,
@@ -113,7 +115,7 @@ if (!databaseUrl) {
     }),
     TypeOrmModule.forFeature([
       AccountEntity,
-      AccountShippingAddressEntity,
+      AccountKakaoEntity,
       AppSettingEntity,
       ProductEntity,
       NoticeEntity,
@@ -127,6 +129,7 @@ if (!databaseUrl) {
       NotificationEntity,
       CouponEntity,
       CouponTemplateEntity,
+      SignupCouponClaimEntity,
       MileageTransactionEntity,
       AdminSmsHistoryEntity,
       TermsHistoryEntity,

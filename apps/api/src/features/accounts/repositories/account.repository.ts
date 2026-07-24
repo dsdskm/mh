@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AccountEntity } from '../../../database/entities/account.entity';
-import { AccountShippingAddressEntity } from '../../../database/entities/account-shipping-address.entity';
 import type { AdminUserCreateInput, AdminUserUpdateInput } from '@repo/shared-types/user';
 
 @Injectable()
@@ -10,15 +9,12 @@ export class AccountRepository {
   constructor(
     @InjectRepository(AccountEntity)
     private readonly accountRepository: Repository<AccountEntity>,
-    @InjectRepository(AccountShippingAddressEntity)
-    private readonly shippingAddressRepository: Repository<AccountShippingAddressEntity>,
   ) {}
 
   findMasterAccount(): Promise<AccountEntity | null> {
     return this.accountRepository.findOne({
       where: {
-        type: 'MASTER',
-        userId: 'dsdskm',
+        userId: 'master',
       },
     });
   }
@@ -41,7 +37,6 @@ export class AccountRepository {
 
   async createAccount(input: AdminUserCreateInput): Promise<AccountEntity> {
     const account = this.accountRepository.create({
-      type: input.type,
       userId: input.userId ?? null,
       username: input.username ?? input.userId ?? null,
       password: input.password ?? null,
@@ -58,21 +53,7 @@ export class AccountRepository {
       termsAgreedAt: new Date(),
     });
 
-    const saved = await this.accountRepository.save(account);
-
-    if (saved.address1) {
-      await this.shippingAddressRepository.save(
-        this.shippingAddressRepository.create({
-          accountId: saved.id,
-          name: '기본 배송지',
-          address1: saved.address1,
-          address2: saved.address2 ?? '',
-          isDefault: true,
-        }),
-      );
-    }
-
-    return saved;
+    return this.accountRepository.save(account);
   }
 
   async updateAccount(id: number, input: AdminUserUpdateInput): Promise<AccountEntity | null> {
@@ -82,7 +63,6 @@ export class AccountRepository {
     }
 
     Object.assign(account, {
-      type: input.type ?? account.type,
       userId: input.userId !== undefined ? input.userId || null : account.userId,
       username: input.username !== undefined ? input.username || null : account.username,
       password: input.password !== undefined ? input.password || null : account.password,
@@ -115,12 +95,5 @@ export class AccountRepository {
 
   findAccountById(id: number): Promise<AccountEntity | null> {
     return this.accountRepository.findOne({ where: { id } });
-  }
-
-  findShippingAddressesByAccountId(accountId: number): Promise<AccountShippingAddressEntity[]> {
-    return this.shippingAddressRepository.find({
-      where: { accountId },
-      order: { isDefault: 'DESC', updatedAt: 'DESC' },
-    });
   }
 }

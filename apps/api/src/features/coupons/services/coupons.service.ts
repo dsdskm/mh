@@ -10,6 +10,7 @@ import { CouponTemplateEntity } from '../../../database/entities/coupon-template
 import { AccountEntity } from '../../../database/entities/account.entity';
 import type {
   Coupon,
+  CouponStatus,
   CouponTemplate,
   CreateCouponTemplateInput,
   IssueCouponByTemplateInput,
@@ -34,6 +35,7 @@ export class CouponsService {
     const normalized = this.normalizeCouponDefinition(input);
     const created = this.couponTemplateRepository.create({
       ...normalized,
+      usage: input.usage === 'signup' ? 'signup' : 'general',
       validUntil: normalized.validUntil,
     });
     const saved = await this.couponTemplateRepository.save(created);
@@ -60,6 +62,9 @@ export class CouponsService {
     });
     if (!template) {
       throw new NotFoundException('쿠폰 템플릿을 찾을 수 없습니다.');
+    }
+    if (template.usage === 'signup') {
+      throw new BadRequestException('가입 전용 쿠폰은 수동 발급할 수 없습니다.');
     }
 
     const accountIds = await this.resolveTargetAccountIds(input.accountIds);
@@ -128,12 +133,13 @@ export class CouponsService {
   // 회원: 사용 가능한 쿠폰 (available + 미만료)
   async listAvailableByAccount(accountId: number): Promise<Coupon[]> {
     const coupons = await this.couponRepository.find({
-      where: { accountId, status: 'available' },
+      where: { accountId },
       order: { issuedAt: 'DESC' },
     });
 
     const now = new Date();
     return coupons
+      .filter((coupon) => this.normalizeCouponStatus(coupon.status) === 'available')
       .filter((coupon) => !isCouponExpired(coupon.validUntil, now))
       .map((coupon) => this.toCoupon(coupon, null));
   }
@@ -151,7 +157,7 @@ export class CouponsService {
     if (!coupon) {
       throw new NotFoundException('쿠폰을 찾을 수 없습니다.');
     }
-    if (coupon.status === 'used') {
+    if (this.normalizeCouponStatus(coupon.status) === 'used') {
       throw new BadRequestException('이미 사용된 쿠폰은 회수할 수 없습니다.');
     }
     coupon.status = 'revoked';
@@ -163,7 +169,7 @@ export class CouponsService {
   ): Promise<number[]> {
     if (accountIds === 'all') {
       const accounts = await this.accountRepository.find({
-        where: { isActive: true, type: Not('MASTER') },
+        where: { isActive: true, userId: Not('master') },
         select: { id: true },
       });
       return accounts.map((a) => a.id);
@@ -198,6 +204,8 @@ export class CouponsService {
   }
 
   private toCoupon(coupon: CouponEntity, accountName: string | null): Coupon {
+    const normalizedStatus = this.normalizeCouponStatus(coupon.status);
+
     return {
       id: coupon.id,
       accountId: coupon.accountId,
@@ -207,7 +215,7 @@ export class CouponsService {
       minOrderAmount: coupon.minOrderAmount ?? 0,
       maxDiscountAmount: coupon.maxDiscountAmount ?? null,
       validUntil: coupon.validUntil ? coupon.validUntil.toISOString() : null,
-      status: coupon.status,
+      status: normalizedStatus,
       usedOrderId: coupon.usedOrderId ?? null,
       usedAt: coupon.usedAt ? coupon.usedAt.toISOString() : null,
       issuedAt: coupon.issuedAt.toISOString(),
@@ -220,6 +228,7 @@ export class CouponsService {
     return {
       id: template.id,
       name: template.name,
+      usage: template.usage === 'signup' ? 'signup' : 'general',
       discountType: template.discountType,
       discountValue: template.discountValue,
       minOrderAmount: template.minOrderAmount ?? 0,
@@ -287,5 +296,16 @@ export class CouponsService {
       maxDiscountAmount,
       validUntil,
     };
+  }
+
+  private normalizeCouponStatus(status: string | null | undefined): CouponStatus {
+    const normalized = (status ?? '').trim().toLowerCase();
+    if (normalized === 'used') {
+      return 'used';
+    }
+    if (normalized === 'revoked') {
+      return 'revoked';
+    }
+    return 'available';
   }
 }

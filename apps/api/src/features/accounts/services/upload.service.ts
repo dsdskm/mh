@@ -221,21 +221,15 @@ export class UploadService {
   }
 
   private resolveCredential() {
-    const serviceAccountEnv = this.getNonEmptyEnv('FIREBASE_SERVICE_ACCOUNT_KEY');
-    const serviceAccountBase64 = this.getNonEmptyEnv('FIREBASE_SERVICE_ACCOUNT_BASE64');
-
     const serviceAccountFromFile =
       this.readServiceAccountFromFile(process.env.FIREBASE_SERVICE_ACCOUNT_PATH, true) ??
       this.readServiceAccountFromFile(LOCAL_FIREBASE_SERVICE_ACCOUNT_FILE, false);
 
-    const serviceAccountRaw =
-      serviceAccountEnv ??
-      serviceAccountFromFile ??
-      this.decodeBase64(serviceAccountBase64);
+    const serviceAccountRaw = serviceAccountFromFile;
 
     if (!serviceAccountRaw) {
       throw new InternalServerErrorException(
-        'Firebase 인증 정보가 없습니다. FIREBASE_SERVICE_ACCOUNT_KEY, FIREBASE_SERVICE_ACCOUNT_BASE64, FIREBASE_SERVICE_ACCOUNT_PATH 중 하나를 설정해주세요.',
+        'Firebase 인증 정보가 없습니다. FIREBASE_SERVICE_ACCOUNT_PATH를 설정해주세요.',
       );
     }
 
@@ -253,7 +247,7 @@ export class UploadService {
       });
     } catch {
       throw new InternalServerErrorException(
-        'FIREBASE_SERVICE_ACCOUNT_KEY 값이 유효한 JSON이 아닙니다.',
+        'FIREBASE_SERVICE_ACCOUNT_PATH 파일 내용이 유효한 JSON이 아닙니다.',
       );
     }
   }
@@ -288,23 +282,6 @@ export class UploadService {
     }
 
     return null;
-  }
-
-  private decodeBase64(value?: string): string | null {
-    if (!value) {
-      return null;
-    }
-
-    try {
-      return Buffer.from(value, 'base64').toString('utf8');
-    } catch {
-      return null;
-    }
-  }
-
-  private getNonEmptyEnv(key: string): string | undefined {
-    const value = process.env[key]?.trim();
-    return value ? value : undefined;
   }
 
   private getExtension(fileName: string): string {

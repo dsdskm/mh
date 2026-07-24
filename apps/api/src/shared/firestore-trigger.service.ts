@@ -55,18 +55,13 @@ export class FirestoreTriggerService {
   }
 
   private resolveCredential() {
-    const serviceAccountEnv = this.getNonEmptyEnv('FIREBASE_SERVICE_ACCOUNT_KEY');
-    const serviceAccountBase64 = this.getNonEmptyEnv('FIREBASE_SERVICE_ACCOUNT_BASE64');
-
     const serviceAccountRaw =
-      serviceAccountEnv ??
       this.readServiceAccountFromFile(process.env.FIREBASE_SERVICE_ACCOUNT_PATH) ??
-      this.readServiceAccountFromFile(LOCAL_FIREBASE_SERVICE_ACCOUNT_FILE) ??
-      this.decodeBase64(serviceAccountBase64);
+      this.readServiceAccountFromFile(LOCAL_FIREBASE_SERVICE_ACCOUNT_FILE);
 
     if (!serviceAccountRaw) {
       throw new Error(
-        'Firebase 인증 정보가 없습니다. FIREBASE_SERVICE_ACCOUNT_KEY, FIREBASE_SERVICE_ACCOUNT_BASE64, FIREBASE_SERVICE_ACCOUNT_PATH 중 하나를 설정해주세요.',
+        'Firebase 인증 정보가 없습니다. FIREBASE_SERVICE_ACCOUNT_PATH를 설정해주세요.',
       );
     }
 
@@ -105,20 +100,6 @@ export class FirestoreTriggerService {
     }
 
     return null;
-  }
-
-  private decodeBase64(encoded?: string): string | null {
-    if (!encoded) return null;
-    try {
-      return Buffer.from(encoded, 'base64').toString('utf-8');
-    } catch {
-      return null;
-    }
-  }
-
-  private getNonEmptyEnv(key: string): string | undefined {
-    const value = process.env[key]?.trim();
-    return value ? value : undefined;
   }
 
   private extractProjectId(): string | null {

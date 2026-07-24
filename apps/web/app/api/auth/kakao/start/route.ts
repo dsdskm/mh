@@ -20,7 +20,6 @@ function normalizeCallbackUrl(rawValue: string | null): string {
 export async function GET(request: NextRequest) {
   const clientId =
     process.env.KAKAO_REST_API_KEY?.trim() ||
-    process.env.KAKAO_CLIENT_ID?.trim() ||
     process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY?.trim() ||
     "";
 

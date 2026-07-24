@@ -8,8 +8,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency, formatPhone, toEmbedVideoUrl } from "./_lib/format";
 import { OperatorProductInfo } from "./_components/operator-product-info";
 import { PhoneVerificationBox } from "./_components/phone-verification-box";
-import { getProfileApi, getShippingAddressesApi, getMyCouponsApi, getMyMileageApi } from "./account/api/account.api";
-import type { ShippingAddress } from "../types/auth";
+import { getProfileApi, getMyCouponsApi, getMyMileageApi } from "./account/api/account.api";
 import type { DaumPostcodeData, DaumPostcodeWindow } from "../types/daum-postcode";
 import { getOrderStatusLabelKo } from "@repo/shared-types/order";
 import type { OrderStatus } from "@repo/shared-types/order";
@@ -153,6 +152,7 @@ const MEMBER_PHONE_KEY = "cornmarket:member-phone";
 const NOTICE_DISMISS_KEY_PREFIX = "cornmarket:notice:dismissed:";
 const TERMS_SEEN_VERSION_KEY = "cornmarket:terms:seen-version";
 const ORDER_REQUEST_CUSTOM_VALUE = "__custom__";
+const ENABLE_REWARDS = false;
 type OrderRequestPresetValue =
   | ""
   | "문 앞에 놓아주세요"
@@ -206,11 +206,10 @@ export default function Home() {
   const [orderDone, setOrderDone] = useState<OrderResponse | null>(null);
   const [phone, setPhone] = useState("");
   const [depositorName, setDepositorName] = useState("");
+  const [recipientName, setRecipientName] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
   const [memberPostalCode, setMemberPostalCode] = useState("");
   const [guestPostalCode, setGuestPostalCode] = useState("");
-  const [memberShippingAddresses, setMemberShippingAddresses] = useState<ShippingAddress[]>([]);
-  const [selectedShippingAddressId, setSelectedShippingAddressId] = useState<number | null>(null);
   const [orderRequestPreset, setOrderRequestPreset] = useState<OrderRequestPresetValue>("");
   const [orderRequestCustomNote, setOrderRequestCustomNote] = useState("");
   const [loadingDefaultShipping, setLoadingDefaultShipping] = useState(false);
@@ -256,6 +255,7 @@ export default function Home() {
     orderRequestPreset === ORDER_REQUEST_CUSTOM_VALUE ? orderRequestCustomNote.trim() : orderRequestPreset.trim();
   const inquiryUrl = storeConfig.kakaoChannelUrl.trim();
 
+
   function openInquiry() {
     setShowMenuDrawer(false);
 
@@ -282,6 +282,53 @@ export default function Home() {
       setSavedMemberPhone(savedPhone);
     }
   }, []);
+
+  useEffect(() => {
+    if (!ENABLE_REWARDS) {
+      setMemberAccountId(null);
+      setMemberCoupons([]);
+      return;
+    }
+
+    if (status !== "authenticated") {
+      setMemberCoupons([]);
+      return;
+    }
+
+    const userId = session?.user?.email?.trim() ?? "";
+    if (!userId) {
+      setMemberCoupons([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadMemberCouponsForBadge() {
+      try {
+        const profileData = await getProfileApi(userId);
+        const accountId = profileData.profile.id;
+        const couponsData = await getMyCouponsApi(accountId);
+
+        if (cancelled) {
+          return;
+        }
+
+        setMemberAccountId(accountId);
+        setMemberCoupons(couponsData);
+      } catch {
+        if (cancelled) {
+          return;
+        }
+        setMemberCoupons([]);
+      }
+    }
+
+    void loadMemberCouponsForBadge();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status, session?.user?.email]);
 
   useEffect(() => {
     if (!guestOrderCodeSent || guestOrderPhoneVerified || !guestOrderCodeExpiresAt) {
@@ -518,13 +565,22 @@ export default function Home() {
   ]);
 
   const selectedCoupon = useMemo(
-    () => memberCoupons.find((c) => c.id === selectedCouponId) ?? null,
+    () => (ENABLE_REWARDS ? (memberCoupons.find((c) => c.id === selectedCouponId) ?? null) : null),
     [memberCoupons, selectedCouponId],
+  );
+
+  const hasAvailableCouponBadge = useMemo(
+    () =>
+      ENABLE_REWARDS &&
+      memberCoupons.some(
+        (coupon) => coupon.status === "available" && coupon.expired !== true,
+      ),
+    [memberCoupons],
   );
 
   // 쿠폰 할인액 (상품 소계 기준, API computeCouponDiscount 와 동일 규칙)
   const couponDiscount = useMemo(() => {
-    if (!isMemberCheckout || !selectedCoupon) {
+    if (!ENABLE_REWARDS || !isMemberCheckout || !selectedCoupon) {
       return 0;
     }
     if (totalPrice < (selectedCoupon.minOrderAmount ?? 0)) {
@@ -545,7 +601,7 @@ export default function Home() {
   // 적립금 사용액 (잔액·결제예정액 한도 내)
   const payableBeforeMileage = Math.max(0, totalPrice + effectiveDeliveryFee - couponDiscount);
   const mileageToUse = useMemo(() => {
-    if (!isMemberCheckout) {
+    if (!ENABLE_REWARDS || !isMemberCheckout) {
       return 0;
     }
     const requested = Math.max(0, Math.floor(Number(mileageInput) || 0));
@@ -561,7 +617,7 @@ export default function Home() {
 
   // 적립 예정 적립금 (배송완료 시)
   const expectedMileageEarn = useMemo(() => {
-    if (!isMemberCheckout) {
+    if (!ENABLE_REWARDS || !isMemberCheckout) {
       return 0;
     }
     const rate = Math.max(0, Math.floor(storeConfig.mileageEarnRate || 0));
@@ -683,6 +739,29 @@ export default function Home() {
       return false;
     }
 
+    if (!depositorName.trim()) {
+      setError("입금자명을 입력해주세요.");
+      return false;
+    }
+
+    if (!recipientName.trim()) {
+      setError("수신자명을 입력해주세요.");
+      return false;
+    }
+
+    if (!phone.trim()) {
+      setError("수신자 연락처를 입력해주세요.");
+      return false;
+    }
+
+    const resolvedPostalCode =
+      purchaseType === "guest" ? guestPostalCode.trim() : memberPostalCode.trim();
+
+    if (!resolvedPostalCode) {
+      setError("우편번호를 입력해주세요.");
+      return false;
+    }
+
     const resolvedShippingAddress =
       purchaseType === "guest"
         ? [guestAddressBase, guestAddressDetail].filter(Boolean).join(" ").trim()
@@ -718,6 +797,10 @@ export default function Home() {
       purchaseType === "guest"
         ? [guestAddressBase, guestAddressDetail].filter(Boolean).join(" ").trim()
         : shippingAddress.trim();
+    const resolvedPostalCode = purchaseType === "guest" ? guestPostalCode.trim() : memberPostalCode.trim();
+    const shippingAddressWithPostal = resolvedPostalCode
+      ? `[${resolvedPostalCode}] ${resolvedShippingAddress}`
+      : resolvedShippingAddress;
 
     setSubmitting(true);
     try {
@@ -727,8 +810,9 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          customerName: recipientName.trim() || depositorName.trim(),
           phone,
-          shippingAddress: resolvedShippingAddress,
+          shippingAddress: shippingAddressWithPostal,
           requestNote: resolvedOrderRequestNote || undefined,
           depositorName,
           purchaseType,
@@ -736,8 +820,8 @@ export default function Home() {
           lookupToken: purchaseType === "guest" ? guestOrderLookupToken : undefined,
           // 회원 전용: 주문자 계정 및 쿠폰/적립금
           accountId: purchaseType === "member" ? memberAccountId : undefined,
-          couponId: purchaseType === "member" ? (selectedCouponId ?? undefined) : undefined,
-          mileageToUse: purchaseType === "member" && mileageToUse > 0 ? mileageToUse : undefined,
+          couponId: ENABLE_REWARDS && purchaseType === "member" ? (selectedCouponId ?? undefined) : undefined,
+          mileageToUse: ENABLE_REWARDS && purchaseType === "member" && mileageToUse > 0 ? mileageToUse : undefined,
           items: cartItems.map((item) => ({
             productId: item.id,
             quantity: item.quantity,
@@ -761,6 +845,7 @@ export default function Home() {
       setCart({});
       setPhone("");
       setDepositorName("");
+      setRecipientName("");
       setShippingAddress("");
       setMemberPostalCode("");
       setGuestPostalCode("");
@@ -1020,8 +1105,6 @@ export default function Home() {
   async function fillDefaultShippingAddress() {
     const userId = session?.user?.email?.trim();
     if (!userId) {
-      setMemberShippingAddresses([]);
-      setSelectedShippingAddressId(null);
       setShippingAddress("");
       setMemberPostalCode("");
       return;
@@ -1037,6 +1120,7 @@ export default function Home() {
         profileData.profile.phone?.trim() || savedMemberPhone.trim() || storedMemberPhone;
 
       setDepositorName(profileData.profile.name || session?.user?.name || "");
+      setRecipientName(profileData.profile.name || session?.user?.name || "");
       setPhone(resolvedPhone);
 
       // 회원 쿠폰/적립금 로드
@@ -1044,52 +1128,32 @@ export default function Home() {
       setMemberAccountId(accountId);
       setSelectedCouponId(null);
       setMileageInput("");
-      try {
-        const [couponsData, mileageData] = await Promise.all([getMyCouponsApi(accountId), getMyMileageApi(accountId)]);
-        setMemberCoupons(couponsData);
-        setMileageBalance(mileageData.balance);
-      } catch {
+      if (!ENABLE_REWARDS) {
         setMemberCoupons([]);
         setMileageBalance(0);
+      } else {
+        try {
+          const [couponsData, mileageData] = await Promise.all([getMyCouponsApi(accountId), getMyMileageApi(accountId)]);
+          setMemberCoupons(couponsData);
+          setMileageBalance(mileageData.balance);
+        } catch {
+          setMemberCoupons([]);
+          setMileageBalance(0);
+        }
       }
 
-      try {
-        const shippingData = await getShippingAddressesApi(userId);
-        setMemberShippingAddresses(shippingData.shippingAddresses);
-
-        const selected =
-          shippingData.shippingAddresses.find((item) => item.isDefault) ?? shippingData.shippingAddresses[0];
-        setSelectedShippingAddressId(selected?.id ?? null);
-
-        const defaultAddress = [selected?.address1, selected?.address2].filter(Boolean).join(" ").trim();
-        const profileAddress = [profileData.profile.address1, profileData.profile.address2]
-          .filter(Boolean)
-          .join(" ")
-          .trim();
-        setShippingAddress(defaultAddress || profileAddress);
-      } catch {
-        setMemberShippingAddresses([]);
-        setSelectedShippingAddressId(null);
-        setShippingAddress([profileData.profile.address1, profileData.profile.address2].filter(Boolean).join(" ").trim());
-      }
+      setShippingAddress([profileData.profile.address1, profileData.profile.address2].filter(Boolean).join(" ").trim());
 
       setMemberPostalCode(profileData.profile.kakaoShippingZoneNumber ?? "");
     } catch {
-      setMemberShippingAddresses([]);
-      setSelectedShippingAddressId(null);
       setShippingAddress("");
       setMemberPostalCode("");
+      setRecipientName("");
       setMemberCoupons([]);
       setMileageBalance(0);
     } finally {
       setLoadingDefaultShipping(false);
     }
-  }
-
-  function onSelectShippingAddress(nextId: number) {
-    setSelectedShippingAddressId(nextId);
-    const selected = memberShippingAddresses.find((item) => item.id === nextId);
-    setShippingAddress([selected?.address1, selected?.address2].filter(Boolean).join(" "));
   }
 
   return (
@@ -1459,8 +1523,6 @@ export default function Home() {
                 setShowOrderConfirmModal(false);
                 if (isLoggedIn) {
                   setPurchaseType("member");
-                  setMemberShippingAddresses([]);
-                  setSelectedShippingAddressId(null);
                   setMemberPostalCode("");
                   void fillDefaultShippingAddress();
                 } else {
@@ -1470,8 +1532,6 @@ export default function Home() {
                   setShippingAddress("");
                   setMemberPostalCode("");
                   setGuestPostalCode("");
-                  setMemberShippingAddresses([]);
-                  setSelectedShippingAddressId(null);
                 }
                 setOrderRequestPreset("");
                 setOrderRequestCustomNote("");
@@ -1537,8 +1597,7 @@ export default function Home() {
                         }
                         setPurchaseType("member");
                         setExcludeMemberBonus(false);
-                        setMemberShippingAddresses([]);
-                        setSelectedShippingAddressId(null);
+                        setRecipientName("");
                         setMemberPostalCode("");
                         void fillDefaultShippingAddress();
                       }}
@@ -1552,6 +1611,7 @@ export default function Home() {
                         setPurchaseType("guest");
                         setExcludeMemberBonus(false);
                         setDepositorName("");
+                        setRecipientName("");
                         setPhone("");
                         setShippingAddress("");
                         setMemberPostalCode("");
@@ -1565,8 +1625,6 @@ export default function Home() {
                         setGuestOrderCodeExpiresAt(null);
                         setGuestOrderCodeRemainingSec(0);
                         setGuestHasRegisteredAccount(false);
-                        setMemberShippingAddresses([]);
-                        setSelectedShippingAddressId(null);
                       }}
                       className="w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-bold text-stone-800"
                     >
@@ -1592,18 +1650,34 @@ export default function Home() {
                   <>
                     <p className="mt-1 text-sm text-stone-600">
                       {purchaseType === "member"
-                        ? "로그인 계정 정보와 기본 배송지를 불러왔습니다. 배송지를 선택할 수 있습니다."
-                        : "입금자명과 연락처를 입력해주세요."}
+                        ? "로그인 계정 정보와 기본 주소를 불러왔습니다."
+                        : "입금자명, 수신자명, 수신자 연락처를 입력해주세요."}
+                    </p>
+                    <p className="mt-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+                      수신자/배송지는 이번 주문에만 사용됩니다. 기본값은 자동으로 불러오며 자유롭게 수정할 수 있어요.
                     </p>
 
                     <form className="mt-4 space-y-3" onSubmit={requestOrderSubmit}>
-                      <input
-                        value={depositorName}
-                        onChange={(event) => setDepositorName(event.target.value)}
-                        placeholder="입금자명"
-                        className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                        required
-                      />
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-stone-700">주문자</p>
+                        <input
+                          value={depositorName}
+                          onChange={(event) => setDepositorName(event.target.value)}
+                          placeholder="입금자명"
+                          className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-stone-700">받으시는 분</p>
+                        <input
+                          value={recipientName}
+                          onChange={(event) => setRecipientName(event.target.value)}
+                          placeholder="수신자명"
+                          className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                          required
+                        />
+                      </div>
                       <input
                         value={phone}
                         onChange={(event) => {
@@ -1616,10 +1690,11 @@ export default function Home() {
                             setGuestHasRegisteredAccount(false);
                           }
                         }}
-                        placeholder="연락처"
+                        placeholder="수신자 연락처"
                         className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
                         required
                       />
+                      <p className="text-xs text-stone-500">입금자명(이체 확인), 수신자 정보(배송 수령)로 사용됩니다.</p>
                       {purchaseType === "guest" && (
                         <PhoneVerificationBox
                           code={guestOrderCode}
@@ -1655,12 +1730,13 @@ export default function Home() {
 
                       {purchaseType === "member" ? (
                         <div className="space-y-2">
+                          <p className="text-xs text-stone-500">기본 배송지가 자동으로 불러와지며, 직접 수정 가능합니다.</p>
                           <div className="flex gap-2">
                             <input
                               value={memberPostalCode}
-                              readOnly
+                              onChange={(event) => setMemberPostalCode(event.target.value)}
                               placeholder="우편번호"
-                              className="w-28 rounded-xl border border-stone-300 bg-stone-50 px-3 py-2 text-sm"
+                              className="w-28 rounded-xl border border-stone-300 px-3 py-2 text-sm"
                             />
                             <button
                               type="button"
@@ -1681,12 +1757,13 @@ export default function Home() {
                         </div>
                       ) : (
                         <div className="space-y-2">
+                          <p className="text-xs text-stone-500">우편번호 입력 후 주소 검색으로 기본주소를 선택해주세요.</p>
                           <div className="flex gap-2">
                             <input
                               value={guestPostalCode}
-                              readOnly
+                              onChange={(event) => setGuestPostalCode(event.target.value)}
                               placeholder="우편번호"
-                              className="w-28 rounded-xl border border-stone-300 bg-stone-50 px-3 py-2 text-sm"
+                              className="w-28 rounded-xl border border-stone-300 px-3 py-2 text-sm"
                             />
                             <input
                               value={guestAddressBase}
@@ -1711,20 +1788,6 @@ export default function Home() {
                             className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
                           />
                         </div>
-                      )}
-                      {purchaseType === "member" && memberShippingAddresses.length > 0 && (
-                        <select
-                          value={selectedShippingAddressId ?? ""}
-                          onChange={(event) => onSelectShippingAddress(Number(event.target.value))}
-                          className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                        >
-                          {memberShippingAddresses.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.name}
-                              {item.isDefault ? " (기본)" : ""}
-                            </option>
-                          ))}
-                        </select>
                       )}
                       <div className="space-y-2">
                         <select
@@ -1753,7 +1816,7 @@ export default function Home() {
                         </p>
                       )}
 
-                      {isMemberCheckout && (
+                      {isMemberCheckout && ENABLE_REWARDS && (
                         <div className="space-y-3 rounded-2xl border border-lime-200 bg-lime-50/60 p-3">
                           <div className="space-y-1">
                             <span className="text-xs font-semibold text-stone-700">쿠폰</span>
@@ -1894,10 +1957,10 @@ export default function Home() {
                 {orderDone.order.deliveryFee > 0 && (
                   <p className="text-sm text-stone-700">배송료: {formatCurrency(orderDone.order.deliveryFee)}</p>
                 )}
-                {orderDone.order.couponDiscount > 0 && (
+                {ENABLE_REWARDS && orderDone.order.couponDiscount > 0 && (
                   <p className="text-sm text-lime-700">쿠폰 할인: -{formatCurrency(orderDone.order.couponDiscount)}</p>
                 )}
-                {orderDone.order.mileageUsed > 0 && (
+                {ENABLE_REWARDS && orderDone.order.mileageUsed > 0 && (
                   <p className="text-sm text-lime-700">적립금 사용: -{formatCurrency(orderDone.order.mileageUsed)}</p>
                 )}
                 <p className="text-sm text-stone-700">주문금액: {formatCurrency(orderDone.order.totalAmount)}</p>
@@ -1963,7 +2026,8 @@ export default function Home() {
               <p className="font-bold text-stone-900">주문 정보</p>
               <p>구매 유형: {purchaseType === "member" ? "회원" : "비회원"}</p>
               <p>입금자명: {depositorName || "-"}</p>
-              <p>연락처: {phone ? formatPhone(phone) : "-"}</p>
+              <p>수신자명: {recipientName || "-"}</p>
+              <p>수신자 연락처: {phone ? formatPhone(phone) : "-"}</p>
               <p>우편번호: {confirmPostalCode || "-"}</p>
               <p>배송지: {confirmShippingAddress || "-"}</p>
               <p>요청사항: {resolvedOrderRequestNote || "없음"}</p>
@@ -2016,10 +2080,10 @@ export default function Home() {
               <div className="mt-2 space-y-0.5 text-sm text-stone-700">
                 <p>상품 금액 {formatCurrency(totalPrice)}</p>
                 {effectiveDeliveryFee > 0 && <p>배송료 {formatCurrency(effectiveDeliveryFee)}</p>}
-                {couponDiscount > 0 && <p className="text-lime-700">쿠폰 할인 -{formatCurrency(couponDiscount)}</p>}
-                {mileageToUse > 0 && <p className="text-lime-700">적립금 사용 -{formatCurrency(mileageToUse)}</p>}
+                {ENABLE_REWARDS && couponDiscount > 0 && <p className="text-lime-700">쿠폰 할인 -{formatCurrency(couponDiscount)}</p>}
+                {ENABLE_REWARDS && mileageToUse > 0 && <p className="text-lime-700">적립금 사용 -{formatCurrency(mileageToUse)}</p>}
                 <p className="font-semibold text-stone-900">총 결제 예정 금액 {formatCurrency(finalPayable)}</p>
-                {expectedMileageEarn > 0 && (
+                {ENABLE_REWARDS && expectedMileageEarn > 0 && (
                   <p className="text-[11px] text-lime-700">
                     배송완료 시 {formatCurrency(expectedMileageEarn)} 적립 예정
                   </p>
@@ -2167,13 +2231,18 @@ export default function Home() {
               >
                 주문내역
               </Link>
-              {isLoggedIn && (
+              {isLoggedIn && ENABLE_REWARDS && (
                 <Link
                   href="/account/coupon-mileage"
                   onClick={() => setShowMenuDrawer(false)}
-                  className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
                 >
                   쿠폰/마일리지
+                  {hasAvailableCouponBadge && (
+                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[11px] font-extrabold leading-none text-white">
+                      N
+                    </span>
+                  )}
                 </Link>
               )}
               <Link
@@ -2330,6 +2399,7 @@ export default function Home() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

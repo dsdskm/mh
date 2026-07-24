@@ -96,35 +96,53 @@ function KakaoCallbackContent() {
         return;
       }
 
-      const userId = await resolveSessionUserId();
+      const sessionInfo = await resolveSessionInfo();
       console.info("[kakao:callback] resolved session userId", {
-        userId,
+        userId: sessionInfo?.userId,
+        signupWelcomePopup: sessionInfo?.signupWelcomePopup,
       });
-      if (userId) {
-        const needOnboarding = await hasIncompleteKakaoProfile(userId);
+
+      if (sessionInfo?.userId) {
+        const profileState = await getKakaoProfileState(sessionInfo.userId);
+        const needOnboarding = profileState.needOnboarding;
         console.info("[kakao:callback] profile onboarding check", {
-          userId,
+          userId: sessionInfo.userId,
           needOnboarding,
         });
         if (needOnboarding) {
-          router.replace("/auth/kakao/welcome?callbackUrl=%2F");
+          window.location.replace(`/auth/kakao/welcome?callbackUrl=${encodeURIComponent("/")}`);
           return;
         }
       }
 
-      router.replace("/");
+      window.location.replace("/");
     }
 
-    async function resolveSessionUserId(): Promise<string | null> {
+    async function resolveSessionInfo(): Promise<{ userId: string | null; signupWelcomePopup: boolean } | null> {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         const response = await fetch("/api/auth/session", { cache: "no-store" });
         if (response.ok) {
-          const data = (await response.json()) as { user?: { email?: string } };
-          const email = data.user?.email?.trim();
+          const data = (await response.json()) as {
+            user?: { email?: string; signupWelcomePopup?: boolean };
+          };
+          const email = data.user?.email?.trim() ?? null;
           if (email) {
-            return email;
+            console.info("[kakao:callback] session fetch success", {
+              email,
+              signupWelcomePopup: data.user?.signupWelcomePopup === true,
+              attempt,
+            });
+            return {
+              userId: email,
+              signupWelcomePopup: data.user?.signupWelcomePopup === true,
+            };
           }
         }
+
+        console.info("[kakao:callback] session fetch retry", {
+          attempt,
+          ok: response.ok,
+        });
 
         await new Promise((resolve) => window.setTimeout(resolve, 120));
       }
@@ -132,7 +150,9 @@ function KakaoCallbackContent() {
       return null;
     }
 
-    async function hasIncompleteKakaoProfile(userId: string): Promise<boolean> {
+    async function getKakaoProfileState(userId: string): Promise<{
+      needOnboarding: boolean;
+    }> {
       const response = await fetch(`${API_BASE}/api/auth/profile`, {
         method: "POST",
         headers: {
@@ -146,12 +166,15 @@ function KakaoCallbackContent() {
           userId,
           status: response.status,
         });
-        return false;
+        return {
+          needOnboarding: false,
+        };
       }
 
       const data = (await response.json()) as {
         profile?: {
           accountType?: string;
+          createdAt?: string;
           address1?: string;
           kakaoShippingZoneNumber?: string;
         };
@@ -163,10 +186,14 @@ function KakaoCallbackContent() {
         profile,
       });
       if (!profile || profile.accountType !== "KAKAO") {
-        return false;
+        return {
+          needOnboarding: false,
+        };
       }
 
-      return !profile.address1?.trim() || !profile.kakaoShippingZoneNumber?.trim();
+      return {
+        needOnboarding: !profile.address1?.trim() || !profile.kakaoShippingZoneNumber?.trim(),
+      };
     }
 
     void runLogin();

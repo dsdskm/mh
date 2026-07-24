@@ -506,14 +506,14 @@ export function SettingsTab({ state }: Props) {
               className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
             >
               <option value="">없음</option>
-              {state.couponTemplates.map((template) => (
+              {state.couponTemplates.filter((template) => template.usage === "signup").map((template) => (
                 <option key={template.id} value={template.id}>
                   {template.name}
                 </option>
               ))}
             </select>
             <span className="pt-2 text-[11px] leading-5 text-stone-500">
-              회원 가입 완료 시 선택한 쿠폰이 자동으로 발급됩니다. 쿠폰은 쿠폰·적립금 탭에서 먼저 등록해주세요.
+              회원 가입 완료 시 신규가입 전용 쿠폰이 자동 1회 발급됩니다. 탈퇴 후 재가입 시에는 다시 발급되지 않습니다.
             </span>
           </label>
         </section>

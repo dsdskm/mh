@@ -2,7 +2,6 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
 const configuredApiBase =
-  process.env.INTERNAL_API_BASE_URL?.trim() ||
   process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ||
   "";
 
@@ -49,6 +48,7 @@ export const authOptions: NextAuthOptions = {
 
           const data = (await response.json()) as {
             account: { id: number; userId: string; name: string };
+            showSignupCouponPopup?: boolean;
           };
 
           console.info("[auth:web:kakao] authorize response", {
@@ -61,6 +61,7 @@ export const authOptions: NextAuthOptions = {
             id: String(data.account.id),
             name: data.account.name,
             email: data.account.userId,
+            signupWelcomePopup: data.showSignupCouponPopup === true,
           };
         } catch (error) {
           throw error instanceof Error ? error : new Error("카카오 로그인에 실패했습니다.");
@@ -103,6 +104,7 @@ export const authOptions: NextAuthOptions = {
         token.sub = user.id;
         token.name = user.name;
         token.email = user.email;
+        token.signupWelcomePopup = Boolean((user as { signupWelcomePopup?: boolean }).signupWelcomePopup);
 
         console.info("[auth:web] jwt updated from user", {
           sub: token.sub,
@@ -118,6 +120,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = typeof token.sub === "string" ? token.sub : undefined;
         session.user.name = typeof token.name === "string" ? token.name : session.user.name;
         session.user.email = typeof token.email === "string" ? token.email : session.user.email;
+        session.user.signupWelcomePopup = token.signupWelcomePopup === true;
 
         console.info("[auth:web] session built", {
           id: session.user.id,

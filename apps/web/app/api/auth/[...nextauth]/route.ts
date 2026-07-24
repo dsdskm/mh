@@ -3,7 +3,6 @@ import NextAuth from "next-auth";
 import { authOptions } from "../../../../auth";
 
 const BACKEND_BASE =
-  process.env.INTERNAL_API_BASE_URL?.trim() ||
   (process.env.NODE_ENV === "development" ? "http://localhost:9000" : "http://api:9000");
 
 // NextAuth 자체가 처리하는 경로 (첫 번째 세그먼트 기준)

@@ -9,6 +9,7 @@ import type {
   CouponTemplate,
   MileageSummary,
 } from "../../_lib/types";
+import type { CouponTemplateUsage } from "@repo/shared-types/coupon";
 import { PaginationControls } from "../../_components/pagination-controls";
 import { usePersistedPagination } from "../../_hooks/use-persisted-pagination";
 
@@ -71,6 +72,7 @@ export function RewardsTab({ state }: Props) {
   // ----- 쿠폰 생성 팝업 -----
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [templateName, setTemplateName] = useState("");
+  const [templateUsage, setTemplateUsage] = useState<CouponTemplateUsage>("general");
   const [templateDiscountType, setTemplateDiscountType] =
     useState<CouponDiscountType>("fixed");
   const [templateDiscountValue, setTemplateDiscountValue] = useState("3000");
@@ -98,6 +100,16 @@ export function RewardsTab({ state }: Props) {
     }
     return couponTemplates.find((template) => template.id === selectedTemplateId) ?? null;
   }, [couponTemplates, selectedTemplateId]);
+
+  const signupCouponTemplates = useMemo(
+    () => couponTemplates.filter((template) => template.usage === "signup"),
+    [couponTemplates],
+  );
+
+  const generalCouponTemplates = useMemo(
+    () => couponTemplates.filter((template) => template.usage !== "signup"),
+    [couponTemplates],
+  );
 
   const filteredMembers = useMemo(() => {
     const q = memberSearch.trim().toLowerCase();
@@ -132,6 +144,7 @@ export function RewardsTab({ state }: Props) {
     try {
       const ok = await state.createCouponTemplate({
         name: templateName.trim(),
+        usage: templateUsage,
         discountType: templateDiscountType,
         discountValue: value,
         minOrderAmount: 0,
@@ -143,6 +156,7 @@ export function RewardsTab({ state }: Props) {
       });
       if (ok) {
         setTemplateName("");
+        setTemplateUsage("general");
         setTemplateDiscountType("fixed");
         setTemplateDiscountValue("3000");
         setTemplateMaxDiscountAmount("");
@@ -305,6 +319,7 @@ export function RewardsTab({ state }: Props) {
             <thead className="text-xs text-stone-500">
               <tr className="border-b border-stone-200">
                 <th className="py-2">이름</th>
+                <th className="py-2">유형</th>
                 <th className="py-2">할인</th>
                 <th className="py-2">유효기한</th>
                 <th className="py-2">생성일</th>
@@ -315,6 +330,11 @@ export function RewardsTab({ state }: Props) {
               {paginatedCouponTemplates.map((template) => (
                 <tr key={template.id} className="border-b border-stone-100">
                   <td className="py-2">{template.name}</td>
+                  <td className="py-2">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${template.usage === "signup" ? "bg-sky-100 text-sky-700" : "bg-stone-100 text-stone-700"}`}>
+                      {template.usage === "signup" ? "신규가입" : "일반"}
+                    </span>
+                  </td>
                   <td className="py-2">{couponDiscountLabel(template)}</td>
                   <td className="py-2">
                     {template.validUntil
@@ -336,7 +356,7 @@ export function RewardsTab({ state }: Props) {
               ))}
               {paginatedCouponTemplates.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-4 text-center text-xs text-stone-400">
+                  <td colSpan={6} className="py-4 text-center text-xs text-stone-400">
                     생성된 쿠폰이 없습니다.
                   </td>
                 </tr>
@@ -378,7 +398,7 @@ export function RewardsTab({ state }: Props) {
               className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
             >
               <option value="">쿠폰 선택</option>
-              {couponTemplates.map((template) => (
+              {generalCouponTemplates.map((template) => (
                 <option key={template.id} value={template.id}>
                   {template.name}
                 </option>
@@ -724,6 +744,17 @@ export function RewardsTab({ state }: Props) {
               </label>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold text-stone-600">쿠폰 유형</span>
+                  <select
+                    value={templateUsage}
+                    onChange={(event) => setTemplateUsage(event.target.value as CouponTemplateUsage)}
+                    className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  >
+                    <option value="general">일반 발급용</option>
+                    <option value="signup">신규가입 전용</option>
+                  </select>
+                </label>
                 <label className="space-y-1">
                   <span className="text-xs font-semibold text-stone-600">할인 유형</span>
                   <select

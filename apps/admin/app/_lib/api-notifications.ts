@@ -23,3 +23,17 @@ export async function markAdminNotificationAsReadApi(notificationId: number): Pr
     throw new Error("알림 읽음 표시에 실패했습니다.");
   }
 }
+
+export async function dismissAdminAlertApi(alertId: string): Promise<void> {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/notifications/dismiss`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ alertId }),
+  });
+
+  if (!response.ok) {
+    throw new Error("알림 숨김 처리에 실패했습니다.");
+  }
+}

@@ -1,5 +1,9 @@
-import { BadRequestException, Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { NotificationsService } from '../services/notifications.service';
+
+type DismissNotificationBody = {
+  alertId?: string;
+};
 
 @Controller('api/backoffice/notifications')
 export class NotificationsController {
@@ -22,5 +26,15 @@ export class NotificationsController {
     }
 
     return this.notificationsService.markAsRead(parsedId);
+  }
+
+  @Post('dismiss')
+  async dismissNotification(@Body() body: DismissNotificationBody) {
+    const alertId = body.alertId?.trim();
+    if (!alertId) {
+      throw new BadRequestException('alertId가 필요합니다.');
+    }
+
+    return this.notificationsService.dismissAlert(alertId);
   }
 }

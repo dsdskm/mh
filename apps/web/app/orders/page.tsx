@@ -42,6 +42,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || (process.env.NO
 const GUEST_LOOKUP_PHONE_KEY = "cornmarket:guest-lookup-phone";
 const GUEST_LOOKUP_TOKEN_KEY = "cornmarket:guest-lookup-token";
 const STATUS_FLOW: Order["status"][] = ORDER_STATUS_FLOW;
+const ENABLE_REWARDS = false;
 
 function logOrdersDebug(event: string, payload?: unknown) {
   console.info(`[orders:web] ${event}`, payload ?? {});
@@ -586,13 +587,13 @@ export default function OrdersPage() {
               {order.deliveryFee != null && order.deliveryFee > 0 && (
                 <p className="text-sm text-stone-700">배송료: {formatCurrency(order.deliveryFee)}</p>
               )}
-              {order.couponDiscount != null && order.couponDiscount > 0 && (
+              {ENABLE_REWARDS && order.couponDiscount != null && order.couponDiscount > 0 && (
                 <p className="text-sm text-lime-700">쿠폰 할인: -{formatCurrency(order.couponDiscount)}</p>
               )}
-              {order.mileageUsed != null && order.mileageUsed > 0 && (
+              {ENABLE_REWARDS && order.mileageUsed != null && order.mileageUsed > 0 && (
                 <p className="text-sm text-lime-700">적립금 사용: -{formatCurrency(order.mileageUsed)}</p>
               )}
-              {order.mileageEarned != null && order.mileageEarned > 0 && (
+              {ENABLE_REWARDS && order.mileageEarned != null && order.mileageEarned > 0 && (
                 <p className="text-sm text-lime-700">적립금 적립: {formatCurrency(order.mileageEarned)}</p>
               )}
               <p className="text-sm text-stone-700">주문금액: {formatCurrency(order.totalAmount)}</p>
@@ -697,13 +698,13 @@ export default function OrdersPage() {
               {order.deliveryFee != null && order.deliveryFee > 0 && (
                 <p className="text-sm text-stone-700">배송료: {formatCurrency(order.deliveryFee)}</p>
               )}
-              {order.couponDiscount != null && order.couponDiscount > 0 && (
+              {ENABLE_REWARDS && order.couponDiscount != null && order.couponDiscount > 0 && (
                 <p className="text-sm text-lime-700">쿠폰 할인: -{formatCurrency(order.couponDiscount)}</p>
               )}
-              {order.mileageUsed != null && order.mileageUsed > 0 && (
+              {ENABLE_REWARDS && order.mileageUsed != null && order.mileageUsed > 0 && (
                 <p className="text-sm text-lime-700">적립금 사용: -{formatCurrency(order.mileageUsed)}</p>
               )}
-              {order.mileageEarned != null && order.mileageEarned > 0 && (
+              {ENABLE_REWARDS && order.mileageEarned != null && order.mileageEarned > 0 && (
                 <p className="text-sm text-lime-700">적립금 적립: {formatCurrency(order.mileageEarned)}</p>
               )}
               <p className="text-sm text-stone-700">주문금액: {formatCurrency(order.totalAmount)}</p>

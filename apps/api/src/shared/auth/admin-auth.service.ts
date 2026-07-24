@@ -10,7 +10,7 @@ type AdminTokenPayload = {
 @Injectable()
 export class AdminAuthService {
   private readonly logger = new Logger(AdminAuthService.name);
-  private readonly ttlSeconds = Number(process.env.ADMIN_AUTH_TTL_SECONDS ?? 60 * 60 * 8);
+  private readonly ttlSeconds = 60 * 60 * 8;
   private readonly secret: string;
 
   constructor() {

@@ -25,6 +25,7 @@ export type UserProfileResponse = {
     accountType?: "NORMAL" | "KAKAO" | "NAVER" | "MASTER";
     name: string;
     phone: string;
+    createdAt?: string;
     address1: string;
     address2: string;
     kakaoNickname?: string;
@@ -39,6 +40,7 @@ export type UserProfileResponse = {
 export type UpdateProfilePayload = {
   userId: string;
   name: string;
+  postalCode?: string;
   address1: string;
   address2: string;
   currentPassword?: string;
@@ -48,26 +50,6 @@ export type UpdateProfilePayload = {
 export type WithdrawPayload = {
   userId: string;
   password?: string;
+  confirmationText: string;
   reason?: string;
-};
-
-export type ShippingAddress = {
-  id: number;
-  name: string;
-  address1: string;
-  address2: string;
-  isDefault: boolean;
-};
-
-export type ShippingAddressesResponse = {
-  shippingAddresses: ShippingAddress[];
-};
-
-export type SaveShippingAddressPayload = {
-  userId: string;
-  id?: number;
-  name: string;
-  address1: string;
-  address2: string;
-  isDefault?: boolean;
 };

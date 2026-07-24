@@ -1,6 +1,4 @@
 import type {
-  SaveShippingAddressPayload,
-  ShippingAddressesResponse,
   UpdateProfilePayload,
   UserProfileResponse,
   WithdrawPayload,
@@ -45,24 +43,6 @@ export function updateProfileApi(payload: UpdateProfilePayload): Promise<UserPro
 
 export function withdrawApi(payload: WithdrawPayload): Promise<{ ok: boolean; message: string }> {
   return postJson<{ ok: boolean; message: string }>("/api/auth/withdraw", payload, "탈퇴 처리에 실패했습니다.");
-}
-
-export function getShippingAddressesApi(userId: string): Promise<ShippingAddressesResponse> {
-  return postJson<ShippingAddressesResponse>(
-    "/api/auth/shipping-addresses",
-    { userId },
-    "배송지 목록을 불러오지 못했습니다.",
-  );
-}
-
-export function saveShippingAddressApi(
-  payload: SaveShippingAddressPayload,
-): Promise<ShippingAddressesResponse> {
-  return postJson<ShippingAddressesResponse>(
-    "/api/auth/shipping-addresses/save",
-    payload,
-    "배송지 저장에 실패했습니다.",
-  );
 }
 
 async function getJson<TResponse>(
