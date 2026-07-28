@@ -1524,7 +1524,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
               <div className="grid gap-3 sm:grid-cols-2">
                 <input value={createCustomerName} onChange={(e) => setCreateCustomerName(e.target.value)} placeholder="받는분" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
                 <input value={createPhone} onChange={(e) => setCreatePhone(e.target.value)} placeholder="주문자 연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
-                <input value={createRecipientPhone} onChange={(e) => setCreateRecipientPhone(e.target.value)} placeholder="수신자 연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
+                <input value={createRecipientPhone} onChange={(e) => setCreateRecipientPhone(e.target.value)} placeholder="받는분 연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
                 <input value={createDepositorName} onChange={(e) => setCreateDepositorName(e.target.value)} placeholder="주문자" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
                 <input value={createShippingAddress} onChange={(e) => setCreateShippingAddress(e.target.value)} placeholder="배송지" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
               </div>
