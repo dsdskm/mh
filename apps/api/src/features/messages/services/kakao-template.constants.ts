@@ -7,4 +7,5 @@ export const KAKAO_TEMPLATE_IDS = {
   orderReceived: 'KA01TP260709155049216lgH3nRtY3AZ',
   authNumber: 'KA01TP2607091527122974HG6HfrUw6i',
   signupWelcome: 'KA01TP2607091518385899mCy22zal4x',
+  deliveryStarted: 'KA01TP260726150653930FB33EMWuEeB',
 } as const;

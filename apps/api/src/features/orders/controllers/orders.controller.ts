@@ -15,6 +15,7 @@ import { OrdersService } from '../services/orders.service';
 type CreateOrderBody = {
   customerName?: string;
   phone?: string;
+  recipientPhone?: string;
   shippingAddress?: string;
   requestNote?: string;
   depositorName?: string;
@@ -55,6 +56,7 @@ type UpdateOrderStatusBody = {
 type BackofficeCreateOrderBody = {
   customerName?: string;
   phone?: string;
+  recipientPhone?: string;
   shippingAddress?: string;
   requestNote?: string;
   depositorName?: string;
@@ -69,6 +71,7 @@ type BackofficeCreateOrderBody = {
 type BackofficeUpdateOrderBody = {
   customerName?: string;
   phone?: string;
+  recipientPhone?: string;
   shippingAddress?: string;
   requestNote?: string;
   depositorName?: string;
@@ -85,6 +88,7 @@ export class OrdersController {
   createOrder(@Body() body: CreateOrderBody) {
     const customerName = body.customerName?.trim();
     const phone = body.phone?.trim();
+    const recipientPhone = body.recipientPhone?.trim();
     const shippingAddress = body.shippingAddress?.trim();
     const requestNote = body.requestNote?.trim();
     const depositorName = body.depositorName?.trim();
@@ -92,8 +96,8 @@ export class OrdersController {
     const lookupToken = body.lookupToken?.trim();
     const items = body.items ?? [];
 
-    if (!phone || !depositorName) {
-      throw new BadRequestException('입금자명과 연락처를 입력해주세요.');
+    if (!phone || !recipientPhone || !depositorName) {
+      throw new BadRequestException('주문자, 주문자 연락처, 받는분 연락처를 입력해주세요.');
     }
 
     if (!items.length) {
@@ -114,6 +118,7 @@ export class OrdersController {
     return this.ordersService.createOrder({
       customerName: customerName || depositorName,
       phone,
+      recipientPhone,
       shippingAddress: shippingAddress || '배송지 미입력',
       requestNote,
       depositorName,
@@ -239,13 +244,14 @@ export class OrdersController {
   async createBackofficeOrder(@Body() body: BackofficeCreateOrderBody) {
     const customerName = body.customerName?.trim();
     const phone = body.phone?.trim();
+    const recipientPhone = body.recipientPhone?.trim();
     const shippingAddress = body.shippingAddress?.trim();
     const requestNote = body.requestNote?.trim();
     const depositorName = body.depositorName?.trim();
     const items = body.items ?? [];
 
-    if (!customerName || !phone || !shippingAddress || !depositorName) {
-      throw new BadRequestException('고객명, 연락처, 배송지, 입금자명을 입력해주세요.');
+    if (!customerName || !phone || !recipientPhone || !shippingAddress || !depositorName) {
+      throw new BadRequestException('받는분, 주문자 연락처, 받는분 연락처, 배송지, 주문자를 입력해주세요.');
     }
 
     if (!items.length) {
@@ -266,6 +272,7 @@ export class OrdersController {
     return this.ordersService.createBackofficeOrder({
       customerName,
       phone,
+      recipientPhone,
       shippingAddress,
       requestNote,
       depositorName,
@@ -283,6 +290,7 @@ export class OrdersController {
     return this.ordersService.updateBackofficeOrder(this.parseOrderId(id), {
       customerName: body.customerName,
       phone: body.phone,
+      recipientPhone: body.recipientPhone,
       shippingAddress: body.shippingAddress,
       requestNote: body.requestNote,
       depositorName: body.depositorName,

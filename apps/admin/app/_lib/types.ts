@@ -55,6 +55,7 @@ export type Order = {
   customerName: string;
   purchaseType: "member" | "guest";
   phone: string;
+  recipientPhone: string;
   shippingAddress: string;
   requestNote?: string | null;
   cancelReason?: string | null;
@@ -81,6 +82,7 @@ export type Order = {
 export type AdminOrderCreatePayload = {
   customerName: string;
   phone: string;
+  recipientPhone: string;
   shippingAddress: string;
   requestNote?: string;
   depositorName: string;
@@ -95,6 +97,7 @@ export type AdminOrderCreatePayload = {
 export type AdminOrderUpdatePayload = {
   customerName?: string;
   phone?: string;
+  recipientPhone?: string;
   shippingAddress?: string;
   requestNote?: string;
   depositorName?: string;

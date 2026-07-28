@@ -10,6 +10,29 @@ export type SendAdminSmsPayload = {
   adsYN?: boolean;
 };
 
+export type AdminKakaoTemplateKey =
+  | 'orderCancelCompleted'
+  | 'orderCancelRequested'
+  | 'paymentConfirmed'
+  | 'orderReceived'
+  | 'authNumber'
+  | 'signupWelcome'
+  | 'deliveryStarted';
+
+export type SendAdminKakaoTemplateTestPayload = {
+  receiver: string;
+  receiverName?: string;
+  templateKey: AdminKakaoTemplateKey;
+  variables: Record<string, string>;
+};
+
+export type SendAdminKakaoTemplateTestResult = {
+  templateKey: AdminKakaoTemplateKey;
+  templateId: string;
+  receiptNum: string;
+  fallbackUsed: boolean;
+};
+
 export async function sendAdminSmsApi(payload: SendAdminSmsPayload): Promise<{ receiptNum: string }> {
   const response = await adminFetch(`${API_BASE}/api/backoffice/messages/sms`, {
     method: 'POST',
@@ -20,6 +43,20 @@ export async function sendAdminSmsApi(payload: SendAdminSmsPayload): Promise<{ r
   });
 
   return parseJsonOrThrow<{ receiptNum: string }>(response, '발송에 실패했습니다.');
+}
+
+export async function sendAdminKakaoTemplateTestApi(
+  payload: SendAdminKakaoTemplateTestPayload,
+): Promise<SendAdminKakaoTemplateTestResult> {
+  const response = await adminFetch(`${API_BASE}/api/backoffice/messages/tests/kakao-template`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  return parseJsonOrThrow<SendAdminKakaoTemplateTestResult>(response, '카카오 템플릿 테스트 발송에 실패했습니다.');
 }
 
 export async function cancelAdminReservedSmsApi(historyId: number): Promise<{ ok: true }> {

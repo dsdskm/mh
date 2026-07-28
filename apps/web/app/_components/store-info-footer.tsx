@@ -85,12 +85,6 @@ export default async function StoreInfoFooter() {
             </Link>
           )}
           <Link
-            href="/policy"
-            className="rounded-full border border-stone-300 bg-white px-3 py-1.5 font-semibold hover:bg-stone-100"
-          >
-            배송/환불 정책
-          </Link>
-          <Link
             href="/privacy"
             className="rounded-full border border-stone-300 bg-white px-3 py-1.5 font-semibold hover:bg-stone-100"
           >

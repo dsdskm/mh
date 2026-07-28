@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { MessagesService } from '../services/messages.service';
+import { KAKAO_TEMPLATE_IDS } from '../services/kakao-template.constants';
 
 type SendSmsBody = {
   receiver?: string;
@@ -22,6 +23,13 @@ type SendAllKakaoTestsBody = {
   accountOwner?: string;
   dueDate?: string;
   authNumber?: string;
+};
+
+type SendSingleKakaoTemplateTestBody = {
+  receiver?: string;
+  receiverName?: string;
+  templateKey?: keyof typeof KAKAO_TEMPLATE_IDS;
+  variables?: Record<string, unknown>;
 };
 
 const DIRECT_SMS_MAX_CHARS = 45;
@@ -119,6 +127,51 @@ export class MessagesController {
       accountOwner,
       dueDate,
       authNumber,
+    });
+  }
+
+  @Post('tests/kakao-template')
+  async sendSingleKakaoTemplateTest(@Body() body: SendSingleKakaoTemplateTestBody) {
+    const receiver = this.normalizePhone(body.receiver);
+    const receiverName = body.receiverName?.trim() || undefined;
+    const templateKeyRaw = body.templateKey;
+
+    if (!this.isValidPhone(receiver)) {
+      throw new BadRequestException('receiver는 유효한 수신번호(숫자 8~20자리)여야 합니다.');
+    }
+
+    if (!templateKeyRaw || !(templateKeyRaw in KAKAO_TEMPLATE_IDS)) {
+      throw new BadRequestException('templateKey가 올바르지 않습니다.');
+    }
+
+    const rawVariables =
+      body.variables && typeof body.variables === 'object' && !Array.isArray(body.variables)
+        ? body.variables
+        : {};
+
+    const variables = Object.entries(rawVariables).reduce<Record<string, string>>(
+      (acc, [key, value]) => {
+        const normalizedKey = key.trim();
+        if (!normalizedKey) {
+          return acc;
+        }
+
+        if (value === null || value === undefined) {
+          acc[normalizedKey] = '';
+          return acc;
+        }
+
+        acc[normalizedKey] = String(value);
+        return acc;
+      },
+      {},
+    );
+
+    return this.messagesService.sendSingleKakaoTemplateTest({
+      receiver,
+      receiverName,
+      templateKey: templateKeyRaw,
+      variables,
     });
   }
 

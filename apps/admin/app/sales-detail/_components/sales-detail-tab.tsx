@@ -345,7 +345,7 @@ export function SalesDetailTab({ orders }: Props) {
           <p className="mt-1 text-2xl font-extrabold text-sky-900">{summary.uniqueOrderCount}건</p>
         </article>
         <article className="rounded-2xl border border-stone-200 bg-white p-4">
-          <p className="text-xs uppercase tracking-[0.12em] text-stone-500">주문자</p>
+          <p className="text-xs uppercase tracking-[0.12em] text-stone-500">받는분</p>
           <p className="mt-1 text-2xl font-extrabold text-stone-900">{summary.uniqueCustomerCount}명</p>
         </article>
       </section>
@@ -354,7 +354,7 @@ export function SalesDetailTab({ orders }: Props) {
         <input
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="주문번호·고객명·상품명 검색"
+          placeholder="주문번호·받는분·상품명 검색"
           className="min-w-52 flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm"
         />
         <select
@@ -404,7 +404,7 @@ export function SalesDetailTab({ orders }: Props) {
           type="button"
           onClick={() => {
             const exportedRows: Array<Array<string | number>> = [
-              ["주문번호", "고객명", "상태", "상품명", "수량", "단가", "소계", "주문일시"],
+              ["주문번호", "받는분", "상태", "상품명", "수량", "단가", "소계", "주문일시"],
               ...sortedRows.map((row) => [
                 row.orderId,
                 row.customerName,
@@ -499,7 +499,7 @@ export function SalesDetailTab({ orders }: Props) {
                   )}
                 </button>
               </th>
-              <th className="px-3 py-2 text-left">고객명</th>
+              <th className="px-3 py-2 text-left">받는분</th>
               <th className="px-3 py-2 text-left">상태</th>
               <th className="px-3 py-2 text-left">상품명</th>
               <th className="px-3 py-2 text-left">수량</th>

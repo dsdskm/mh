@@ -6,7 +6,9 @@ import { formatPhone } from "../../_lib/constants";
 import {
   cancelAdminReservedSmsApi,
   fetchAdminSmsHistoryApi,
+  sendAdminKakaoTemplateTestApi,
   sendAdminSmsApi,
+  type AdminKakaoTemplateKey,
 } from "../../_lib/api-messages";
 import type { AdminSmsHistoryItem } from "../../_lib/types";
 
@@ -30,6 +32,45 @@ type Props = {
 
 type HistoryRange = "all" | "today" | "7d" | "30d";
 const DIRECT_SMS_MAX_CHARS = 45;
+
+const KAKAO_TEMPLATE_OPTIONS: Array<{ key: AdminKakaoTemplateKey; label: string }> = [
+  { key: "orderReceived", label: "주문 접수" },
+  { key: "paymentConfirmed", label: "입금 확인" },
+  { key: "orderCancelRequested", label: "주문 취소 요청" },
+  { key: "orderCancelCompleted", label: "주문 취소 완료" },
+  { key: "authNumber", label: "인증번호" },
+  { key: "signupWelcome", label: "회원가입 환영" },
+  { key: "deliveryStarted", label: "배송 시작" },
+];
+
+function defaultVariablesByTemplate(templateKey: AdminKakaoTemplateKey): Record<string, string> {
+  if (templateKey === "authNumber") {
+    return { number: "123456" };
+  }
+  if (templateKey === "signupWelcome" || templateKey === "deliveryStarted") {
+    return { name: "홍길동" };
+  }
+  if (templateKey === "orderReceived") {
+    return {
+      orderNo: "2026072800001",
+      product: "초당옥수수 10개입",
+      amount: "39,000원",
+      address: "서울시 강남구 테헤란로 1",
+      memo: "문 앞에 놓아주세요",
+      bank: "국민은행",
+      accountNumber: "123-456-789012",
+      accountOwner: "홍길동",
+      dueDate: "2026-07-28 23:59",
+    };
+  }
+  return {
+    orderNo: "2026072800001",
+    product: "초당옥수수 10개입",
+    amount: "39,000원",
+    address: "서울시 강남구 테헤란로 1",
+    memo: "문 앞에 놓아주세요",
+  };
+}
 
 function normalizePhone(value: string): string {
   return value.replace(/\D/g, "");
@@ -118,6 +159,15 @@ export function MessagesTab({ accounts }: Props) {
   const [sendDraft, setSendDraft] = useState<SendDraft | null>(null);
   const [cancelTarget, setCancelTarget] = useState<AdminSmsHistoryItem | null>(null);
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [kakaoReceiver, setKakaoReceiver] = useState("");
+  const [kakaoReceiverName, setKakaoReceiverName] = useState("");
+  const [kakaoTemplateKey, setKakaoTemplateKey] = useState<AdminKakaoTemplateKey>("deliveryStarted");
+  const [kakaoVariablesText, setKakaoVariablesText] = useState(
+    JSON.stringify(defaultVariablesByTemplate("deliveryStarted"), null, 2),
+  );
+  const [kakaoSending, setKakaoSending] = useState(false);
+  const [kakaoError, setKakaoError] = useState<string | null>(null);
+  const [kakaoNotice, setKakaoNotice] = useState<string | null>(null);
 
   const selectableAccounts = useMemo(() => {
     return accounts
@@ -399,6 +449,82 @@ export function MessagesTab({ accounts }: Props) {
     }
   }
 
+  function moveToSection(sectionId: "sms-send-section" | "kakao-template-test-section") {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const target = document.getElementById(sectionId);
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function changeKakaoTemplate(nextTemplateKey: AdminKakaoTemplateKey) {
+    setKakaoTemplateKey(nextTemplateKey);
+    setKakaoVariablesText(JSON.stringify(defaultVariablesByTemplate(nextTemplateKey), null, 2));
+    setKakaoError(null);
+    setKakaoNotice(null);
+  }
+
+  async function submitKakaoTemplateTest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setKakaoError(null);
+    setKakaoNotice(null);
+
+    const receiver = normalizePhone(kakaoReceiver);
+    if (!receiver || !/^\d{8,20}$/.test(receiver)) {
+      setKakaoError("수신번호는 숫자 8~20자리로 입력해주세요.");
+      return;
+    }
+
+    let parsedVariables: unknown;
+    try {
+      parsedVariables = JSON.parse(kakaoVariablesText);
+    } catch {
+      setKakaoError("변수 JSON 형식이 올바르지 않습니다.");
+      return;
+    }
+
+    if (!parsedVariables || typeof parsedVariables !== "object" || Array.isArray(parsedVariables)) {
+      setKakaoError("변수는 JSON 객체 형태여야 합니다.");
+      return;
+    }
+
+    const variables = Object.entries(parsedVariables as Record<string, unknown>).reduce<Record<string, string>>(
+      (acc, [key, value]) => {
+        const normalizedKey = key.trim();
+        if (!normalizedKey) {
+          return acc;
+        }
+
+        acc[normalizedKey] = value === null || value === undefined ? "" : String(value);
+        return acc;
+      },
+      {},
+    );
+
+    setKakaoSending(true);
+    try {
+      const result = await sendAdminKakaoTemplateTestApi({
+        receiver,
+        receiverName: kakaoReceiverName.trim() || undefined,
+        templateKey: kakaoTemplateKey,
+        variables,
+      });
+
+      setKakaoNotice(`전송 성공: 템플릿 ${result.templateId}, 접수번호 ${result.receiptNum}`);
+    } catch (sendError) {
+      setKakaoError(
+        sendError instanceof Error ? sendError.message : "카카오 템플릿 테스트 전송에 실패했습니다.",
+      );
+    } finally {
+      setKakaoSending(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
@@ -412,9 +538,106 @@ export function MessagesTab({ accounts }: Props) {
         </button>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => moveToSection("sms-send-section")}
+          className="rounded-xl border border-lime-300 bg-lime-50 px-4 py-2 text-sm font-semibold text-lime-800 hover:bg-lime-100"
+        >
+          문자 발송 메뉴
+        </button>
+        <button
+          type="button"
+          onClick={() => moveToSection("kakao-template-test-section")}
+          className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100"
+        >
+          카카오 템플릿 테스트 메뉴
+        </button>
+      </div>
+
       {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
       {notice && <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</p>}
 
+      <section id="kakao-template-test-section" className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-lg font-bold text-stone-900">카카오 템플릿 테스트</h3>
+          <span className="rounded-lg bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">임의값 입력 가능</span>
+        </div>
+        <p className="mt-1 text-sm text-stone-500">
+          현재 등록된 카카오 템플릿을 선택하고 변수 JSON을 자유롭게 넣어 테스트 전송할 수 있습니다.
+        </p>
+
+        {kakaoError && (
+          <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {kakaoError}
+          </p>
+        )}
+        {kakaoNotice && (
+          <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {kakaoNotice}
+          </p>
+        )}
+
+        <form className="mt-4 space-y-3" onSubmit={submitKakaoTemplateTest}>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1 text-sm text-stone-700">
+              <span>수신번호</span>
+              <input
+                value={kakaoReceiver}
+                onChange={(event) => setKakaoReceiver(event.target.value)}
+                placeholder="01012345678"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="space-y-1 text-sm text-stone-700">
+              <span>수신자명 (선택)</span>
+              <input
+                value={kakaoReceiverName}
+                onChange={(event) => setKakaoReceiverName(event.target.value)}
+                placeholder="홍길동"
+                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+
+          <label className="space-y-1 text-sm text-stone-700">
+            <span>템플릿</span>
+            <select
+              value={kakaoTemplateKey}
+              onChange={(event) => changeKakaoTemplate(event.target.value as AdminKakaoTemplateKey)}
+              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+            >
+              {KAKAO_TEMPLATE_OPTIONS.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.label} ({item.key})
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="space-y-1 text-sm text-stone-700">
+            <span>변수 JSON</span>
+            <textarea
+              value={kakaoVariablesText}
+              onChange={(event) => setKakaoVariablesText(event.target.value)}
+              rows={10}
+              className="w-full rounded-xl border border-stone-300 px-3 py-2 font-mono text-xs"
+            />
+          </label>
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={kakaoSending}
+              className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
+            >
+              {kakaoSending ? "전송 중..." : "카카오 테스트 전송"}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section id="sms-send-section" className="space-y-6">
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="rounded-2xl border border-lime-200 bg-white p-5 shadow-sm">
           <h3 className="text-lg font-bold text-stone-900">수신자 직접 입력</h3>
@@ -570,6 +793,7 @@ export function MessagesTab({ accounts }: Props) {
           </div>
         </form>
       </section>
+      </section>
 
       {sendDraft && (
         <div
@@ -723,7 +947,7 @@ export function MessagesTab({ accounts }: Props) {
                             {formatPhone(item.receiver)}
                           </td>
                           <td className="border-t border-stone-100 px-3 py-2 text-stone-700">
-                            <p className="max-w-[520px] whitespace-nowrap truncate" title={item.content}>
+                            <p className="max-w-[520px] whitespace-pre-wrap break-words" title={item.content}>
                               {item.content}
                             </p>
                           </td>
@@ -743,7 +967,7 @@ export function MessagesTab({ accounts }: Props) {
                             )}
                           </td>
                           <td className="border-t border-stone-100 px-3 py-2 text-stone-700">
-                            <p className="max-w-[360px] whitespace-nowrap truncate" title={item.errorMessage ?? "-"}>
+                            <p className="max-w-[360px] whitespace-pre-wrap break-words" title={item.errorMessage ?? "-"}>
                               {item.errorMessage ?? "-"}
                             </p>
                           </td>
@@ -808,7 +1032,7 @@ export function MessagesTab({ accounts }: Props) {
             <div className="mt-3 space-y-1 rounded-xl bg-stone-50 p-3 text-xs text-stone-700">
               <p>수신번호: {formatPhone(cancelTarget.receiver)}</p>
               <p>예약일시: {formatReserveForView(cancelTarget.reserveDT)}</p>
-              <p className="line-clamp-3">내용: {cancelTarget.content}</p>
+              <p className="whitespace-pre-wrap break-words">내용: {cancelTarget.content}</p>
             </div>
             <div className="mt-4 flex gap-2">
               <button

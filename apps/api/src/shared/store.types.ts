@@ -37,6 +37,7 @@ export type Order = {
   customerName: string;
   purchaseType: 'member' | 'guest';
   phone: string;
+  recipientPhone: string;
   shippingAddress: string;
   requestNote?: string | null;
   cancelReason?: string | null;
@@ -63,6 +64,7 @@ export type CreateOrderInput = {
   accountId?: number | null;
   customerName: string;
   phone: string;
+  recipientPhone: string;
   shippingAddress: string;
   requestNote?: string;
   depositorName: string;

@@ -31,6 +31,9 @@ export class OrderEntity {
   @Column({ type: 'varchar' })
   phone!: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  recipientPhone!: string | null;
+
   @Column({ type: 'varchar' })
   shippingAddress!: string;
 

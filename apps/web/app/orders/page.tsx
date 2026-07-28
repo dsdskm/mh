@@ -582,7 +582,7 @@ export default function OrdersPage() {
                 </div>
               </div>
               {renderStatusTimeline(order)}
-              <p className="text-sm text-stone-700">입금자명: {order.depositorName}</p>
+              <p className="text-sm text-stone-700">주문자: {order.depositorName}</p>
               <p className="text-sm text-stone-700">연락처: {formatPhone(order.phone)}</p>
               {order.deliveryFee != null && order.deliveryFee > 0 && (
                 <p className="text-sm text-stone-700">배송료: {formatCurrency(order.deliveryFee)}</p>
@@ -693,7 +693,7 @@ export default function OrdersPage() {
                 </div>
               </div>
               {renderStatusTimeline(order)}
-              <p className="text-sm text-stone-700">입금자명: {order.depositorName}</p>
+              <p className="text-sm text-stone-700">주문자: {order.depositorName}</p>
               <p className="text-sm text-stone-700">연락처: {formatPhone(order.phone)}</p>
               {order.deliveryFee != null && order.deliveryFee > 0 && (
                 <p className="text-sm text-stone-700">배송료: {formatCurrency(order.deliveryFee)}</p>

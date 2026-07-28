@@ -82,6 +82,7 @@ type StoreConfig = {
   businessStatusOpenText: string;
   businessStatusStandbyText: string;
   businessStatusClosedText: string;
+  shippingRefundPolicy?: string;
 };
 
 type OrderResponse = {
@@ -205,6 +206,7 @@ export default function Home() {
   const [submitting, setSubmitting] = useState(false);
   const [orderDone, setOrderDone] = useState<OrderResponse | null>(null);
   const [phone, setPhone] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState("");
   const [depositorName, setDepositorName] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
@@ -229,15 +231,16 @@ export default function Home() {
   const [purchaseType, setPurchaseType] = useState<"member" | "guest" | null>(null);
   const [savedMemberPhone, setSavedMemberPhone] = useState("");
   const [copyDone, setCopyDone] = useState(false);
+  const [accountCopyDone, setAccountCopyDone] = useState(false);
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
   const [logoutSubmitting, setLogoutSubmitting] = useState(false);
   const [showMenuDrawer, setShowMenuDrawer] = useState(false);
   const [showContactAuthDialog, setShowContactAuthDialog] = useState(false);
   const [activePopupNotice, setActivePopupNotice] = useState<Notice | null>(null);
   const [dismissPopupChecked, setDismissPopupChecked] = useState(false);
-  const [showOrderConfirmModal, setShowOrderConfirmModal] = useState(false);
   const [showTermsUpdateModal, setShowTermsUpdateModal] = useState(false);
   const [showBusinessStatusModal, setShowBusinessStatusModal] = useState(false);
+  const [policyConfirmedBeforeSubmit, setPolicyConfirmedBeforeSubmit] = useState(false);
   const [postcodeReady, setPostcodeReady] = useState(false);
   const [guestAddressBase, setGuestAddressBase] = useState("");
   const [guestAddressDetail, setGuestAddressDetail] = useState("");
@@ -253,6 +256,7 @@ export default function Home() {
   const videoIframeRef = useRef<HTMLIFrameElement | null>(null);
   const resolvedOrderRequestNote =
     orderRequestPreset === ORDER_REQUEST_CUSTOM_VALUE ? orderRequestCustomNote.trim() : orderRequestPreset.trim();
+  const shippingRefundPolicyText = storeConfig.shippingRefundPolicy?.trim() || "";
   const inquiryUrl = storeConfig.kakaoChannelUrl.trim();
 
 
@@ -469,14 +473,6 @@ export default function Home() {
     }
   }, [storeConfig.termsUrl, storeConfig.termsVersion]);
 
-  useEffect(() => {
-    if (storeConfig.businessStatus === "open") {
-      return;
-    }
-
-    setShowOrderConfirmModal(false);
-  }, [storeConfig.businessStatus]);
-
   function dismissNoticeForThisDevice() {
     if (!activePopupNotice) {
       return;
@@ -615,6 +611,21 @@ export default function Home() {
       : shippingAddress.trim();
   const confirmPostalCode = purchaseType === "guest" ? guestPostalCode.trim() : memberPostalCode.trim();
 
+  async function copyAccountInfo(accountNumber: string) {
+    const trimmed = accountNumber.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(trimmed);
+      setAccountCopyDone(true);
+      setTimeout(() => setAccountCopyDone(false), 1500);
+    } catch {
+      setError("계좌번호 복사에 실패했습니다. 다시 시도해주세요.");
+    }
+  }
+
   // 적립 예정 적립금 (배송완료 시)
   const expectedMileageEarn = useMemo(() => {
     if (!ENABLE_REWARDS || !isMemberCheckout) {
@@ -740,17 +751,22 @@ export default function Home() {
     }
 
     if (!depositorName.trim()) {
-      setError("입금자명을 입력해주세요.");
+      setError("주문자를 입력해주세요.");
       return false;
     }
 
     if (!recipientName.trim()) {
-      setError("수신자명을 입력해주세요.");
+      setError("받으시는 분을 입력해주세요.");
       return false;
     }
 
     if (!phone.trim()) {
-      setError("수신자 연락처를 입력해주세요.");
+      setError("주문자 연락처를 입력해주세요.");
+      return false;
+    }
+
+    if (!recipientPhone.trim()) {
+      setError("받으시는 분 연락처를 입력해주세요.");
       return false;
     }
 
@@ -775,13 +791,18 @@ export default function Home() {
     return true;
   }
 
-  function requestOrderSubmit(event: FormEvent<HTMLFormElement>) {
+  async function requestOrderSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!validateOrderBeforeSubmit()) {
       return;
     }
 
-    setShowOrderConfirmModal(true);
+    if (!policyConfirmedBeforeSubmit) {
+      setError("배송/환불 정책 확인 후 주문 접수를 진행해주세요.");
+      return;
+    }
+
+    await submitOrder();
   }
 
   async function submitOrder() {
@@ -812,6 +833,7 @@ export default function Home() {
         body: JSON.stringify({
           customerName: recipientName.trim() || depositorName.trim(),
           phone,
+          recipientPhone,
           shippingAddress: shippingAddressWithPostal,
           requestNote: resolvedOrderRequestNote || undefined,
           depositorName,
@@ -844,6 +866,7 @@ export default function Home() {
 
       setCart({});
       setPhone("");
+      setRecipientPhone("");
       setDepositorName("");
       setRecipientName("");
       setShippingAddress("");
@@ -1013,15 +1036,6 @@ export default function Home() {
     }).open();
   }
 
-  async function confirmOrderSubmit() {
-    if (submitting) {
-      return;
-    }
-
-    setShowOrderConfirmModal(false);
-    await submitOrder();
-  }
-
   async function refreshReviews() {
     const response = await fetch(`${API_BASE}/api/reviews`, { cache: "no-store" });
     if (!response.ok) {
@@ -1107,6 +1121,7 @@ export default function Home() {
     if (!userId) {
       setShippingAddress("");
       setMemberPostalCode("");
+      setRecipientPhone("");
       return;
     }
 
@@ -1122,6 +1137,7 @@ export default function Home() {
       setDepositorName(profileData.profile.name || session?.user?.name || "");
       setRecipientName(profileData.profile.name || session?.user?.name || "");
       setPhone(resolvedPhone);
+      setRecipientPhone(resolvedPhone);
 
       // 회원 쿠폰/적립금 로드
       const accountId = profileData.profile.id;
@@ -1149,6 +1165,7 @@ export default function Home() {
       setShippingAddress("");
       setMemberPostalCode("");
       setRecipientName("");
+      setRecipientPhone("");
       setMemberCoupons([]);
       setMileageBalance(0);
     } finally {
@@ -1520,7 +1537,7 @@ export default function Home() {
                 }
 
                 setShowPurchaseModal(true);
-                setShowOrderConfirmModal(false);
+                setPolicyConfirmedBeforeSubmit(false);
                 if (isLoggedIn) {
                   setPurchaseType("member");
                   setMemberPostalCode("");
@@ -1529,6 +1546,7 @@ export default function Home() {
                   setPurchaseType(null);
                   setDepositorName("");
                   setPhone("");
+                  setRecipientPhone("");
                   setShippingAddress("");
                   setMemberPostalCode("");
                   setGuestPostalCode("");
@@ -1574,8 +1592,8 @@ export default function Home() {
       </footer>
 
       {showPurchaseModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-          <div className="w-full max-w-md rounded-3xl border border-amber-200 bg-white p-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-black/40 p-4 sm:items-center">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl border border-amber-200 bg-white p-5 shadow-2xl">
             {!orderDone ? (
               <>
                 <h2 className="font-display text-3xl text-amber-800">구매 신청</h2>
@@ -1613,6 +1631,7 @@ export default function Home() {
                         setDepositorName("");
                         setRecipientName("");
                         setPhone("");
+                        setRecipientPhone("");
                         setShippingAddress("");
                         setMemberPostalCode("");
                         setGuestPostalCode("");
@@ -1639,7 +1658,6 @@ export default function Home() {
                       type="button"
                       onClick={() => {
                         setShowPurchaseModal(false);
-                        setShowOrderConfirmModal(false);
                       }}
                       className="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold"
                     >
@@ -1651,7 +1669,7 @@ export default function Home() {
                     <p className="mt-1 text-sm text-stone-600">
                       {purchaseType === "member"
                         ? "로그인 계정 정보와 기본 주소를 불러왔습니다."
-                        : "입금자명, 수신자명, 수신자 연락처를 입력해주세요."}
+                        : "주문자, 주문자 연락처, 받으시는 분, 받으시는 분 연락처를 입력해주세요."}
                     </p>
                     <p className="mt-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
                       수신자/배송지는 이번 주문에만 사용됩니다. 기본값은 자동으로 불러오며 자유롭게 수정할 수 있어요.
@@ -1663,17 +1681,7 @@ export default function Home() {
                         <input
                           value={depositorName}
                           onChange={(event) => setDepositorName(event.target.value)}
-                          placeholder="입금자명"
-                          className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs font-semibold text-stone-700">받으시는 분</p>
-                        <input
-                          value={recipientName}
-                          onChange={(event) => setRecipientName(event.target.value)}
-                          placeholder="수신자명"
+                          placeholder="주문자"
                           className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
                           required
                         />
@@ -1690,11 +1698,28 @@ export default function Home() {
                             setGuestHasRegisteredAccount(false);
                           }
                         }}
-                        placeholder="수신자 연락처"
+                        placeholder="주문자 연락처"
                         className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
                         required
                       />
-                      <p className="text-xs text-stone-500">입금자명(이체 확인), 수신자 정보(배송 수령)로 사용됩니다.</p>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-stone-700">받으시는 분</p>
+                        <input
+                          value={recipientName}
+                          onChange={(event) => setRecipientName(event.target.value)}
+                          placeholder="받으시는 분"
+                          className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                          required
+                        />
+                      </div>
+                      <input
+                        value={recipientPhone}
+                        onChange={(event) => setRecipientPhone(event.target.value)}
+                        placeholder="받으시는 분 연락처"
+                        className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                        required
+                      />
+                      <p className="text-xs text-stone-500">휴대폰 인증은 주문자 연락처로 진행됩니다.</p>
                       {purchaseType === "guest" && (
                         <PhoneVerificationBox
                           code={guestOrderCode}
@@ -1768,7 +1793,7 @@ export default function Home() {
                             <input
                               value={guestAddressBase}
                               readOnly
-                              placeholder="주소 검색 버튼으로 기본주소를 선택해주세요"
+                              placeholder="주소 검색 버튼을 눌러주세요"
                               className="flex-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm"
                               required
                             />
@@ -1906,6 +1931,112 @@ export default function Home() {
                         )}
                       </div>
 
+                      <div className="space-y-1 rounded-2xl border border-stone-200 bg-stone-50 p-3 text-xs text-stone-700">
+                        <p className="font-bold text-stone-900">주문 접수 확인</p>
+                        <p>우편번호: {confirmPostalCode || "-"}</p>
+                        <p>배송지: {confirmShippingAddress || "-"}</p>
+                        <p>요청사항: {resolvedOrderRequestNote || "없음"}</p>
+                      </div>
+
+                      <div className="rounded-2xl border border-lime-200 bg-lime-50 p-3">
+                        <p className="text-xs font-bold text-lime-900">주문 품목 ({totalQuantity}개)</p>
+                        <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto text-xs text-lime-900">
+                          {confirmCartItems.map((item) => (
+                            <li
+                              key={`confirm-inline-${item.id}`}
+                              className="flex items-center justify-between gap-2 rounded-lg bg-white/80 px-2 py-1"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate">{item.name}</p>
+                                <p className="text-[11px] text-stone-600">{formatCurrency(item.subtotal)}</p>
+                              </div>
+                              <div className="flex items-center gap-1 rounded-full border border-lime-300 bg-white px-1 py-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => changeQuantity(item.id, -1)}
+                                  disabled={item.quantity <= 0}
+                                  className="h-6 w-6 rounded-full bg-stone-100 text-sm font-bold text-stone-700"
+                                  aria-label={`${item.name} 수량 감소`}
+                                >
+                                  -
+                                </button>
+                                <span className="min-w-5 text-center text-[11px] font-bold">{item.quantity}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => changeQuantity(item.id, 1)}
+                                  disabled={item.quantity >= item.stock}
+                                  className="h-6 w-6 rounded-full bg-lime-100 text-sm font-bold text-lime-800 disabled:cursor-not-allowed disabled:opacity-40"
+                                  aria-label={`${item.name} 수량 증가`}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                        {confirmCartItems.length === 0 && (
+                          <p className="mt-2 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
+                            장바구니가 비었습니다. 수정 후 다시 주문해주세요.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="rounded-2xl border border-lime-200 bg-lime-50 p-3 text-xs text-lime-900">
+                        <p className="font-bold">입금 계좌 안내</p>
+                        <p>{storeConfig.bankName || "-"}</p>
+                        <div className="mt-1 flex items-center gap-2">
+                          <p className="text-sm font-bold">{storeConfig.accountNumber || "-"}</p>
+                          <button
+                            type="button"
+                            onClick={() => void copyAccountInfo(storeConfig.accountNumber || "")}
+                            disabled={!storeConfig.accountNumber?.trim()}
+                            className="rounded-lg border border-lime-300 bg-white px-2 py-1 text-xs font-semibold text-lime-800 disabled:opacity-50"
+                          >
+                            {accountCopyDone ? "복사됨" : "계좌 복사"}
+                          </button>
+                        </div>
+                        <p>{storeConfig.accountHolder || "-"}</p>
+                      </div>
+                      {storeConfig.paymentDueDays > 0 && (
+                        <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                          주문 후 {storeConfig.paymentDueDays}일 이내에 입금해주세요. 기한이 지나면 주문이 자동 취소됩니다.
+                        </p>
+                      )}
+
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-xs font-bold text-amber-900">배송/환불 정책</p>
+                        {shippingRefundPolicyText ? (
+                          <p className="mt-1 max-h-32 overflow-y-auto whitespace-pre-line text-[11px] leading-5 text-stone-700">
+                            {shippingRefundPolicyText}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-[11px] text-stone-600">
+                            현재 등록된 배송/환불 정책이 없습니다. 문의하기로 정책을 확인해주세요.
+                          </p>
+                        )}
+                        <label className="mt-2 flex items-start gap-2 rounded-xl bg-white px-2 py-2 text-xs font-semibold text-stone-800">
+                          <input
+                            type="checkbox"
+                            checked={policyConfirmedBeforeSubmit}
+                            onChange={(event) => setPolicyConfirmedBeforeSubmit(event.target.checked)}
+                            className="mt-0.5 h-4 w-4"
+                          />
+                          배송/환불 정책을 확인했습니다.
+                        </label>
+                      </div>
+
+                      {purchaseType === "member" && storeConfig.memberBonusProductName && (
+                        <label className="flex items-center gap-2 rounded-xl border border-lime-200 bg-lime-50 px-3 py-2 text-xs font-semibold text-lime-800">
+                          <input
+                            type="checkbox"
+                            checked={!excludeMemberBonus}
+                            onChange={(event) => setExcludeMemberBonus(!event.target.checked)}
+                            className="h-4 w-4"
+                          />
+                          사은품 &lsquo;{storeConfig.memberBonusProductName}&rsquo; 받기
+                        </label>
+                      )}
+
                       {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
                       <div className="flex gap-2">
@@ -1914,11 +2045,9 @@ export default function Home() {
                           onClick={() => {
                             if (isLoggedIn) {
                               setShowPurchaseModal(false);
-                              setShowOrderConfirmModal(false);
                               return;
                             }
                             setPurchaseType(null);
-                            setShowOrderConfirmModal(false);
                           }}
                           className="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold"
                         >
@@ -1926,7 +2055,7 @@ export default function Home() {
                         </button>
                         <button
                           type="submit"
-                          disabled={submitting || !isOrderAvailable}
+                          disabled={submitting || !isOrderAvailable || totalQuantity === 0 || !policyConfirmedBeforeSubmit}
                           className="flex-1 rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
                         >
                           {!isOrderAvailable ? "주문 불가" : submitting ? "접수 중..." : "주문 접수"}
@@ -1968,7 +2097,17 @@ export default function Home() {
                 <div className="mt-3 rounded-2xl border border-dashed border-lime-300 bg-lime-50 p-3 text-sm text-lime-900">
                   <p className="font-bold">계좌이체 안내</p>
                   <p>{orderDone.transfer.bankName}</p>
-                  <p>{orderDone.transfer.accountNumber}</p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <p className="font-bold">{orderDone.transfer.accountNumber}</p>
+                    <button
+                      type="button"
+                      onClick={() => void copyAccountInfo(orderDone.transfer.accountNumber || "")}
+                      disabled={!orderDone.transfer.accountNumber?.trim()}
+                      className="rounded-lg border border-lime-300 bg-white px-2 py-1 text-xs font-semibold text-lime-800 disabled:opacity-50"
+                    >
+                      {accountCopyDone ? "복사됨" : "계좌 복사"}
+                    </button>
+                  </div>
                   <p>{orderDone.transfer.accountHolder}</p>
                   {orderDone.order.paymentDueAt && (
                     <p className="mt-2 rounded-lg bg-white/70 px-2 py-1 text-xs font-bold text-rose-700">
@@ -1988,7 +2127,6 @@ export default function Home() {
                     onClick={() => {
                       setShowPurchaseModal(false);
                       setOrderDone(null);
-                      setShowOrderConfirmModal(false);
                     }}
                     className="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold"
                   >
@@ -2003,132 +2141,6 @@ export default function Home() {
                 </div>
               </>
             )}
-          </div>
-        </div>
-      )}
-
-      {showPurchaseModal && showOrderConfirmModal && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-          onClick={() => {
-            if (!submitting) {
-              setShowOrderConfirmModal(false);
-            }
-          }}
-        >
-          <div
-            className="w-full max-w-sm rounded-3xl border border-lime-200 bg-white p-5 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2 className="font-display text-3xl text-lime-800">주문 접수 확인</h2>
-            <p className="mt-1 text-sm text-stone-600">입력하신 정보로 주문을 접수할까요?</p>
-            <div className="mt-3 space-y-2 rounded-2xl border border-stone-200 bg-stone-50 p-3 text-xs text-stone-700">
-              <p className="font-bold text-stone-900">주문 정보</p>
-              <p>구매 유형: {purchaseType === "member" ? "회원" : "비회원"}</p>
-              <p>입금자명: {depositorName || "-"}</p>
-              <p>수신자명: {recipientName || "-"}</p>
-              <p>수신자 연락처: {phone ? formatPhone(phone) : "-"}</p>
-              <p>우편번호: {confirmPostalCode || "-"}</p>
-              <p>배송지: {confirmShippingAddress || "-"}</p>
-              <p>요청사항: {resolvedOrderRequestNote || "없음"}</p>
-            </div>
-
-            <div className="mt-2 rounded-2xl border border-lime-200 bg-lime-50 p-3">
-              <p className="text-xs font-bold text-lime-900">주문 품목 ({totalQuantity}개)</p>
-              <ul className="mt-1 max-h-36 space-y-1 overflow-y-auto text-xs text-lime-900">
-                {confirmCartItems.map((item) => (
-                  <li
-                    key={`confirm-${item.id}`}
-                    className="flex items-center justify-between gap-2 rounded-lg bg-white/80 px-2 py-1"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate">{item.name}</p>
-                      <p className="text-[11px] text-stone-600">{formatCurrency(item.subtotal)}</p>
-                    </div>
-                    <div className="flex items-center gap-1 rounded-full border border-lime-300 bg-white px-1 py-0.5">
-                      <button
-                        type="button"
-                        onClick={() => changeQuantity(item.id, -1)}
-                        disabled={item.quantity <= 0}
-                        className="h-6 w-6 rounded-full bg-stone-100 text-sm font-bold text-stone-700"
-                        aria-label={`${item.name} 수량 감소`}
-                      >
-                        -
-                      </button>
-                      <span className="min-w-5 text-center text-[11px] font-bold">{item.quantity}</span>
-                      <button
-                        type="button"
-                        onClick={() => changeQuantity(item.id, 1)}
-                        disabled={item.quantity >= item.stock}
-                        className="h-6 w-6 rounded-full bg-lime-100 text-sm font-bold text-lime-800 disabled:cursor-not-allowed disabled:opacity-40"
-                        aria-label={`${item.name} 수량 증가`}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              {confirmCartItems.length === 0 && (
-                <p className="mt-2 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
-                  장바구니가 비었습니다. 수정 후 다시 주문해주세요.
-                </p>
-              )}
-            </div>
-
-            {effectiveDeliveryFee > 0 || couponDiscount > 0 || mileageToUse > 0 ? (
-              <div className="mt-2 space-y-0.5 text-sm text-stone-700">
-                <p>상품 금액 {formatCurrency(totalPrice)}</p>
-                {effectiveDeliveryFee > 0 && <p>배송료 {formatCurrency(effectiveDeliveryFee)}</p>}
-                {ENABLE_REWARDS && couponDiscount > 0 && <p className="text-lime-700">쿠폰 할인 -{formatCurrency(couponDiscount)}</p>}
-                {ENABLE_REWARDS && mileageToUse > 0 && <p className="text-lime-700">적립금 사용 -{formatCurrency(mileageToUse)}</p>}
-                <p className="font-semibold text-stone-900">총 결제 예정 금액 {formatCurrency(finalPayable)}</p>
-                {ENABLE_REWARDS && expectedMileageEarn > 0 && (
-                  <p className="text-[11px] text-lime-700">
-                    배송완료 시 {formatCurrency(expectedMileageEarn)} 적립 예정
-                  </p>
-                )}
-              </div>
-            ) : (
-              <p className="mt-2 text-sm font-semibold text-stone-800">
-                총 결제 예정 금액 {formatCurrency(totalPrice)}
-              </p>
-            )}
-            {storeConfig.paymentDueDays > 0 && (
-              <p className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                주문 후 {storeConfig.paymentDueDays}일 이내에 입금해주세요. 기한이 지나면 주문이 자동 취소됩니다.
-              </p>
-            )}
-            {purchaseType === "member" && storeConfig.memberBonusProductName && (
-              <label className="mt-2 flex items-center gap-2 rounded-xl border border-lime-200 bg-lime-50 px-3 py-2 text-xs font-semibold text-lime-800">
-                <input
-                  type="checkbox"
-                  checked={!excludeMemberBonus}
-                  onChange={(event) => setExcludeMemberBonus(!event.target.checked)}
-                  className="h-4 w-4"
-                />
-                사은품 &lsquo;{storeConfig.memberBonusProductName}&rsquo; 받기
-              </label>
-            )}
-
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setShowOrderConfirmModal(false)}
-                disabled={submitting}
-                className="flex-1 rounded-xl border border-stone-300 px-4 py-3 text-sm font-bold text-stone-700"
-              >
-                수정하기
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmOrderSubmit()}
-                disabled={submitting || !isOrderAvailable || totalQuantity === 0}
-                className="flex-1 rounded-xl bg-lime-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
-              >
-                {!isOrderAvailable ? "주문 불가" : submitting ? "접수 중..." : "주문 접수"}
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -2245,13 +2257,6 @@ export default function Home() {
                   )}
                 </Link>
               )}
-              <Link
-                href="/policy"
-                onClick={() => setShowMenuDrawer(false)}
-                className="block w-full rounded-xl border border-amber-300 bg-white px-4 py-3 text-center text-sm font-bold text-amber-800"
-              >
-                배송/환불
-              </Link>
               <Link
                 href="/notices"
                 onClick={() => setShowMenuDrawer(false)}

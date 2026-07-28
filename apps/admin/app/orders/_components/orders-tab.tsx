@@ -196,6 +196,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
   const [createAccountId, setCreateAccountId] = useState<string>("");
   const [createCustomerName, setCreateCustomerName] = useState("");
   const [createPhone, setCreatePhone] = useState("");
+  const [createRecipientPhone, setCreateRecipientPhone] = useState("");
   const [createDepositorName, setCreateDepositorName] = useState("");
   const [createShippingAddress, setCreateShippingAddress] = useState("");
   const [createRequestNote, setCreateRequestNote] = useState("");
@@ -212,6 +213,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [editCustomerName, setEditCustomerName] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editRecipientPhone, setEditRecipientPhone] = useState("");
   const [editDepositorName, setEditDepositorName] = useState("");
   const [editShippingAddress, setEditShippingAddress] = useState("");
   const [editRequestNote, setEditRequestNote] = useState("");
@@ -297,6 +299,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
         order.customerName,
         order.depositorName,
         order.phone,
+        order.recipientPhone,
         order.shippingAddress,
         order.requestNote ?? "",
         order.cancelReason ?? "",
@@ -374,6 +377,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
 
     setCreateCustomerName(name);
     setCreatePhone(account.phone ?? "");
+    setCreateRecipientPhone(account.phone ?? "");
     setCreateDepositorName(name);
     setCreateShippingAddress(address);
   }
@@ -448,6 +452,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
     setCreateAccountId("");
     setCreateCustomerName("");
     setCreatePhone("");
+    setCreateRecipientPhone("");
     setCreateDepositorName("");
     setCreateShippingAddress("");
     setCreateRequestNote("");
@@ -460,6 +465,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
     setCreateAccountId("");
     setCreateCustomerName("");
     setCreatePhone("");
+    setCreateRecipientPhone("");
     setCreateDepositorName("");
     setCreateShippingAddress("");
     setCreateError(null);
@@ -532,6 +538,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
     setEditOrderId(order.id);
     setEditCustomerName(order.customerName);
     setEditPhone(order.phone);
+    setEditRecipientPhone(order.recipientPhone);
     setEditDepositorName(order.depositorName);
     setEditShippingAddress(order.shippingAddress);
     setEditRequestNote(order.requestNote ?? "");
@@ -616,6 +623,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
       await createOrder({
         customerName: createCustomerName.trim(),
         phone: createPhone.trim(),
+        recipientPhone: createRecipientPhone.trim(),
         depositorName: createDepositorName.trim(),
         shippingAddress: createShippingAddress.trim(),
         requestNote: createRequestNote.trim() || undefined,
@@ -644,6 +652,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
       await updateOrder(editOrderId, {
         customerName: editCustomerName.trim(),
         phone: editPhone.trim(),
+        recipientPhone: editRecipientPhone.trim(),
         depositorName: editDepositorName.trim(),
         shippingAddress: editShippingAddress.trim(),
         requestNote: editRequestNote.trim() || "",
@@ -733,6 +742,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
         order.customerName,
         order.depositorName,
         order.phone,
+        order.recipientPhone,
         ...order.items.map((item) => item.name),
       ]
         .join(" ")
@@ -813,7 +823,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
         <input
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="주문번호·고객명·연락처·상품명 검색"
+          placeholder="주문번호·받는분·연락처·상품명 검색"
           className="min-w-52 flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm"
         />
         <select
@@ -863,12 +873,13 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
           type="button"
           onClick={() => {
             const exportedRows: Array<Array<string | number>> = [
-              ["주문번호", "일시", "고객", "연락처", "배송지", "입금자명", "품목", "금액", "상태"],
+              ["주문번호", "일시", "받는분", "주문자 연락처", "받는분 연락처", "배송지", "주문자", "품목", "금액", "상태"],
               ...filteredOrders.map((order) => [
                 order.id,
                 new Date(order.createdAt).toLocaleString(),
                 order.customerName,
                 formatPhone(order.phone),
+                formatPhone(order.recipientPhone),
                 order.shippingAddress,
                 order.depositorName,
                 order.items.map((item) => `${item.name} x${item.quantity}`).join(", "),
@@ -976,9 +987,10 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
                   </div>
 
                   <div className="grid gap-2 text-sm text-stone-700 sm:grid-cols-2">
-                    <p>고객명: {order.customerName}</p>
-                    <p>연락처: {formatPhone(order.phone)}</p>
-                    <p>입금자명: {order.depositorName}</p>
+                    <p>받는분: {order.customerName}</p>
+                    <p>주문자 연락처: {formatPhone(order.phone)}</p>
+                    <p>받는분 연락처: {formatPhone(order.recipientPhone)}</p>
+                    <p>주문자: {order.depositorName}</p>
                     {order.deliveryFee > 0 && <p>배송료: {formatCurrency(order.deliveryFee)}</p>}
                     {order.couponDiscount > 0 && <p>쿠폰 할인: -{formatCurrency(order.couponDiscount)}</p>}
                     {order.mileageUsed > 0 && <p>적립금 사용: -{formatCurrency(order.mileageUsed)}</p>}
@@ -1092,7 +1104,7 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
               <tr>
                 <th className="px-3 py-2 text-left">주문번호</th>
                 <th className="px-3 py-2 text-left">일시</th>
-                <th className="px-3 py-2 text-left">고객</th>
+                <th className="px-3 py-2 text-left">받는분</th>
                 <th className="px-3 py-2 text-left">품목</th>
                 <th className="px-3 py-2 text-right">금액</th>
                 <th className="px-3 py-2 text-left">상태</th>
@@ -1122,7 +1134,8 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
                           {order.purchaseType === "member" ? "회원" : "비회원"}
                         </span>
                       </div>
-                      <span className="block text-xs text-stone-500">{formatPhone(order.phone)}</span>
+                      <span className="block text-xs text-stone-500">주문자 {formatPhone(order.phone)}</span>
+                      <span className="block text-xs text-stone-500">수신자 {formatPhone(order.recipientPhone)}</span>
                     </td>
                     <td className="max-w-[320px] px-3 py-2 text-stone-700">
                       <span className="block truncate">{order.items.map((item) => `${item.name} x${item.quantity}`).join(", ")}</span>
@@ -1331,9 +1344,10 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
                   <p className="text-xs text-stone-500">{new Date(o.createdAt).toLocaleString()}</p>
 
                   <div className="grid gap-x-3 gap-y-0.5 text-stone-700 sm:grid-cols-2">
-                    <p>고객명: {o.customerName}</p>
-                    <p>연락처: {formatPhone(o.phone)}</p>
-                    <p>입금자명: {o.depositorName}</p>
+                    <p>받는분: {o.customerName}</p>
+                    <p>주문자 연락처: {formatPhone(o.phone)}</p>
+                    <p>받는분 연락처: {formatPhone(o.recipientPhone)}</p>
+                    <p>주문자: {o.depositorName}</p>
                     {o.deliveryFee > 0 && <p>배송료: {formatCurrency(o.deliveryFee)}</p>}
                     {o.couponDiscount > 0 && <p>쿠폰 할인: -{formatCurrency(o.couponDiscount)}</p>}
                     {o.mileageUsed > 0 && <p>적립금 사용: -{formatCurrency(o.mileageUsed)}</p>}
@@ -1508,9 +1522,10 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
               )}
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <input value={createCustomerName} onChange={(e) => setCreateCustomerName(e.target.value)} placeholder="고객명" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
-                <input value={createPhone} onChange={(e) => setCreatePhone(e.target.value)} placeholder="연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
-                <input value={createDepositorName} onChange={(e) => setCreateDepositorName(e.target.value)} placeholder="입금자명" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
+                <input value={createCustomerName} onChange={(e) => setCreateCustomerName(e.target.value)} placeholder="받는분" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
+                <input value={createPhone} onChange={(e) => setCreatePhone(e.target.value)} placeholder="주문자 연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
+                <input value={createRecipientPhone} onChange={(e) => setCreateRecipientPhone(e.target.value)} placeholder="수신자 연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
+                <input value={createDepositorName} onChange={(e) => setCreateDepositorName(e.target.value)} placeholder="주문자" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
                 <input value={createShippingAddress} onChange={(e) => setCreateShippingAddress(e.target.value)} placeholder="배송지" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
               </div>
               <textarea value={createRequestNote} onChange={(e) => setCreateRequestNote(e.target.value)} placeholder="요청사항" className="h-20 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
@@ -1657,9 +1672,10 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
             <h3 className="text-xl font-bold text-stone-900">주문 정보 수정</h3>
             <form onSubmit={submitUpdateOrder} className="mt-4 space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
-                <input value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} placeholder="고객명" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
-                <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
-                <input value={editDepositorName} onChange={(e) => setEditDepositorName(e.target.value)} placeholder="입금자명" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
+                <input value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} placeholder="받는분" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
+                <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="주문자 연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
+                <input value={editRecipientPhone} onChange={(e) => setEditRecipientPhone(e.target.value)} placeholder="받는분 연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
+                <input value={editDepositorName} onChange={(e) => setEditDepositorName(e.target.value)} placeholder="주문자" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
                 <input value={editShippingAddress} onChange={(e) => setEditShippingAddress(e.target.value)} placeholder="배송지" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
               </div>
               <textarea value={editRequestNote} onChange={(e) => setEditRequestNote(e.target.value)} placeholder="요청사항" className="h-20 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />

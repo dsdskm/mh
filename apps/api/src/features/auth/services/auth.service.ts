@@ -523,8 +523,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     phone: string,
     code: string,
   ): Promise<void> {
-    const fallbackContent = `인증번호 [${code}]를 입력해주세요.`;
-
     try {
       await this.messagesService.sendKakaoTemplateWithFallback({
         receiver: phone,
@@ -534,7 +532,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         variables: {
           number: code,
         },
-        fallbackContent,
       });
     } catch (error) {
       const smsErrorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
@@ -559,7 +556,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         variables: {
           name: memberName,
         },
-        fallbackContent: `${memberName}님 회원가입을 환영합니다.`,
       });
     } catch (error) {
       console.warn('[auth] 회원가입 환영 메시지 전송 실패', {

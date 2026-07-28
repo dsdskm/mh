@@ -54,6 +54,7 @@ type GuestLookupPurpose = 'checkout' | 'lookup';
 @Injectable()
 export class OrdersService implements OnModuleInit, OnModuleDestroy {
   private static readonly ORDER_ID_RETRY_LIMIT = 3;
+  private static readonly OPERATOR_KAKAO_PHONE = '01054055939';
   private static readonly LOOKUP_CODE_EXPIRE_MS = 3 * 60 * 1000;
   private static readonly LOOKUP_TOKEN_EXPIRE_MS = 10 * 60 * 1000;
   private static readonly LOOKUP_MAX_VERIFY_ATTEMPTS = 5;
@@ -176,16 +177,18 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createOrder(input: CreateOrderInput) {
-    if (input.purchaseType === 'guest' && !input.skipGuestVerification) {
-      const phone = this.normalizePhone(input.phone);
-      this.assertPhoneFormat(phone);
+    const ordererPhone = this.normalizePhone(input.phone);
+    const recipientPhone = this.normalizePhone(input.recipientPhone);
+    this.assertPhoneFormat(ordererPhone);
+    this.assertPhoneFormat(recipientPhone);
 
+    if (input.purchaseType === 'guest' && !input.skipGuestVerification) {
       const lookupToken = input.lookupToken?.trim();
       if (!lookupToken) {
         throw new BadRequestException('비회원 주문은 휴대폰 문자 인증이 필요합니다.');
       }
 
-      this.assertGuestLookupVerified(phone, lookupToken);
+      this.assertGuestLookupVerified(ordererPhone, lookupToken);
     }
 
     // 입금 기한: 기본정보의 paymentDueDays(일)를 주문 시점 기준으로 고정 저장합니다.
@@ -350,7 +353,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
               id: await this.createOrderId(orderRepository),
               accountId: input.accountId ?? null,
               customerName: input.customerName,
-              phone: input.phone,
+              phone: ordererPhone,
+              recipientPhone,
               shippingAddress: input.shippingAddress,
               requestNote: input.requestNote?.trim() || null,
               depositorName: input.depositorName,
@@ -511,6 +515,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     input: {
       customerName?: string;
       phone?: string;
+      recipientPhone?: string;
       shippingAddress?: string;
       requestNote?: string;
       depositorName?: string;
@@ -527,12 +532,15 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     }
 
     const nextPhone = input.phone?.trim() ?? order.phone;
+    const nextRecipientPhone = input.recipientPhone?.trim() ?? order.recipientPhone ?? order.phone;
     this.assertPhoneFormat(this.normalizePhone(nextPhone));
+    this.assertPhoneFormat(this.normalizePhone(nextRecipientPhone));
 
     const updated = await this.orderRepository.save({
       ...order,
       customerName: input.customerName?.trim() || order.customerName,
       phone: nextPhone,
+      recipientPhone: nextRecipientPhone,
       shippingAddress: input.shippingAddress?.trim() || order.shippingAddress,
       requestNote: input.requestNote?.trim() || null,
       depositorName: input.depositorName?.trim() || order.depositorName,
@@ -549,6 +557,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       payload: {
         customerName: updated.customerName,
         phone: updated.phone,
+        recipientPhone: updated.recipientPhone,
         shippingAddress: updated.shippingAddress,
       },
     });
@@ -1030,7 +1039,6 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     const verificationContext =
       purpose === 'checkout' ? '비회원 주문 인증번호' : '주문조회 인증번호';
     const receiverName = purpose === 'checkout' ? '웹 비회원 주문인증' : '웹 주문조회 인증';
-    const fallbackContent = `${verificationContext} [${code}]를 입력해주세요.`;
 
     try {
       await this.messagesService.sendKakaoTemplateWithFallback({
@@ -1041,7 +1049,6 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         variables: {
           number: code,
         },
-        fallbackContent,
       });
     } catch (error) {
       const smsErrorMessage = error instanceof Error ? error.message : '알 수 없는 오류';
@@ -1061,10 +1068,18 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
+      const receiverPhone = await this.resolveOrdererPhone(order);
+      const receiverName = this.resolveOrdererName(order);
+
       if (status === ORDER_STATUS.SHIPPING) {
-        await this.messagesService.sendSms({
-          receiver: this.normalizePhone(order.phone),
-          content: '배송이 시작되었습니다. 택배사로부터 자세한 배송 정보를 얻으실 수 있습니다. 감사합니다.',
+        await this.messagesService.sendKakaoTemplateWithFallback({
+          receiver: receiverPhone,
+          receiverName,
+          pfId: SOLAPI_PF_ID,
+          templateId: KAKAO_TEMPLATE_IDS.deliveryStarted,
+          variables: {
+            name: receiverName,
+          },
         });
         return;
       }
@@ -1076,20 +1091,12 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
             ? KAKAO_TEMPLATE_IDS.orderCancelRequested
             : KAKAO_TEMPLATE_IDS.orderCancelCompleted;
 
-      const fallbackContent =
-        status === ORDER_STATUS.PAID
-          ? `${order.customerName}님 ${Math.max(0, Math.floor(order.totalAmount)).toLocaleString('ko-KR')}원 입금이 확인되었습니다.`
-          : status === ORDER_STATUS.CANCEL_REQUESTED
-            ? `${order.customerName}님 주문 취소 요청이 접수되었습니다.`
-            : `${order.customerName}님 주문 취소가 완료되었습니다.`;
-
       await this.messagesService.sendKakaoTemplateWithFallback({
-        receiver: this.normalizePhone(order.phone),
-        receiverName: order.customerName,
+        receiver: receiverPhone,
+        receiverName,
         pfId: SOLAPI_PF_ID,
         templateId,
         variables: this.buildOrderKakaoVariables(order),
-        fallbackContent,
       });
 
       if (status === ORDER_STATUS.CANCEL_REQUESTED) {
@@ -1111,6 +1118,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
     this.orderReceivedSmsInFlight.add(order.id);
     try {
+      const receiverPhone = await this.resolveOrdererPhone(order);
+      const receiverName = this.resolveOrdererName(order);
       const storeConfig = await this.configService.getStoreConfig();
       const shopName = storeConfig.shopName.trim() || '상점';
       const prefix = `[${shopName}]`;
@@ -1143,8 +1152,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
       try {
         await this.messagesService.sendKakaoTemplateWithFallback({
-          receiver: this.normalizePhone(order.phone),
-          receiverName: order.customerName,
+          receiver: receiverPhone,
+          receiverName,
           pfId: SOLAPI_PF_ID,
           templateId: KAKAO_TEMPLATE_IDS.orderReceived,
           variables: {
@@ -1154,7 +1163,6 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
             accountOwner: accountHolder,
             dueDate: dueAtText,
           },
-          fallbackContent: message,
         });
       } catch (error) {
         console.warn('[orders] 주문접수 알림 발송 실패', {
@@ -1174,10 +1182,12 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       where: { userId: 'master' },
     });
     const masterReceiver = this.normalizePhone(masterAccount?.phone ?? '');
+    const operatorReceiver = this.normalizePhone(OrdersService.OPERATOR_KAKAO_PHONE);
 
     const receivers = [
       { role: 'seller', phone: sellerReceiver },
       { role: 'master', phone: masterReceiver },
+      { role: 'operator', phone: operatorReceiver },
     ];
 
     for (const receiver of receivers) {
@@ -1191,11 +1201,15 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
       await this.messagesService.sendKakaoTemplateWithFallback({
         receiver: receiver.phone,
-        receiverName: receiver.role === 'master' ? 'MASTER' : '판매자',
+        receiverName:
+          receiver.role === 'master'
+            ? 'MASTER'
+            : receiver.role === 'operator'
+              ? '운영자'
+              : '판매자',
         pfId: SOLAPI_PF_ID,
         templateId: KAKAO_TEMPLATE_IDS.orderCancelRequested,
         variables: this.buildOrderKakaoVariables(order),
-        fallbackContent: `${order.customerName}님 주문 취소 요청이 접수되었습니다.`,
       });
     }
   }
@@ -1268,26 +1282,17 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       const compactAccount = this.truncateByByte(accountNumber, 24);
       const compactHolder = this.truncateByByte(accountHolder, 16);
 
-      const messageCandidates = [
-        `${prefix}${amountText}/입금기한 ${compactDueAt}/${compactBank}/${compactAccount}/${compactHolder} 감사합니다.`,
-        `${prefix}${amountText}/입금기한 ${compactDueAt}/${compactBank}/${compactAccount} 감사합니다.`,
-        `${prefix}${amountText}/입금기한 ${compactDueAt}/${compactAccount} 감사합니다.`,
-        `${prefix}${amountText}/입금기한 ${compactDueAt} 감사합니다.`,
-        `${prefix}${amountText}/입금기한 ${compactDueAt}`,
-      ];
-
-      const fallbackContent =
-        messageCandidates.find((item) => this.smsByteLength(item) <= 90) ?? messageCandidates[messageCandidates.length - 1];
-
       const sellerReceiver = this.normalizePhone(storeConfig.sellerPhone ?? '');
       const masterAccount = await this.accountRepository.findOne({
         where: { userId: 'master' },
       });
       const masterReceiver = this.normalizePhone(masterAccount?.phone ?? '');
+      const operatorReceiver = this.normalizePhone(OrdersService.OPERATOR_KAKAO_PHONE);
 
       const receivers = [
         { role: 'seller', phone: sellerReceiver },
         { role: 'master', phone: masterReceiver },
+        { role: 'operator', phone: operatorReceiver },
       ];
 
       for (const receiver of receivers) {
@@ -1301,7 +1306,12 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
         await this.messagesService.sendKakaoTemplateWithFallback({
           receiver: receiver.phone,
-          receiverName: receiver.role === 'master' ? 'MASTER' : '판매자',
+          receiverName:
+            receiver.role === 'master'
+              ? 'MASTER'
+              : receiver.role === 'operator'
+                ? '운영자'
+                : '판매자',
           pfId: SOLAPI_PF_ID,
           templateId: KAKAO_TEMPLATE_IDS.orderReceived,
           variables: {
@@ -1311,7 +1321,6 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
             accountOwner: accountHolder,
             dueDate: dueAtText,
           },
-          fallbackContent,
         });
       }
     } catch (error) {
@@ -1362,6 +1371,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       customerName: order.customerName,
       purchaseType: this.normalizePurchaseType(order.purchaseType),
       phone: order.phone,
+      recipientPhone: order.recipientPhone ?? order.phone,
       shippingAddress: order.shippingAddress,
       requestNote: order.requestNote,
       cancelReason: order.cancelReason,
@@ -1408,12 +1418,24 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   }
 
   private resolveOrdererName(order: OrderEntity): string {
+    return (order.depositorName ?? '').trim() || order.customerName.trim() || '고객';
+  }
+
+  private async resolveOrdererPhone(order: OrderEntity): Promise<string> {
     const purchaseType = this.normalizePurchaseType(order.purchaseType);
-    if (purchaseType === 'guest') {
-      return (order.depositorName ?? '').trim() || order.customerName.trim() || '고객';
+
+    if (purchaseType === 'member' && typeof order.accountId === 'number') {
+      const account = await this.accountRepository.findOne({
+        where: { id: order.accountId },
+      });
+      const memberPhone = this.normalizePhone(account?.phone ?? '');
+      if (/^\d{8,20}$/.test(memberPhone)) {
+        return memberPhone;
+      }
     }
 
-    return order.customerName.trim() || (order.depositorName ?? '').trim() || '고객';
+    // 비회원이거나 회원 계정 전화번호를 확인할 수 없으면 주문 연락처로 폴백
+    return this.normalizePhone(order.phone);
   }
 
   private buildOrderProductText(order: OrderEntity): string {

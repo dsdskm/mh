@@ -6,6 +6,7 @@ import { KAKAO_TEMPLATE_IDS, SOLAPI_PF_ID } from './kakao-template.constants';
 import { Repository } from 'typeorm';
 import { AdminMessageChannel, AdminSmsHistoryEntity, AdminSmsStatus } from '../../../database/entities/admin-sms-history.entity';
 import { ConfigService } from '../../config/services/config.service';
+import { getRequestContext } from '../../../shared/request-context';
 
 type SendSmsInput = {
   receiver: string;
@@ -21,7 +22,6 @@ type SendKakaoTemplateInput = {
   pfId: string;
   templateId: string;
   variables: Record<string, string>;
-  fallbackContent: string;
 };
 
 type SendAllKakaoTemplateTestInput = {
@@ -37,6 +37,13 @@ type SendAllKakaoTemplateTestInput = {
   accountOwner: string;
   dueDate: string;
   authNumber: string;
+};
+
+type SendSingleKakaoTemplateTestInput = {
+  receiver: string;
+  receiverName?: string;
+  templateKey: keyof typeof KAKAO_TEMPLATE_IDS;
+  variables: Record<string, string>;
 };
 
 type FixedSmsConfig = {
@@ -237,10 +244,12 @@ export class MessagesService {
       throw new BadRequestException('receiver는 유효한 수신번호(숫자 8~20자리)여야 합니다.');
     }
 
-    const fallbackContent = input.fallbackContent.trim();
-    if (!fallbackContent) {
-      throw new BadRequestException('fallbackContent를 입력해주세요.');
-    }
+    const resolvedVariables = this.applyTestPrefixToKakaoName(input.variables);
+
+    const historyContent = JSON.stringify({
+      templateId: input.templateId,
+      variables: resolvedVariables,
+    });
 
     try {
       const receiptNum = await this.solapiMessageClient.sendKakaoAlimtalk({
@@ -248,14 +257,14 @@ export class MessagesService {
         from: SOLAPI_FIXED_SENDER,
         pfId: input.pfId,
         templateId: input.templateId,
-        variables: input.variables,
+        variables: resolvedVariables,
       });
 
       await this.saveHistory({
         channel: 'kakao',
         receiver,
         receiverName: input.receiverName,
-        content: fallbackContent,
+        content: historyContent,
         reserveDT: null,
         adsYN: false,
         receiptNum,
@@ -279,7 +288,7 @@ export class MessagesService {
         channel: 'kakao',
         receiver,
         receiverName: input.receiverName,
-        content: fallbackContent,
+        content: historyContent,
         reserveDT: null,
         adsYN: false,
         receiptNum: null,
@@ -289,16 +298,7 @@ export class MessagesService {
         config: null,
       });
 
-      const smsResult = await this.sendSms({
-        receiver,
-        receiverName: input.receiverName,
-        content: fallbackContent,
-      });
-
-      return {
-        receiptNum: smsResult.receiptNum,
-        fallbackUsed: true,
-      };
+      throw new BadRequestException(`알림톡 전송에 실패했습니다. ${message}`);
     }
   }
 
@@ -331,26 +331,22 @@ export class MessagesService {
       caseName: string;
       templateId: string;
       variables: Record<string, string>;
-      fallbackContent: string;
       receiverName?: string;
     }> = [
       {
         caseName: 'order-cancel-completed',
         templateId: KAKAO_TEMPLATE_IDS.orderCancelCompleted,
         variables: orderVariables,
-        fallbackContent: `주문취소 완료: ${input.orderNo}`,
       },
       {
         caseName: 'order-cancel-requested',
         templateId: KAKAO_TEMPLATE_IDS.orderCancelRequested,
         variables: orderVariables,
-        fallbackContent: `주문취소 요청 접수: ${input.orderNo}`,
       },
       {
         caseName: 'payment-confirmed',
         templateId: KAKAO_TEMPLATE_IDS.paymentConfirmed,
         variables: orderVariables,
-        fallbackContent: `입금 확인: ${input.amount}`,
       },
       {
         caseName: 'order-received',
@@ -362,7 +358,6 @@ export class MessagesService {
           accountOwner: input.accountOwner,
           dueDate: input.dueDate,
         },
-        fallbackContent: `주문 접수: ${input.orderNo} / ${input.amount}`,
       },
       {
         caseName: 'auth-number',
@@ -370,7 +365,6 @@ export class MessagesService {
         variables: {
           number: input.authNumber,
         },
-        fallbackContent: `인증번호 [${input.authNumber}]`,
       },
       {
         caseName: 'signup-welcome',
@@ -378,7 +372,14 @@ export class MessagesService {
         variables: {
           name: input.name,
         },
-        fallbackContent: `${input.name}님 회원가입을 환영합니다.`,
+        receiverName: input.name,
+      },
+      {
+        caseName: 'delivery-started',
+        templateId: KAKAO_TEMPLATE_IDS.deliveryStarted,
+        variables: {
+          name: input.name,
+        },
         receiverName: input.name,
       },
     ];
@@ -400,7 +401,6 @@ export class MessagesService {
           pfId: SOLAPI_PF_ID,
           templateId: item.templateId,
           variables: item.variables,
-          fallbackContent: item.fallbackContent,
         });
 
         results.push({
@@ -427,6 +427,33 @@ export class MessagesService {
       receiver,
       from: SOLAPI_FIXED_SENDER,
       results,
+    };
+  }
+
+  async sendSingleKakaoTemplateTest(input: SendSingleKakaoTemplateTestInput): Promise<{
+    templateKey: keyof typeof KAKAO_TEMPLATE_IDS;
+    templateId: string;
+    receiptNum: string;
+    fallbackUsed: boolean;
+  }> {
+    const templateId = KAKAO_TEMPLATE_IDS[input.templateKey];
+    if (!templateId) {
+      throw new BadRequestException('지원하지 않는 카카오 템플릿입니다.');
+    }
+
+    const sent = await this.sendKakaoTemplateWithFallback({
+      receiver: input.receiver,
+      receiverName: input.receiverName,
+      pfId: SOLAPI_PF_ID,
+      templateId,
+      variables: input.variables,
+    });
+
+    return {
+      templateKey: input.templateKey,
+      templateId,
+      receiptNum: sent.receiptNum,
+      fallbackUsed: sent.fallbackUsed,
     };
   }
 
@@ -520,6 +547,51 @@ export class MessagesService {
 
   private normalizePhone(value: string): string {
     return value.replace(/\D/g, '');
+  }
+
+  private applyTestPrefixToKakaoName(
+    variables: Record<string, string>,
+  ): Record<string, string> {
+    const rawName = variables.name;
+    if (typeof rawName !== 'string') {
+      return variables;
+    }
+
+    const name = rawName.trim();
+    if (!name) {
+      return variables;
+    }
+
+    const isLocalTest = this.isLocalhost9002TestMode();
+    if (!isLocalTest) {
+      return variables;
+    }
+
+    if (name.startsWith('(테스트)')) {
+      return {
+        ...variables,
+        name,
+      };
+    }
+
+    return {
+      ...variables,
+      name: `(테스트) ${name}`,
+    };
+  }
+
+  private isLocalhost9002TestMode(): boolean {
+    const origin = getRequestContext()?.origin?.trim().toLowerCase();
+    if (!origin) {
+      return false;
+    }
+
+    try {
+      const parsed = new URL(origin);
+      return parsed.host === 'localhost:9002' || parsed.host === '127.0.0.1:9002';
+    } catch {
+      return origin.includes('localhost:9002') || origin.includes('127.0.0.1:9002');
+    }
   }
 
   private async saveHistory(input: SaveHistoryInput): Promise<void> {

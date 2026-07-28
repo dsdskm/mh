@@ -6,6 +6,7 @@ import { NestFactory } from '@nestjs/core';
 import { randomUUID } from 'node:crypto';
 import { json, urlencoded, type NextFunction, type Request, type Response } from 'express';
 import { AppModule } from './app.module';
+import { runWithRequestContext } from './shared/request-context';
 
 const bootstrapLogger = new Logger('Bootstrap');
 
@@ -115,32 +116,44 @@ async function bootstrap() {
       randomUUID();
     const startedAt = process.hrtime.bigint();
     const ip = req.ip || req.socket.remoteAddress || '-';
+    const requestOrigin =
+      typeof req.headers.origin === 'string'
+        ? req.headers.origin.trim().toLowerCase()
+        : undefined;
 
-    res.setHeader('x-request-id', requestId);
-    bootstrapLogger.log(
-      `[api:req] id=${requestId} method=${req.method} path=${req.originalUrl} ip=${ip}`,
+    runWithRequestContext(
+      {
+        requestId,
+        origin: requestOrigin,
+      },
+      () => {
+        res.setHeader('x-request-id', requestId);
+        bootstrapLogger.log(
+          `[api:req] id=${requestId} method=${req.method} path=${req.originalUrl} ip=${ip}`,
+        );
+
+        res.on('finish', () => {
+          const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+          const status = res.statusCode;
+          const message =
+            `[api:res] id=${requestId} method=${req.method} path=${req.originalUrl} status=${status} durationMs=${elapsedMs.toFixed(1)}`;
+
+          if (status >= 500) {
+            bootstrapLogger.error(message);
+            return;
+          }
+
+          if (status >= 400) {
+            bootstrapLogger.warn(message);
+            return;
+          }
+
+          bootstrapLogger.log(message);
+        });
+
+        next();
+      },
     );
-
-    res.on('finish', () => {
-      const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
-      const status = res.statusCode;
-      const message =
-        `[api:res] id=${requestId} method=${req.method} path=${req.originalUrl} status=${status} durationMs=${elapsedMs.toFixed(1)}`;
-
-      if (status >= 500) {
-        bootstrapLogger.error(message);
-        return;
-      }
-
-      if (status >= 400) {
-        bootstrapLogger.warn(message);
-        return;
-      }
-
-      bootstrapLogger.log(message);
-    });
-
-    next();
   });
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));

@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import { formatPhone } from "../_lib/format";
 
+const OPERATOR_CONTACT_PHONE = "01054055939";
+
 function formatCountdown(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
   const seconds = Math.max(0, totalSeconds % 60).toString().padStart(2, "0");
@@ -17,14 +19,10 @@ export function PhoneContactMessage({ sellerPhone }: PhoneContactMessageProps) {
   return (
     <p className="text-xs text-stone-500">
       시간이 지나도 인증 알림이 오지 않는 경우 서비스 운영자에게 연락해주세요.
-      {sellerPhone && (
-        <>
-          <br />
-          <a href={`tel:${sellerPhone}`} className="font-semibold text-amber-700">
-            {formatPhone(sellerPhone)}
-          </a>
-        </>
-      )}
+      <br />
+      <a href={`tel:${OPERATOR_CONTACT_PHONE}`} className="font-semibold text-amber-700">
+        {formatPhone(OPERATOR_CONTACT_PHONE)}
+      </a>
     </p>
   );
 }
