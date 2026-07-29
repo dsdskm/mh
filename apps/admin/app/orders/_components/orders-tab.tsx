@@ -988,9 +988,9 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
 
                   <div className="grid gap-2 text-sm text-stone-700 sm:grid-cols-2">
                     <p>받는분: {order.customerName}</p>
-                    <p>주문자 연락처: {formatPhone(order.phone)}</p>
                     <p>받는분 연락처: {formatPhone(order.recipientPhone)}</p>
                     <p>주문자: {order.depositorName}</p>
+                    <p>주문자 연락처: {formatPhone(order.phone)}</p>
                     {order.deliveryFee > 0 && <p>배송료: {formatCurrency(order.deliveryFee)}</p>}
                     {order.couponDiscount > 0 && <p>쿠폰 할인: -{formatCurrency(order.couponDiscount)}</p>}
                     {order.mileageUsed > 0 && <p>적립금 사용: -{formatCurrency(order.mileageUsed)}</p>}
@@ -1345,9 +1345,9 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
 
                   <div className="grid gap-x-3 gap-y-0.5 text-stone-700 sm:grid-cols-2">
                     <p>받는분: {o.customerName}</p>
-                    <p>주문자 연락처: {formatPhone(o.phone)}</p>
                     <p>받는분 연락처: {formatPhone(o.recipientPhone)}</p>
                     <p>주문자: {o.depositorName}</p>
+                    <p>주문자 연락처: {formatPhone(o.phone)}</p>
                     {o.deliveryFee > 0 && <p>배송료: {formatCurrency(o.deliveryFee)}</p>}
                     {o.couponDiscount > 0 && <p>쿠폰 할인: -{formatCurrency(o.couponDiscount)}</p>}
                     {o.mileageUsed > 0 && <p>적립금 사용: -{formatCurrency(o.mileageUsed)}</p>}
@@ -1523,9 +1523,9 @@ export function OrdersTab({ orders, products, accounts, updateOrderStatus, creat
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <input value={createCustomerName} onChange={(e) => setCreateCustomerName(e.target.value)} placeholder="받는분" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
-                <input value={createPhone} onChange={(e) => setCreatePhone(e.target.value)} placeholder="주문자 연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
                 <input value={createRecipientPhone} onChange={(e) => setCreateRecipientPhone(e.target.value)} placeholder="받는분 연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
                 <input value={createDepositorName} onChange={(e) => setCreateDepositorName(e.target.value)} placeholder="주문자" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
+                <input value={createPhone} onChange={(e) => setCreatePhone(e.target.value)} placeholder="주문자 연락처" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
                 <input value={createShippingAddress} onChange={(e) => setCreateShippingAddress(e.target.value)} placeholder="배송지" className="rounded-xl border border-stone-300 px-3 py-2 text-sm" required />
               </div>
               <textarea value={createRequestNote} onChange={(e) => setCreateRequestNote(e.target.value)} placeholder="요청사항" className="h-20 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm" />
